@@ -6,7 +6,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 |---|---|---|---|---|
 | S01 | Monorepo and infrastructure | done | 2026-10-05 | Postgres host port defaults to 5434 (Redis 6379, MQTT 1883); CI validated with actionlint (act not installed) |
 | S02 | Hub foundation: auth, orgs, roles, audit | done | 2026-10-05 | 62 hub tests on a separate `care_test` DB + Redis DB 15; spec Conventions gained 429 `rate_limited` and named error codes |
-| S03 | Frontend foundation and API client | todo | | |
+| S03 | Frontend foundation and API client | done | 2026-10-05 | React 19 + react-router + Tailwind v4 + shadcn; apps on :5173/:5174/:5175 call the hub through a Vite `/api` proxy (no hub CORS yet); 32 Vitest tests + 3-test Playwright login smoke (`make e2e`); client regenerated after S04 merged |
 | S04 | Catalog and inventory | done | 2026-10-05 | 40-product catalog (`SURG-KIT-A`, `DIAG-RDK`, `IV-CAN-20G`); 134 hub tests; batch writes HOSPITAL-only, offer writes SUPPLIER-only, a verify count replaces on_hand (business-rules §2 updated); dev seed adds Supplier X and SwiftMed Logistics |
 | S05 | Shortages and the matching engine | todo | | |
 | S06 | Source requests, holds and timers | todo | | |
@@ -61,6 +61,13 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S04 → later] Expiry uses the UTC date, so between 00:00 and 05:30 IST a batch that expires that IST day still counts as transferable. Switch to Asia/Kolkata if that matters for the demo.
 - [S04 → later] CSV import uses one savepoint and one audit row per line (1 MB cap); fine for store-sized files, but batch it if imports grow.
 - [S04 → S05+] Inputs that reach Postgres use the shared types in `app/db.py`: `NonNegInt4` for every qty, paise and hours field (int4 columns), and `NulFreeStr` (or the `NulFree` validator) for free text, since Postgres text cannot hold NUL. As a safety net, a SQLSTATE class 22 error maps to 400 `validation` (`app/errors.py`, `is_data_error`), and only a unique violation (23505) becomes 409 in `flush_or_conflict`. Verify now requires `method` (the generated client type changes when it is regenerated).
+- [S03 → hub] `OrgOut.type`/`PublicOrgView.type` are `str` and `MeOut.roles`/`capabilities` are `list[str]`, so the generated client types are plain `string`. Declaring them as enums would type-check the apps' org-type gate and `can()`.
+- [S03 → S07] Query keys are the API path (e.g. `["/api/v1/auth/me"]`), so the `/events/stream` handler can invalidate by path.
+- [S03 → S08] Decide on typed query-hook helpers (openapi-react-query is not approved yet). S03 provides `unwrap()`, `ApiError`, `createQueryClient()` and `useMe()`.
+- [S03 → S08/S10/S11] The nav shows every route to every role (e.g. delivery-web "Driver jobs" is for DRIVER); hide entries by capability when the screens land.
+- [S03 → S20] The login rate limit (5/min/IP, every attempt counts) applies to local e2e runs; the smoke test uses 3 logins, so a second `make e2e` within ~60 s gets 429. "make e2e ×3" needs a test-configurable limit or a pause.
+- [S03 → S20] e2e is not in CI (it needs Postgres, Redis and a seeded hub); add a CI e2e job.
+- [S03 → S20] Apps reach the hub through a Vite dev proxy, so the hub has no CORS yet; restrict CORS to the three app origins for any non-proxied deployment.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
@@ -69,7 +76,10 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - S02: The state-machine 409 is proven through a test-only route (`/api/v1/_test/transition`, mounted only in the test app); no S02 endpoint has a domain state machine.
 - S01: Prettier skips the S00 kit prose (`docs/`, `.claude/`, `CLAUDE.md`) because those files aren't Prettier-formatted, and reformatting would rewrite the specs.
 - S14: The manual hardware test (firmware/cold-box/README.md, "Manual hardware test") is pending until the ESP32 and DS18B20 arrive. Firmware is compile-verified only; the CI `firmware` job was validated with actionlint and run locally, not on GitHub.
-- S04: `make client` is still the S03 placeholder on main, so the client was not regenerated for the S04 endpoints; the orchestrator regenerates it when S03 merges. The OpenAPI contract is pinned by a test (`transferable` is `readOnly`; import body is `text/csv`).
+- S03: The `client-drift` CI job was checked with actionlint and its steps were run locally, not on GitHub (no remote yet).
+- S03: openapi-typescript 7.13 declares a peer of TypeScript ^5.x; with the pinned TS 6.0.3 pnpm warns, but codegen works and its output typechecks.
+- S03: `@vitejs/plugin-react` is pinned `~6.1.1` because pnpm's minimum-release-age check rejected 6.1.2 (published the same day).
+- S03: Light theme only; there are no dark-mode tokens.
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->

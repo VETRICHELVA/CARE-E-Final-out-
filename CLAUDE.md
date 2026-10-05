@@ -22,7 +22,7 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 - Build plan: `docs/build/README.md`; current status: `docs/build/PROGRESS.md`; section briefs: `docs/build/sections/`
 
 ## Stack
-- Apps: React 18 + TS + Vite, Tailwind, shadcn/ui, TanStack Query, Zustand, React Router — `apps/{hospital,supplier,delivery}-web`
+- Apps: React 19 + TS + Vite, Tailwind, shadcn/ui, TanStack Query, Zustand, React Router — `apps/{hospital,supplier,delivery}-web`
 - Shared: `packages/ui`, `packages/api-client` (GENERATED from hub OpenAPI — never hand-edit)
 - Hub: Python 3.12, FastAPI, SQLAlchemy 2 async, Alembic, Pydantic v2, arq jobs, statsmodels (forecasting) — `services/hub-api`
 - AI: `services/ai-service` (FastAPI, LLM tool calling; read-only access to the hub)
@@ -37,8 +37,10 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 - `make test` — all tests; `make test-hub`, `make test-web`
 - `make lint` — ruff, mypy, eslint, prettier, tsc
 - `make migrate` / `make migration m="msg"` — Alembic
-- `make client` — regenerate `packages/api-client` from OpenAPI
+- `make client` — regenerate `packages/api-client` from the hub's OpenAPI (imports the app; no server needed)
 - `make seed` — load demo data
+- `make e2e` — Playwright tests in `e2e/` (needs `make up migrate seed`; starts the hub and apps unless running)
+- `pnpm --filter <app> dev` — run one app (hospital-web :5173, supplier-web :5174, delivery-web :5175; proxies `/api` to the hub)
 
 ## Conventions
 - Domain rules are pure functions in `services/hub-api/app/domain/`, fully unit-tested.

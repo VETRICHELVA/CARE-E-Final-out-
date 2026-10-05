@@ -1,0 +1,87 @@
+/* The shared Tailwind setup and design tokens. Each app's CSS starts with
+   `@import "@care-e/ui/styles.css";` (Tailwind v4: this file is the "preset"). */
+@import "tailwindcss";
+@import "tw-animate-css";
+@source ".";
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.99 0.002 200);
+  --foreground: oklch(0.18 0.01 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.01 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.01 220);
+  --primary: oklch(0.45 0.09 195);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.96 0.01 200);
+  --secondary-foreground: oklch(0.25 0.02 210);
+  --muted: oklch(0.96 0.005 200);
+  --muted-foreground: oklch(0.5 0.015 215);
+  --accent: oklch(0.95 0.02 195);
+  --accent-foreground: oklch(0.25 0.03 200);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.91 0.008 210);
+  --input: oklch(0.91 0.008 210);
+  --ring: oklch(0.6 0.08 195);
+
+  /* Status tones used by StatusChip: text colour and a light background. */
+  --status-neutral: oklch(0.42 0.01 220);
+  --status-neutral-bg: oklch(0.95 0.005 220);
+  --status-info: oklch(0.45 0.14 250);
+  --status-info-bg: oklch(0.95 0.03 250);
+  --status-progress: oklch(0.45 0.15 290);
+  --status-progress-bg: oklch(0.95 0.03 290);
+  --status-warning: oklch(0.47 0.11 65);
+  --status-warning-bg: oklch(0.96 0.06 85);
+  --status-success: oklch(0.44 0.11 150);
+  --status-success-bg: oklch(0.95 0.05 150);
+  --status-danger: oklch(0.5 0.19 27);
+  --status-danger-bg: oklch(0.95 0.03 27);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-neutral-bg: var(--status-neutral-bg);
+  --color-status-info: var(--status-info);
+  --color-status-info-bg: var(--status-info-bg);
+  --color-status-progress: var(--status-progress);
+  --color-status-progress-bg: var(--status-progress-bg);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-bg: var(--status-warning-bg);
+  --color-status-success: var(--status-success);
+  --color-status-success-bg: var(--status-success-bg);
+  --color-status-danger: var(--status-danger);
+  --color-status-danger-bg: var(--status-danger-bg);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

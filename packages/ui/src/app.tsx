@@ -1,0 +1,106 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
+import { createQueryClient, logout, useAuth } from "@care-e/api-client";
+import { LoginPage, ProtectedRoute, useMe } from "./auth";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Toaster } from "./components/ui/sonner";
+import { cn } from "./lib/utils";
+import { EmptyState } from "./states";
+
+export type NavItem = { to: string; label: string };
+
+export type AppConfig = {
+  /** Shown in the header and on the sign-in page, e.g. "CARE-E Hospital". */
+  name: string;
+  /** Org types this app is for (`/auth/me` → org.type). */
+  allow: string[];
+  /** Shown to a signed-in user of any other org type. */
+  refusal: string;
+  nav: NavItem[];
+};
+
+/** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
+function AppShell({ name, nav }: Pick<AppConfig, "name" | "nav">) {
+  const me = useMe().data;
+  return (
+    <div className="min-h-svh">
+      <header className="border-b bg-card">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+          <span className="font-semibold text-primary">{name}</span>
+          <nav className="flex flex-wrap gap-1 text-sm">
+            {nav.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end
+                className={({ isActive }) =>
+                  cn(
+                    "rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-accent",
+                    isActive && "bg-accent font-medium text-accent-foreground",
+                  )
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          {me && (
+            <div className="ml-auto flex items-center gap-3 text-sm">
+              <div className="text-right leading-tight">
+                <div className="font-medium">{me.user.full_name}</div>
+                <div className="text-muted-foreground" data-testid="org-name">
+                  {me.org.name}
+                </div>
+              </div>
+              <Badge variant="secondary">{me.org.type}</Badge>
+              <Button variant="outline" size="sm" onClick={() => void logout()}>
+                Sign out
+              </Button>
+            </div>
+          )}
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl p-4">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+/** One app: sign-in, the org-type gate, the header and nav, and placeholder pages. */
+export function CareApp({ name, allow, refusal, nav }: AppConfig) {
+  const [queryClient] = useState(createQueryClient);
+  // Signing out (or a failed refresh) must not leave the last user's data in the cache.
+  useEffect(
+    () => useAuth.subscribe((s) => s.tokens === null && queryClient.clear()),
+    [queryClient],
+  );
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage appName={name} />} />
+          <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
+            <Route element={<AppShell name={name} nav={nav} />}>
+              {nav.map((item) => (
+                <Route
+                  key={item.to}
+                  path={item.to}
+                  element={
+                    <EmptyState title={item.label}>
+                      This screen arrives in a later section.
+                    </EmptyState>
+                  }
+                />
+              ))}
+              <Route path="*" element={<EmptyState title="Page not found" />} />
+            </Route>
+          </Route>
+        </Routes>
+      </BrowserRouter>
+      <Toaster />
+    </QueryClientProvider>
+  );
+}

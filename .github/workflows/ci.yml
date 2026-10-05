@@ -73,7 +73,21 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
+  # Regenerates packages/api-client from the hub (no server or database needed); fails if stale.
   client-drift:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Placeholder - S03 regenerates packages/api-client and fails on drift."
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: uv sync --locked
+        working-directory: services/hub-api
+      - run: pnpm install --frozen-lockfile
+      - run: make client
+      - run: git diff --exit-code packages/api-client

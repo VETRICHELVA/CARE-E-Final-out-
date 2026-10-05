@@ -5,11 +5,12 @@ export
 SERVICES := hub-api ai-service iot-ingest
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install up down hub migrate migration client seed lint test test-hub test-web
+.PHONY: install up down hub migrate migration client seed lint test test-hub test-web e2e
 
 install:
 	for s in $(SERVICES); do (cd services/$$s && uv sync) || exit 1; done
 	pnpm install
+	pnpm --filter e2e exec playwright install chromium
 	uvx pre-commit install
 
 up:
@@ -28,8 +29,10 @@ migration:
 	$(if $(m),,$(error usage: make migration m="message"))
 	cd services/hub-api && uv run alembic revision --autogenerate -m "$(m)"
 
+# Imports the app to export its OpenAPI (no running server needed), then generates the TS types.
 client:
-	@echo "Not available until S03"
+	cd services/hub-api && uv run python -c "import json; from app.main import create_app; print(json.dumps(create_app().openapi(), indent=2))" > ../../packages/api-client/openapi.json
+	pnpm --filter @care-e/api-client generate
 
 seed:
 	cd services/hub-api && uv run python -m app.seed
@@ -47,3 +50,7 @@ test-hub:
 
 test-web:
 	pnpm test
+
+# Starts the hub and the three apps unless already running; needs `make up migrate seed` first.
+e2e:
+	pnpm --filter e2e exec playwright test
