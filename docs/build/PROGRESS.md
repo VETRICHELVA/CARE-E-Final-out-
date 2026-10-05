@@ -47,6 +47,11 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S02 → any] Root `ruff.toml` has no `src` hint, so ruff sorts `app` imports as third-party in `tests/` and `migrations/` (cosmetic). Adding `src = ["services/*"]` would change import order across all services.
 - [S02 → S07] Consider a CI `alembic check` step (model/migration drift guard); it passes locally today.
 - [S01 → S11] OSRM map data goes in `infra/osrm/` (gitignored); start it with `docker compose -f infra/docker-compose.yml --profile routing up -d osrm`.
+- [S13/S17 → S04] Product codes are not in the specs (only names; "SK-A" is only a synonym in the S17 brief). Once the S04 catalog sets codes, switch `services/ai-service/evals/chat_orders.jsonl` from product names to codes.
+- [S13/S17 → S04] Set `default_min_shelf_life_days` for Rapid Diagnostic Kit and IV Cannula 20G; the specs give it only for Surgical Kit A (30). The chat evals read it through `$product_default`.
+- [S13/S17 → S04] Decide on sibling products (e.g. other IV cannula gauges, a second surgical kit); each adds an ambiguity case to the chat evals. Don't add a second "rapid … kit", or eval o07 ("200 rapid kits") becomes a question.
+- [S04 → S17] Synonyms must resolve "SK-A", "surgical kit A", "kit A", "rapid kits" and "20G cannula" as the chat evals expect; plain "kits" must score Surgical Kit A and Rapid Diagnostic Kit within 10% of each other (evals o14–o16).
+- [S13 → S20] The copilot eval runner must drive Scenario 1 to step 2, 4 or 7 (`after_step`); step 3 must decline B without a reason, because c08 expects "No reason was entered."
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
