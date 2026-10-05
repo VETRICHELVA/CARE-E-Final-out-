@@ -17,7 +17,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | S11 | Shipments, routing and the delivery app | todo | | |
 | S12 | Receiving, reconciliation, decision screens | todo | | |
 | S13 | AI service and copilot | todo | | |
-| S14 | IoT telemetry pipeline | todo | | |
+| S14 | IoT telemetry pipeline | in progress | | Part 1 done 2026-10-05: firmware compiles (esp32dev, espressif32@7.1.3), simulator verified on the broker (excursion 9.1/9.4 °C after 60 s), CI `firmware` job. Ingest subscriber, hub Device/SensorReading, endpoints, shipment linking and delivery-web device column wait for S02/S11. Hardware test pending |
 | S15 | Cold-chain rules and alerts | todo | | |
 | S16 | Route optimization | todo | | |
 | S17 | Chat ordering | todo | | |
@@ -52,6 +52,9 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S13/S17 → S04] Decide on sibling products (e.g. other IV cannula gauges, a second surgical kit); each adds an ambiguity case to the chat evals. Don't add a second "rapid … kit", or eval o07 ("200 rapid kits") becomes a question.
 - [S04 → S17] Synonyms must resolve "SK-A", "surgical kit A", "kit A", "rapid kits" and "20G cannula" as the chat evals expect; plain "kits" must score Surgical Kit A and Rapid Diagnostic Kit within 10% of each other (evals o14–o16).
 - [S13 → S20] The copilot eval runner must drive Scenario 1 to step 2, 4 or 7 (`after_step`); step 3 must decline B without a reason, because c08 expects "No reason was entered."
+- [S14 → S01/S20] Mosquitto is bound to 127.0.0.1 with anonymous access, so a real ESP32 cannot reach it; the firmware README describes a temporary `socat` LAN forward. Decide whether the demo needs a LAN listener with username/password (and MQTT credentials in the firmware secrets).
+- [S14 → S14] The brief's Verify line `python scripts/simulate_telemetry.py ...` fails without paho; use `uv run scripts/simulate_telemetry.py ...` (PEP 723 metadata installs paho).
+- [S14 → S15] Firmware skips DS18B20 error readings (-127 not found, 85.0 power-on) instead of publishing them, so a failed probe shows in the hub as DEVICE_SILENT, not as an excursion.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
@@ -59,6 +62,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - S02: CI postgres/redis service containers were validated with actionlint (via Docker), not on GitHub (still no remote).
 - S02: The state-machine 409 is proven through a test-only route (`/api/v1/_test/transition`, mounted only in the test app); no S02 endpoint has a domain state machine.
 - S01: Prettier skips the S00 kit prose (`docs/`, `.claude/`, `CLAUDE.md`) because those files aren't Prettier-formatted, and reformatting would rewrite the specs.
+- S14: The manual hardware test (firmware/cold-box/README.md, "Manual hardware test") is pending until the ESP32 and DS18B20 arrive. Firmware is compile-verified only; the CI `firmware` job was validated with actionlint and run locally, not on GitHub.
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->

@@ -47,6 +47,18 @@ jobs:
       - run: uv run mypy app tests
       - run: uv run pytest
 
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      # Toolchain, framework and libraries (~1.5 GB); versions are pinned in platformio.ini.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.platformio
+          key: platformio-${{ runner.os }}-${{ hashFiles('firmware/cold-box/platformio.ini') }}
+      - run: uvx platformio@6.2.0 run -d firmware/cold-box
+
   web:
     runs-on: ubuntu-latest
     steps:
