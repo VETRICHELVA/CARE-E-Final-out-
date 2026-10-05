@@ -4,7 +4,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 
 | ID | Section | Status | Done on | Notes |
 |---|---|---|---|---|
-| S01 | Monorepo and infrastructure | todo | | |
+| S01 | Monorepo and infrastructure | done | 2026-10-05 | Postgres host port defaults to 5434 (Redis 6379, MQTT 1883); CI validated with actionlint (act not installed) |
 | S02 | Hub foundation: auth, orgs, roles, audit | todo | | |
 | S03 | Frontend foundation and API client | todo | | |
 | S04 | Catalog and inventory | todo | | |
@@ -34,9 +34,15 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 
 ## Follow-ups
 <!-- Things noticed during a section that belong to another section or to later. Format: - [Sxx → Syy] description -->
+- [S01 → S02] Postgres is published on host port 5434 (not 5432) so it never clashes with another local Postgres; hub settings should default to `services/hub-api/.env.example` (`DATABASE_URL=...@127.0.0.1:5434/care`).
+- [S01 → S03] TypeScript is pinned to `~6.0.3`: typescript-eslint 8.71 only supports TS `<6.1.0`, and TS 7 is `latest` on npm. Keep apps on 6.0.x until typescript-eslint supports TS 7.
+- [S01 → S03] Root `pnpm typecheck` / `pnpm test` run `pnpm -r --if-present`, so they are no-ops until apps/packages add `typecheck` and `test` scripts. Replace the `client-drift` CI placeholder with the real regenerate-and-diff check.
+- [S01 → S11] OSRM map data goes in `infra/osrm/` (gitignored); start it with `docker compose -f infra/docker-compose.yml --profile routing up -d osrm`.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
+- S01: CI has not run on GitHub yet (no remote). `ci.yml` was validated with actionlint and its steps were run locally (`uv sync --locked`, ruff, mypy, pytest, `pnpm install --frozen-lockfile`, lint, typecheck, test).
+- S01: Prettier skips the S00 kit prose (`docs/`, `.claude/`, `CLAUDE.md`) because those files aren't Prettier-formatted, and reformatting would rewrite the specs.
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->

@@ -31,10 +31,11 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 
 ## Commands
 (Kept current by S01 — update this list when commands change.)
+- `make install` — install Python (uv) and JS (pnpm) dependencies and pre-commit hooks
 - `make up` / `make down` — start/stop infra
 - `make hub` — run hub API with reload
 - `make test` — all tests; `make test-hub`, `make test-web`
-- `make lint` — ruff, mypy, eslint, tsc
+- `make lint` — ruff, mypy, eslint, prettier, tsc
 - `make migrate` / `make migration m="msg"` — Alembic
 - `make client` — regenerate `packages/api-client` from OpenAPI
 - `make seed` — load demo data

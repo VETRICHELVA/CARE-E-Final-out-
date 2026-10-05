@@ -1,0 +1,8 @@
+pnpm-lock.yaml
+**/.venv/
+**/dist/
+**/coverage/
+# Project kit prose (specs, briefs, agent files) is hand-formatted; don't rewrite it.
+docs/
+.claude/
+CLAUDE.md

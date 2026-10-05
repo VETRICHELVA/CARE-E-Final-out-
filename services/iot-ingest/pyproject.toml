@@ -1,0 +1,18 @@
+[project]
+name = "iot-ingest"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff", "mypy", "pytest"]
+
+[tool.uv]
+package = false
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

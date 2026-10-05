@@ -1,0 +1,3 @@
+# infra
+
+Local infrastructure for development: `docker-compose.yml` runs PostgreSQL 16, Redis 7 and Mosquitto 2 (dev config in `mosquitto/mosquitto.conf`, anonymous access, reachable from localhost only), each with a healthcheck and a named volume. Start and stop it with `make up` / `make down`; host ports default to 5434 (Postgres, so it never clashes with another local Postgres on 5432), 6379 and 1883 on 127.0.0.1 and can be changed in a root `.env` (see `.env.example`). OSRM runs only with `docker compose -f infra/docker-compose.yml --profile routing up -d osrm` and needs map data in `infra/osrm/`, prepared in S11.
