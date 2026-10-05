@@ -6,7 +6,7 @@
 - Auth: `Authorization: Bearer <access token>`. Access tokens last 15 min; refresh tokens 7 days (rotated on use).
 - Every list endpoint is paginated with `?limit=&cursor=` and returns `{items, next_cursor}`.
 - Errors: `{ "code": "invalid_transition", "message": "…", "details": {…} }`.
-  - 400 validation · 401 unauthenticated · 403 `forbidden` (missing capability or another org's resource) · 404 not found · 409 `invalid_transition` or `conflict` (stale version or hold race) · 422 schema error.
+  - 400 `validation` · 401 `unauthenticated` (`invalid_credentials` for a failed login) · 403 `forbidden` (missing capability or another org's resource) · 404 `not_found` · 409 `invalid_transition` or `conflict` (stale version or hold race) · 422 `schema_error` · 429 `rate_limited` (login: 5 attempts per minute per IP; `details.retry_after` in seconds) · 500 `internal_error`.
 - Mutating endpoints that change state take an optional `reason` string. If it's blank, the audit row gets `reason_source=SYSTEM`.
 - Optimistic concurrency: state-changing requests may send `If-Match: <version>`; a mismatch returns 409 `conflict`.
 

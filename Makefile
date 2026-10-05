@@ -18,14 +18,21 @@ up:
 down:
 	$(COMPOSE) down
 
-hub migrate migration:
-	@echo "Not available until S02"
+hub:
+	cd services/hub-api && uv run uvicorn --factory app.main:create_app --reload --port 8000
+
+migrate:
+	cd services/hub-api && uv run alembic upgrade head
+
+migration:
+	$(if $(m),,$(error usage: make migration m="message"))
+	cd services/hub-api && uv run alembic revision --autogenerate -m "$(m)"
 
 client:
 	@echo "Not available until S03"
 
 seed:
-	@echo "Not available until S20"
+	cd services/hub-api && uv run python -m app.seed
 
 lint:
 	for s in $(SERVICES); do (cd services/$$s && uv run ruff check . && uv run ruff format --check . && uv run mypy app tests) || exit 1; done

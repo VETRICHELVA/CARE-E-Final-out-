@@ -5,7 +5,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | ID | Section | Status | Done on | Notes |
 |---|---|---|---|---|
 | S01 | Monorepo and infrastructure | done | 2026-10-05 | Postgres host port defaults to 5434 (Redis 6379, MQTT 1883); CI validated with actionlint (act not installed) |
-| S02 | Hub foundation: auth, orgs, roles, audit | todo | | |
+| S02 | Hub foundation: auth, orgs, roles, audit | done | 2026-10-05 | 62 hub tests on a separate `care_test` DB + Redis DB 15; spec Conventions gained 429 `rate_limited` and named error codes |
 | S03 | Frontend foundation and API client | todo | | |
 | S04 | Catalog and inventory | todo | | |
 | S05 | Shortages and the matching engine | todo | | |
@@ -37,11 +37,22 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S01 → S02] Postgres is published on host port 5434 (not 5432) so it never clashes with another local Postgres; hub settings should default to `services/hub-api/.env.example` (`DATABASE_URL=...@127.0.0.1:5434/care`).
 - [S01 → S03] TypeScript is pinned to `~6.0.3`: typescript-eslint 8.71 only supports TS `<6.1.0`, and TS 7 is `latest` on npm. Keep apps on 6.0.x until typescript-eslint supports TS 7.
 - [S01 → S03] Root `pnpm typecheck` / `pnpm test` run `pnpm -r --if-present`, so they are no-ops until apps/packages add `typecheck` and `test` scripts. Replace the `client-drift` CI placeholder with the real regenerate-and-diff check.
+- [S02 → S03] `make client` is still the S03 placeholder, so no client was generated in S02. `GET /orgs/{id}` returns `OrgOut | PublicOrgView` and `GET /orgs/{id}/facilities` returns `Page[FacilityOut] | Page[PublicFacilityView]` (own org vs other org); the generated types are unions.
+- [S02 → S03] Starlette's `TestClient` now warns that it wants `httpx2`; hub tests use `httpx.AsyncClient` + `ASGITransport` instead. Don't introduce `TestClient`.
+- [S02 → S06/S09] `audit.record()` writes one row with one `org_id` (defaults to the actor's org; required for system actors). Cross-org actions must decide which org(s) get a row.
+- [S02 → S19] `Organization.status = SUSPENDED` is stored but not enforced anywhere; it waits for a business rule. Only `User.is_active = false` blocks login.
+- [S02 → S20] `JWT_SECRET` has a dev default in `app/config.py`; hardening should refuse to start without a real secret outside dev. `make seed` loads the minimal S02 seed (platform admin, Hospital A/B users, password `$SEED_PASSWORD` or `care-e-dev`); S20 replaces it.
+- [S02 → S20] The `care` DB role is a superuser/table owner and can bypass the audit_log trigger; use a separate app role and REVOKE UPDATE, DELETE, TRUNCATE ON audit_log.
+- [S02 → S20] Login rate limit keys on request.client.host; behind a proxy, use the forwarded client IP.
+- [S02 → any] Root `ruff.toml` has no `src` hint, so ruff sorts `app` imports as third-party in `tests/` and `migrations/` (cosmetic). Adding `src = ["services/*"]` would change import order across all services.
+- [S02 → S07] Consider a CI `alembic check` step (model/migration drift guard); it passes locally today.
 - [S01 → S11] OSRM map data goes in `infra/osrm/` (gitignored); start it with `docker compose -f infra/docker-compose.yml --profile routing up -d osrm`.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
 - S01: CI has not run on GitHub yet (no remote). `ci.yml` was validated with actionlint and its steps were run locally (`uv sync --locked`, ruff, mypy, pytest, `pnpm install --frozen-lockfile`, lint, typecheck, test).
+- S02: CI postgres/redis service containers were validated with actionlint (via Docker), not on GitHub (still no remote).
+- S02: The state-machine 409 is proven through a test-only route (`/api/v1/_test/transition`, mounted only in the test app); no S02 endpoint has a domain state machine.
 - S01: Prettier skips the S00 kit prose (`docs/`, `.claude/`, `CLAUDE.md`) because those files aren't Prettier-formatted, and reformatting would rewrite the specs.
 
 ## Hardening checklist (S20)

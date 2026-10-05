@@ -9,6 +9,7 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **Role**: name — STORE_MANAGER, REQUESTER, APPROVER, RECEIVER, SUPPLIER_DESK, DISPATCHER, DRIVER, ADMIN
 - **Capability**: code, e.g. `shortage.create`, `recommendation.approve`, `source_request.respond`, `receipt.record`, `inventory.edit`, `po.respond`, `shipment.assign`, `shipment.update_status`, `audit.read`
 - **UserRole**: user_id, role_id (a role maps to a fixed capability set in code)
+- **RefreshToken**: user_id, family_id, token_hash, expires_at, revoked_at
 - **ProductAuthorization**: org_id, product_id (which products an org may supply)
 
 ## Catalog
