@@ -164,5 +164,12 @@ async def test_missing_capability_is_403(client_for: ClientFor, world: World) ->
     }
 
 
+async def test_entity_filter_with_nul_is_422(client_for: ClientFor, world: World) -> None:
+    """Postgres text cannot hold NUL, so the filter is rejected before it reaches SQL."""
+    client = await client_for(world.users["a.APPROVER"])
+    r = await client.get("/audit", params={"entity": "inventory_batch\u0000"})
+    assert (r.status_code, r.json()["code"]) == (422, "schema_error")
+
+
 def test_audit_rows_have_no_update_columns() -> None:
     assert {"created_at", "updated_at"}.isdisjoint(AuditLog.__table__.columns.keys())

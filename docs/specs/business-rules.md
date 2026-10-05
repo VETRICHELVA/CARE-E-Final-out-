@@ -16,6 +16,9 @@ transferable = max(0, on_hand − reserved − allocated − safety_stock − qu
 - A batch counts toward a shortage only if `days_to_expiry_at_delivery ≥ shortage.min_shelf_life_days`, where `days_to_expiry_at_delivery = (expiry_date − estimated_arrival_date).days`.
 - Active holds on a batch count as `reserved` for every other shortage.
 - Source-level transferable = the sum over that source's qualifying batches of the same product.
+- "Today" for expiry is the UTC date.
+- Verifying a batch records a VerificationEvent and sets `last_verified_at`. If `counted_qty` differs from `on_hand`, the count replaces `on_hand` (audited, before and after).
+- Who may write: inventory batches belong to HOSPITAL orgs, so only a hospital user with `inventory.edit` may create, edit, import or verify them. Supplier offers belong to SUPPLIER orgs, so only a supplier user with `po.respond` may write them. Any other org gets 403, even as ADMIN.
 
 ## 3. Eligibility gates
 A candidate must pass every gate. Store each gate's result and a plain-language reason for each failure.

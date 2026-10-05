@@ -12,7 +12,7 @@
 
 One user per role per org, emails like `approver@hospital-a.demo`, password `demo1234` (development only). Hospital locations are 5–40 km apart within one city.
 
-Products: about 40, including **Surgical Kit A** (no cold chain, min shelf life 30 days), **Rapid Diagnostic Kit** (2–8 °C), and **IV Cannula 20G**.
+Products: 40 (`scripts/seed/catalog.py`), including **Surgical Kit A** (`SURG-KIT-A`, no cold chain, min shelf life 30 days), **Rapid Diagnostic Kit** (`DIAG-RDK`, 2–8 °C, min shelf life 60 days), and **IV Cannula 20G** (`IV-CAN-20G`, min shelf life 30 days). Every other product defaults to 30 days. None of the three has a sibling product, and no other product name contains "Kit".
 
 ProductAuthorization: every hospital and supplier is authorized for every product, **except Hospital E for Surgical Kit A**.
 

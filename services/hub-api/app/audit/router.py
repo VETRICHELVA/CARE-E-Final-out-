@@ -9,7 +9,7 @@ from app.audit.schemas import AuditOut
 from app.auth.capabilities import Capability
 from app.auth.deps import is_platform_admin, org_scoped, require
 from app.auth.models import User
-from app.db import SessionDep
+from app.db import NulFreeStr, SessionDep
 from app.pagination import Cursor, Limit, Page, paginate
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 async def list_audit(
     user: Annotated[User, Depends(require(Capability.AUDIT_READ))],
     session: SessionDep,
-    entity: str | None = None,
+    entity: NulFreeStr | None = None,
     entity_id: uuid.UUID | None = None,
     limit: Limit = 50,
     cursor: Cursor = None,

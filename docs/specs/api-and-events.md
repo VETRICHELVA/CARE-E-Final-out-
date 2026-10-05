@@ -18,10 +18,10 @@
 | S02 | GET /orgs/{id}, GET /orgs/{id}/facilities | any | Own org in full; other orgs: name, type, location only |
 | S02 | GET /audit?entity=&entity_id= | `audit.read` | Own org's rows; platform admin sees all |
 | S04 | GET /products, GET /products/{id} | any | |
-| S04 | GET/POST /inventory/batches, PATCH /inventory/batches/{id} | `inventory.edit` for writes | Response includes computed `transferable` |
-| S04 | POST /inventory/batches/import | `inventory.edit` | CSV upload; returns per-row errors |
-| S04 | POST /inventory/batches/{id}/verify | `inventory.edit` | Writes a VerificationEvent and updates last_verified_at |
-| S04 | GET/PUT /supplier-offers | `po.respond` for writes | Supplier's own offers |
+| S04 | GET/POST /inventory/batches, PATCH /inventory/batches/{id} | `inventory.edit` for writes (HOSPITAL orgs only) | Own org's batches only. Response includes computed, read-only `transferable`; sending it (or `last_verified_at`) is 422. PATCH cannot change product or facility. Duplicate facility + product + batch_no is 409 `conflict` |
+| S04 | POST /inventory/batches/import?facility_id=&reason= | `inventory.edit` (HOSPITAL orgs only) | Body is raw `text/csv` (UTF-8, max 1 MB) with a header row: `product_code`, `batch_no`, `on_hand`, `expiry_date` (YYYY-MM-DD) and `unit_cost_paise` required; `reserved`, `allocated`, `safety_stock`, `quarantined` optional (blank = 0). Missing or unknown columns: 400. Valid rows are inserted, invalid rows skipped; returns `{inserted, errors: [{line, message}]}` (header = line 1) |
+| S04 | POST /inventory/batches/{id}/verify | `inventory.edit` (HOSPITAL orgs only) | Body `{method: MANUAL\|SCAN, counted_qty, reason?}`. Writes a VerificationEvent and updates last_verified_at; a different count replaces on_hand |
+| S04 | GET/PUT /supplier-offers | `po.respond` for writes (SUPPLIER orgs only) | Own org's offers only. PUT upserts one offer `{product_id, unit_price_paise, lead_time_hours, available_qty, reason?}` and always refreshes `updated_at` |
 | S05 | POST /shortages, GET /shortages, GET /shortages/{id} | `shortage.create` | Hub computes the shortfall |
 | S05 | POST /shortages/{id}/cancel | `shortage.create` | |
 | S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run |

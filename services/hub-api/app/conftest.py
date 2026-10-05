@@ -25,6 +25,8 @@ from sqlalchemy.pool import NullPool
 
 from app.auth import service as auth_service
 from app.auth.models import Role, User
+from app.catalog.models import Product
+from app.catalog.service import seed_catalog
 from app.db import get_session
 from app.domain.state_machine import transition
 from app.main import create_app
@@ -133,7 +135,7 @@ class World:
 ORG_ROLES = {
     "a": ["STORE_MANAGER", "REQUESTER", "APPROVER", "RECEIVER", "ADMIN"],
     "b": ["STORE_MANAGER", "APPROVER"],
-    "s": ["SUPPLIER_DESK", "DISPATCHER", "DRIVER"],
+    "s": ["SUPPLIER_DESK", "DISPATCHER", "DRIVER", "ADMIN"],
     "p": ["ADMIN"],
 }
 
@@ -175,6 +177,12 @@ async def world(session: AsyncSession) -> World:
     session.add_all(users.values())
     await session.flush()
     return World(orgs["a"], orgs["b"], orgs["s"], orgs["p"], users)
+
+
+@pytest.fixture
+async def products(session: AsyncSession) -> dict[str, Product]:
+    """The real seed catalog (scripts/seed/catalog.py), keyed by product code."""
+    return await seed_catalog(session)
 
 
 ClientFor = Callable[..., Awaitable[httpx.AsyncClient]]

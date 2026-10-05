@@ -7,7 +7,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | S01 | Monorepo and infrastructure | done | 2026-10-05 | Postgres host port defaults to 5434 (Redis 6379, MQTT 1883); CI validated with actionlint (act not installed) |
 | S02 | Hub foundation: auth, orgs, roles, audit | done | 2026-10-05 | 62 hub tests on a separate `care_test` DB + Redis DB 15; spec Conventions gained 429 `rate_limited` and named error codes |
 | S03 | Frontend foundation and API client | todo | | |
-| S04 | Catalog and inventory | todo | | |
+| S04 | Catalog and inventory | done | 2026-10-05 | 40-product catalog (`SURG-KIT-A`, `DIAG-RDK`, `IV-CAN-20G`); 134 hub tests; batch writes HOSPITAL-only, offer writes SUPPLIER-only, a verify count replaces on_hand (business-rules §2 updated); dev seed adds Supplier X and SwiftMed Logistics |
 | S05 | Shortages and the matching engine | todo | | |
 | S06 | Source requests, holds and timers | todo | | |
 | S07 | Events, webhooks and live updates | todo | | |
@@ -41,20 +41,26 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S02 → S03] Starlette's `TestClient` now warns that it wants `httpx2`; hub tests use `httpx.AsyncClient` + `ASGITransport` instead. Don't introduce `TestClient`.
 - [S02 → S06/S09] `audit.record()` writes one row with one `org_id` (defaults to the actor's org; required for system actors). Cross-org actions must decide which org(s) get a row.
 - [S02 → S19] `Organization.status = SUSPENDED` is stored but not enforced anywhere; it waits for a business rule. Only `User.is_active = false` blocks login.
-- [S02 → S20] `JWT_SECRET` has a dev default in `app/config.py`; hardening should refuse to start without a real secret outside dev. `make seed` loads the minimal S02 seed (platform admin, Hospital A/B users, password `$SEED_PASSWORD` or `care-e-dev`); S20 replaces it.
+- [S02 → S20] `JWT_SECRET` has a dev default in `app/config.py`; hardening should refuse to start without a real secret outside dev. `make seed` loads the minimal dev seed (platform admin, Hospital A/B, Supplier X and SwiftMed Logistics users, password `$SEED_PASSWORD` or `care-e-dev`, plus the S04 catalog); it is idempotent per org name. S20 replaces it.
 - [S02 → S20] The `care` DB role is a superuser/table owner and can bypass the audit_log trigger; use a separate app role and REVOKE UPDATE, DELETE, TRUNCATE ON audit_log.
 - [S02 → S20] Login rate limit keys on request.client.host; behind a proxy, use the forwarded client IP.
 - [S02 → any] Root `ruff.toml` has no `src` hint, so ruff sorts `app` imports as third-party in `tests/` and `migrations/` (cosmetic). Adding `src = ["services/*"]` would change import order across all services.
 - [S02 → S07] Consider a CI `alembic check` step (model/migration drift guard); it passes locally today.
 - [S01 → S11] OSRM map data goes in `infra/osrm/` (gitignored); start it with `docker compose -f infra/docker-compose.yml --profile routing up -d osrm`.
-- [S13/S17 → S04] Product codes are not in the specs (only names; "SK-A" is only a synonym in the S17 brief). Once the S04 catalog sets codes, switch `services/ai-service/evals/chat_orders.jsonl` from product names to codes.
-- [S13/S17 → S04] Set `default_min_shelf_life_days` for Rapid Diagnostic Kit and IV Cannula 20G; the specs give it only for Surgical Kit A (30). The chat evals read it through `$product_default`.
-- [S13/S17 → S04] Decide on sibling products (e.g. other IV cannula gauges, a second surgical kit); each adds an ambiguity case to the chat evals. Don't add a second "rapid … kit", or eval o07 ("200 rapid kits") becomes a question.
+- [S13/S17 → S04] Resolved in S04 (recorded in demo-scenarios.md): codes `SURG-KIT-A`, `DIAG-RDK`, `IV-CAN-20G`; `default_min_shelf_life_days` 30 / 60 / 30, and 30 for every other product (IV Cannula 20G must stay below 55 so Scenario 3's +55-day batch passes); no sibling products, and only those two names contain "Kit". A catalog test guards the names.
+- [S04 → S13/S17] Switch `services/ai-service/evals/chat_orders.jsonl` and its README from product names to the codes above (ai-lead's files).
 - [S04 → S17] Synonyms must resolve "SK-A", "surgical kit A", "kit A", "rapid kits" and "20G cannula" as the chat evals expect; plain "kits" must score Surgical Kit A and Rapid Diagnostic Kit within 10% of each other (evals o14–o16).
 - [S13 → S20] The copilot eval runner must drive Scenario 1 to step 2, 4 or 7 (`after_step`); step 3 must decline B without a reason, because c08 expects "No reason was entered."
 - [S14 → S01/S20] Mosquitto is bound to 127.0.0.1 with anonymous access, so a real ESP32 cannot reach it; the firmware README describes a temporary `socat` LAN forward. Decide whether the demo needs a LAN listener with username/password (and MQTT credentials in the firmware secrets).
 - [S14 → S14] The brief's Verify line `python scripts/simulate_telemetry.py ...` fails without paho; use `uv run scripts/simulate_telemetry.py ...` (PEP 723 metadata installs paho).
 - [S14 → S15] Firmware skips DS18B20 error readings (-127 not found, 85.0 power-on) instead of publishing them, so a failed probe shows in the hub as DEVICE_SILENT, not as an excursion.
+- [S04 → S06] Batch responses use `batch_transferable(..., held_qty=0)` (`BatchOut.of`); once holds exist, pass the batch's active holds so `transferable` in `GET /inventory/batches` matches what matching offers.
+- [S04 → S07] Batch and offer changes emit no events yet; business-rules §5 re-runs MATCHING shortages "when inventory or offers change", so retrofit `emit` into `app/inventory/service.py` and `app/catalog/service.py:put_offer`.
+- [S04 → S20] The dev seed has no inventory batches, supplier offers or ProductAuthorizations, so until S20 the S05 authorization gate needs test-made rows (demo: everyone authorized except Hospital E for Surgical Kit A).
+- [S04 → S08] CSV import takes the file as a raw `text/csv` body (`?facility_id=`); with openapi-fetch, send the `File` with a passthrough `bodySerializer`. `GET /inventory/batches` has no product or facility filter, and batches carry only `product_id` (join with `GET /products?limit=200`).
+- [S04 → later] Expiry uses the UTC date, so between 00:00 and 05:30 IST a batch that expires that IST day still counts as transferable. Switch to Asia/Kolkata if that matters for the demo.
+- [S04 → later] CSV import uses one savepoint and one audit row per line (1 MB cap); fine for store-sized files, but batch it if imports grow.
+- [S04 → S05+] Inputs that reach Postgres use the shared types in `app/db.py`: `NonNegInt4` for every qty, paise and hours field (int4 columns), and `NulFreeStr` (or the `NulFree` validator) for free text, since Postgres text cannot hold NUL. As a safety net, a SQLSTATE class 22 error maps to 400 `validation` (`app/errors.py`, `is_data_error`), and only a unique violation (23505) becomes 409 in `flush_or_conflict`. Verify now requires `method` (the generated client type changes when it is regenerated).
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
@@ -63,6 +69,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - S02: The state-machine 409 is proven through a test-only route (`/api/v1/_test/transition`, mounted only in the test app); no S02 endpoint has a domain state machine.
 - S01: Prettier skips the S00 kit prose (`docs/`, `.claude/`, `CLAUDE.md`) because those files aren't Prettier-formatted, and reformatting would rewrite the specs.
 - S14: The manual hardware test (firmware/cold-box/README.md, "Manual hardware test") is pending until the ESP32 and DS18B20 arrive. Firmware is compile-verified only; the CI `firmware` job was validated with actionlint and run locally, not on GitHub.
+- S04: `make client` is still the S03 placeholder on main, so the client was not regenerated for the S04 endpoints; the orchestrator regenerates it when S03 merges. The OpenAPI contract is pinned by a test (`transferable` is `readOnly`; import body is `text/csv`).
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->

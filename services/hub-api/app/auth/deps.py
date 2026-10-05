@@ -52,11 +52,23 @@ def is_platform_admin(user: User) -> bool:
     return user.org.type == OrgType.PLATFORM and any(r.name == RoleName.ADMIN for r in user.roles)
 
 
-def require(capability: Capability) -> Callable[..., Awaitable[User]]:
+def require(
+    capability: Capability, org_type: OrgType | None = None
+) -> Callable[..., Awaitable[User]]:
+    """403 unless the user has `capability` and, if given, belongs to an `org_type` org
+    (business-rules.md §2: batches are HOSPITAL-only, supplier offers SUPPLIER-only)."""
+
     async def dependency(user: CurrentUser) -> User:
         if capability not in user_capabilities(user):
             raise AppError(
                 403, "forbidden", f"Missing capability {capability}.", {"capability": capability}
+            )
+        if org_type is not None and user.org.type != org_type:
+            raise AppError(
+                403,
+                "forbidden",
+                f"Only {org_type} organizations can do this.",
+                {"org_type": org_type},
             )
         return user
 

@@ -3,6 +3,8 @@ from fastapi import FastAPI
 from app import errors, log
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
+from app.catalog.router import router as catalog_router
+from app.inventory.router import router as inventory_router
 from app.orgs.router import router as orgs_router
 
 API = "/api/v1"
@@ -18,7 +20,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     log.install(app)
-    for router in (auth_router, orgs_router, audit_router):
+    for router in (auth_router, orgs_router, audit_router, catalog_router, inventory_router):
         app.include_router(router, prefix=API)
 
     @app.get("/health", include_in_schema=False)

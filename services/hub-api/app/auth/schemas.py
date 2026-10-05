@@ -2,11 +2,12 @@ import uuid
 
 from pydantic import BaseModel
 
+from app.db import NulFreeStr
 from app.orgs.schemas import OrgOut
 
 
 class LoginIn(BaseModel):
-    email: str
+    email: NulFreeStr  # looked up in SQL
     password: str
 
 

@@ -1,5 +1,6 @@
-"""Minimal dev seed (S02): platform admin, Hospital A and Hospital B with one user per role.
-The full demo seed replaces this in S20. Run with `make seed`; safe to run twice."""
+"""Minimal dev seed: platform admin, Hospital A and B, Supplier X and SwiftMed Logistics with
+one user per role (S02, S04), plus the product catalog (S04). The full demo seed replaces this
+in S20. Run with `make seed`; idempotent per org, so an older seeded DB gains new orgs."""
 
 import asyncio
 import os
@@ -9,27 +10,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
 from app.auth.service import hash_password
+from app.catalog.service import seed_catalog
 from app.db import SessionLocal
 from app.orgs.models import Facility, Organization, OrgType
 
 PASSWORD = os.environ.get("SEED_PASSWORD", "care-e-dev")
 HOSPITAL_ROLES = ["STORE_MANAGER", "REQUESTER", "APPROVER", "RECEIVER", "ADMIN"]
+SUPPLIER_ROLES = ["SUPPLIER_DESK", "ADMIN"]
+LOGISTICS_ROLES = ["DISPATCHER", "DRIVER", "ADMIN"]
 
 # name, type, email domain, lat, lng, roles
 ORGS = [
     ("CARE-E Platform", OrgType.PLATFORM, "care-e.local", 12.9716, 77.5946, ["ADMIN"]),
     ("Hospital A", OrgType.HOSPITAL, "hospital-a.local", 12.9592, 77.6974, HOSPITAL_ROLES),
     ("Hospital B", OrgType.HOSPITAL, "hospital-b.local", 12.9279, 77.6271, HOSPITAL_ROLES),
+    ("Supplier X", OrgType.SUPPLIER, "supplier-x.local", 13.0358, 77.5970, SUPPLIER_ROLES),
+    ("SwiftMed Logistics", OrgType.LOGISTICS, "swiftmed.local", 12.9784, 77.6408, LOGISTICS_ROLES),
 ]
 
 
-async def seed(session: AsyncSession) -> bool:
-    """Insert the seed orgs and users unless the platform org already exists."""
-    if await session.scalar(select(Organization).where(Organization.type == OrgType.PLATFORM)):
-        return False
+async def seed(session: AsyncSession) -> list[str]:
+    """Insert each seed org (with its users) not present yet, by name; load the catalog.
+    Returns the names of the orgs created."""
+    existing = set(await session.scalars(select(Organization.name)))
+    missing = [o for o in ORGS if o[0] not in existing]
     roles = {r.name: r for r in await session.scalars(select(Role))}
-    password_hash = hash_password(PASSWORD)
-    for name, org_type, domain, lat, lng, role_names in ORGS:
+    password_hash = hash_password(PASSWORD) if missing else ""
+    for name, org_type, domain, lat, lng, role_names in missing:
         org = Organization(name=name, type=org_type, lat=lat, lng=lng)
         session.add(org)
         await session.flush()
@@ -55,16 +62,17 @@ async def seed(session: AsyncSession) -> bool:
                 )
             )
     await session.flush()
-    return True
+    await seed_catalog(session)
+    return [o[0] for o in missing]
 
 
 async def main() -> None:
     async with SessionLocal() as session:
         created = await seed(session)
         await session.commit()
-    print("Seeded dev data." if created else "Seed data already present; nothing to do.")
-    if created:
-        print("Sign in as e.g. approver@hospital-a.local; password: $SEED_PASSWORD or care-e-dev")
+    print(f"Seeded: {', '.join(created)}." if created else "Seed orgs already present.")
+    print("Catalog loaded from scripts/seed/catalog.py.")
+    print("Sign in as e.g. approver@hospital-a.local; password: $SEED_PASSWORD or care-e-dev")
 
 
 if __name__ == "__main__":

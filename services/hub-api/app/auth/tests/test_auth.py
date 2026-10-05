@@ -70,6 +70,13 @@ async def test_bad_credentials_return_same_401(
     }
 
 
+async def test_login_email_with_nul_is_422(client_for: ClientFor) -> None:
+    """The email is looked up in SQL, and Postgres text cannot hold NUL."""
+    client = await client_for()
+    r = await client.post("/auth/login", json={"email": "a\u0000@a.test", "password": "x"})
+    assert (r.status_code, r.json()["code"]) == (422, "schema_error")
+
+
 async def test_inactive_user_cannot_log_in(
     client_for: ClientFor, world: World, session: AsyncSession
 ) -> None:

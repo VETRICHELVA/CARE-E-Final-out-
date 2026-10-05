@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError, DBAPIError
 from starlette.exceptions import HTTPException
 
 from app.domain.state_machine import InvalidTransition
@@ -23,6 +24,17 @@ STATUS_CODES = {
     422: "schema_error",
     429: "rate_limited",
 }
+
+
+BAD_VALUE = "A value is out of range or cannot be stored."
+
+
+def is_data_error(exc: DBAPIError) -> bool:
+    """SQLSTATE class 22 ("data exception", the DB-API DataError): a value the database
+    cannot store, such as text with NUL or an int4 overflow. asyncpg raises these as a
+    plain DBAPIError, so the SQLSTATE is checked as well as the class."""
+    sqlstate = str(getattr(exc.orig, "sqlstate", None) or "")
+    return isinstance(exc, DataError) or sqlstate.startswith("22")
 
 
 class AppError(Exception):
@@ -48,6 +60,12 @@ def install(app: FastAPI) -> None:
     async def invalid_transition(_: Request, exc: InvalidTransition) -> Any:
         details = {"from": exc.from_state, "to": exc.to_state}
         return error(409, "invalid_transition", str(exc), details)
+
+    @app.exception_handler(DBAPIError)
+    async def database_error(_: Request, exc: DBAPIError) -> Any:
+        if not is_data_error(exc):
+            raise exc  # any other database error is a bug: the 500 handler logs it
+        return error(400, "validation", BAD_VALUE)
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException) -> Any:

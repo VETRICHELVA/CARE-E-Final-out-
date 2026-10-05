@@ -2,6 +2,7 @@ import httpx
 import pytest
 from app.main import create_app
 from fastapi import FastAPI
+from sqlalchemy.exc import DataError, DBAPIError
 
 pytestmark = pytest.mark.anyio
 
@@ -67,3 +68,35 @@ async def test_errors_use_code_message_details() -> None:
         500,
         {"code": "internal_error", "message": "Something went wrong.", "details": {}},
     )
+
+
+class _DriverError(Exception):
+    def __init__(self, sqlstate: str) -> None:
+        super().__init__(f"driver error {sqlstate}")
+        self.sqlstate = sqlstate
+
+
+async def test_database_data_errors_are_400_validation() -> None:
+    """SQLSTATE class 22 (a value the database cannot store) is bad input, not a crash.
+    asyncpg raises it as a plain DBAPIError, so the SQLSTATE decides; psycopg raises
+    DataError. Any other database error stays a 500."""
+    app = create_app()
+
+    @app.get("/db/{sqlstate}")
+    async def db(sqlstate: str) -> None:
+        raise DBAPIError("SELECT 1", None, _DriverError(sqlstate))
+
+    @app.get("/data-error")
+    async def data_error() -> None:
+        raise DataError("SELECT 1", None, Exception("value out of range"))
+
+    async with _client(app) as client:
+        bad_input = [
+            await client.get("/db/22021"),  # NUL in text
+            await client.get("/db/22000"),  # int4 overflow, raised by asyncpg itself
+            await client.get("/data-error"),
+        ]
+        other = await client.get("/db/42P01")  # undefined table: a bug, not bad input
+    for r in bad_input:
+        assert (r.status_code, r.json()["code"]) == (400, "validation")
+    assert (other.status_code, other.json()["code"]) == (500, "internal_error")
