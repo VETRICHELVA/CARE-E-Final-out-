@@ -10,7 +10,7 @@ afterEach(cleanup);
 const me = (capabilities: string[]): Me => ({
   user: {
     id: "u1",
-    email: "requester@hospital-a.local",
+    email: "requester@hospital-a.demo",
     full_name: "Hospital A Requester",
     org_id: "o1",
     is_active: true,

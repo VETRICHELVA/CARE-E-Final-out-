@@ -10,11 +10,11 @@ from app.conftest import ClientFor
 pytestmark = pytest.mark.anyio
 
 NEW_USERS = {
-    "supplier.desk@supplier-x.local": ("Supplier X", "SUPPLIER", "SUPPLIER_DESK"),
-    "admin@supplier-x.local": ("Supplier X", "SUPPLIER", "ADMIN"),
-    "dispatcher@swiftmed.local": ("SwiftMed Logistics", "LOGISTICS", "DISPATCHER"),
-    "driver@swiftmed.local": ("SwiftMed Logistics", "LOGISTICS", "DRIVER"),
-    "admin@swiftmed.local": ("SwiftMed Logistics", "LOGISTICS", "ADMIN"),
+    "supplier.desk@supplier-x.demo": ("Supplier X", "SUPPLIER", "SUPPLIER_DESK"),
+    "admin@supplier-x.demo": ("Supplier X", "SUPPLIER", "ADMIN"),
+    "dispatcher@swiftmed.demo": ("SwiftMed Logistics", "LOGISTICS", "DISPATCHER"),
+    "driver@swiftmed.demo": ("SwiftMed Logistics", "LOGISTICS", "DRIVER"),
+    "admin@swiftmed.demo": ("SwiftMed Logistics", "LOGISTICS", "ADMIN"),
 }
 
 
@@ -36,6 +36,6 @@ async def test_seed_adds_missing_orgs_to_an_older_seed(
     assert await session.scalar(select(func.count()).select_from(Product)) == 40
 
     r = await (await client_for()).post(
-        "/auth/login", json={"email": "supplier.desk@supplier-x.local", "password": seed.PASSWORD}
+        "/auth/login", json={"email": "supplier.desk@supplier-x.demo", "password": seed.PASSWORD}
     )
     assert r.status_code == 200

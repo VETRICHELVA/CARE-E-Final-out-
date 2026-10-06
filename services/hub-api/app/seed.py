@@ -14,18 +14,18 @@ from app.catalog.service import seed_catalog
 from app.db import SessionLocal
 from app.orgs.models import Facility, Organization, OrgType
 
-PASSWORD = os.environ.get("SEED_PASSWORD", "care-e-dev")
+PASSWORD = os.environ.get("SEED_PASSWORD", "demo1234")
 HOSPITAL_ROLES = ["STORE_MANAGER", "REQUESTER", "APPROVER", "RECEIVER", "ADMIN"]
 SUPPLIER_ROLES = ["SUPPLIER_DESK", "ADMIN"]
 LOGISTICS_ROLES = ["DISPATCHER", "DRIVER", "ADMIN"]
 
 # name, type, email domain, lat, lng, roles
 ORGS = [
-    ("CARE-E Platform", OrgType.PLATFORM, "care-e.local", 12.9716, 77.5946, ["ADMIN"]),
-    ("Hospital A", OrgType.HOSPITAL, "hospital-a.local", 12.9592, 77.6974, HOSPITAL_ROLES),
-    ("Hospital B", OrgType.HOSPITAL, "hospital-b.local", 12.9279, 77.6271, HOSPITAL_ROLES),
-    ("Supplier X", OrgType.SUPPLIER, "supplier-x.local", 13.0358, 77.5970, SUPPLIER_ROLES),
-    ("SwiftMed Logistics", OrgType.LOGISTICS, "swiftmed.local", 12.9784, 77.6408, LOGISTICS_ROLES),
+    ("CARE-E Platform", OrgType.PLATFORM, "care-e.demo", 12.9716, 77.5946, ["ADMIN"]),
+    ("Hospital A", OrgType.HOSPITAL, "hospital-a.demo", 12.9592, 77.6974, HOSPITAL_ROLES),
+    ("Hospital B", OrgType.HOSPITAL, "hospital-b.demo", 12.9279, 77.6271, HOSPITAL_ROLES),
+    ("Supplier X", OrgType.SUPPLIER, "supplier-x.demo", 13.0358, 77.5970, SUPPLIER_ROLES),
+    ("SwiftMed Logistics", OrgType.LOGISTICS, "swiftmed.demo", 12.9784, 77.6408, LOGISTICS_ROLES),
 ]
 
 
@@ -72,7 +72,7 @@ async def main() -> None:
         await session.commit()
     print(f"Seeded: {', '.join(created)}." if created else "Seed orgs already present.")
     print("Catalog loaded from scripts/seed/catalog.py.")
-    print("Sign in as e.g. approver@hospital-a.local; password: $SEED_PASSWORD or care-e-dev")
+    print("Sign in as e.g. approver@hospital-a.demo; password: $SEED_PASSWORD or demo1234")
 
 
 if __name__ == "__main__":

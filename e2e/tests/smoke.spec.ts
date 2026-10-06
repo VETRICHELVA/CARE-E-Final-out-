@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 // Seeded by `make seed` (services/hub-api/app/seed.py); SEED_PASSWORD defaults to this.
-const PASSWORD = "care-e-dev";
+const PASSWORD = "demo1234";
 const URL = {
   hospital: "http://localhost:5173",
   supplier: "http://localhost:5174",
@@ -18,19 +18,19 @@ type App = keyof typeof URL;
 // the other apps get a copy of that session (each app keeps its tokens per origin and tab).
 const USERS: { email: string; org: string; app: App; refusedBy: App[] }[] = [
   {
-    email: "approver@hospital-a.local",
+    email: "approver@hospital-a.demo",
     org: "Hospital A",
     app: "hospital",
     refusedBy: ["supplier", "delivery"],
   },
   {
-    email: "supplier.desk@supplier-x.local",
+    email: "supplier.desk@supplier-x.demo",
     org: "Supplier X",
     app: "supplier",
     refusedBy: ["hospital"],
   },
   {
-    email: "dispatcher@swiftmed.local",
+    email: "dispatcher@swiftmed.demo",
     org: "SwiftMed Logistics",
     app: "delivery",
     refusedBy: ["hospital"],

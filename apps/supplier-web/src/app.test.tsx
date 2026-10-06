@@ -9,7 +9,7 @@ const ORG_TYPES = ["HOSPITAL", "SUPPLIER", "LOGISTICS", "PLATFORM"];
 function signInAs(orgType: string) {
   useAuth.setState({ tokens: { access: "a", refresh: "r" } });
   const me = {
-    user: { id: "u1", email: "t@x.local", full_name: "Test User", org_id: "o1", is_active: true },
+    user: { id: "u1", email: "t@x.demo", full_name: "Test User", org_id: "o1", is_active: true },
     org: {
       id: "o1",
       name: `Test ${orgType} org`,
