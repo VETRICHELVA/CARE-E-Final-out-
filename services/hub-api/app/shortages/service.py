@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -29,6 +29,7 @@ from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.ranking import Option, is_near_expiry, rank
 from app.domain.resolution import BUY, TRANSFER_SPLIT, Line, Plan, plan
 from app.domain.shortage import TRANSITIONS, Status, shortfall
+from app.domain.source_request import OPEN_REQUEST
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
 from app.events import service as events
@@ -47,6 +48,7 @@ from app.shortages.models import (
 from app.shortages.schemas import NO_ELIGIBLE_SOURCE, MatchRunOut, PlannedResolution, ShortageCreate
 from app.source_requests import holds
 from app.source_requests.hooks import on_sources_ready
+from app.source_requests.models import SourceRequest
 
 ENTITY = "shortage"
 SNAPSHOT = (
@@ -203,8 +205,13 @@ async def rematch_waiting(
     """§5: a shortage left MATCHING with "No eligible source" is re-run when inventory or
     supplier offers for its product change. Called in the transaction of that change, by the
     org `changed_by`, whose own shortages are skipped (matching never uses an org's own stock).
-    A shortage another transaction holds locked is skipped (SKIP LOCKED): that transaction is
-    already changing it, and waiting here could deadlock against the batch locks taken first."""
+
+    It waits for each shortage's lock rather than skipping it: a concurrent stock write that
+    holds the lock runs its match before this write commits, so it cannot see this write's
+    stock, and skipping would lose the re-run. Only shortages with no open source request are
+    locked. Accept is the one path that locks a shortage and then batches, and it needs an open
+    request, so this write (holding its own batch locks) never waits on it. Writers lock
+    shortages in id order, so they cannot deadlock each other."""
     ids = sorted(set(product_ids))
     if not ids:
         return []
@@ -214,9 +221,13 @@ async def rematch_waiting(
             Shortage.status == Status.MATCHING,
             Shortage.product_id.in_(ids),
             Shortage.org_id != changed_by,
+            ~exists().where(
+                SourceRequest.shortage_id == Shortage.id,
+                SourceRequest.status.in_(OPEN_REQUEST),
+            ),
         )
         .order_by(Shortage.id)
-        .with_for_update(skip_locked=True)
+        .with_for_update(of=Shortage)
     )
     runs = []
     for shortage in list(waiting):

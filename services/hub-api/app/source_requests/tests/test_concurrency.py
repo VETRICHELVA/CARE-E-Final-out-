@@ -198,3 +198,68 @@ async def test_a_restarted_worker_picks_up_deadlines_from_the_database(committed
             .where(AuditLog.entity_id == sr.id, AuditLog.after["status"].astext == "EXPIRED")
         )
         assert expiries == 1
+
+
+async def test_concurrent_stock_writes_never_lose_a_waiting_shortages_rerun(
+    committed: Maker,
+) -> None:
+    """§5 re-run on a stock change, with two writes in flight: A's write holds the waiting
+    shortage's lock while it matches, and cannot see B's uncommitted stock. B's write must wait
+    for that lock and re-run after A commits, rather than skip the shortage and lose B's stock."""
+    from app.shortages import service as shortages
+
+    now = datetime.now(UTC).replace(microsecond=0)
+    tag = unique()
+    async with committed() as session:
+        product = Product(
+            code=f"R-{tag}",
+            name=f"Rerun kit {tag}",
+            category="Test",
+            unit="each",
+            default_min_shelf_life_days=30,
+        )
+        session.add(product)
+        requester = await add_org(session, f"Requester {tag}", OrgType.HOSPITAL, 12.97, 77.59)
+        user = await add_user(session, requester, "REQUESTER", f"req-{tag}@c.test")
+        a = await add_org(session, f"Writer A {tag}", OrgType.HOSPITAL, 12.93, 77.62)
+        b = await add_org(session, f"Writer B {tag}", OrgType.HOSPITAL, 12.95, 77.60)
+        authorize(session, product, a, b)
+        shortage = await create_shortage(
+            session, user, product, now, qty_required=500, qty_local_usable=0
+        )
+        await session.commit()
+    async with committed() as session:
+        first = await session.scalar(select(MatchRun).where(MatchRun.shortage_id == shortage.id))
+        assert first is not None and first.planned_resolution is None  # "No eligible source"
+
+    async with committed() as writer_a:
+        # A's stock expires before delivery, so A's own re-run still finds nothing.
+        await add_batch(writer_a, a, product, now, on_hand=900, expiry_days=5, batch_no="A-1")
+        await shortages.rematch_waiting(writer_a, [product.id], a.id, now=now)
+
+        async def write_b() -> None:
+            async with committed() as writer_b:
+                await add_batch(
+                    writer_b, b, product, now, on_hand=900, expiry_days=180, batch_no="B-1"
+                )
+                await shortages.rematch_waiting(writer_b, [product.id], b.id, now=now)
+                await writer_b.commit()
+
+        b_task = asyncio.create_task(write_b())
+        await asyncio.sleep(0.5)
+        assert not b_task.done(), "B's write must wait for the shortage, not skip it"
+        await writer_a.commit()
+    await asyncio.wait_for(b_task, timeout=10)
+
+    async with committed() as session:
+        runs = list(
+            await session.scalars(
+                select(MatchRun)
+                .where(MatchRun.shortage_id == shortage.id)
+                .order_by(MatchRun.run_no)
+            )
+        )
+        assert [r.triggered_by for r in runs] == ["CREATE", "STOCK_CHANGE", "STOCK_CHANGE"]
+        plan = runs[-1].planned_resolution
+        assert plan is not None and plan["type"] == "TRANSFER"
+        assert [line["source_org_id"] for line in plan["lines"]] == [str(b.id)]

@@ -110,6 +110,8 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S07 → S20] The stream ticket travels in the query string (EventSource cannot send headers), so uvicorn's access log records it; it expires after 60 s and opens only the stream. Turn off uvicorn's access log (`app/log.py` already logs path and status) if that matters.
 - [S07 → hub] arq logs every `publish_events` run (once a second) at INFO; lower arq's log level if the worker log gets noisy.
 - [S07 → S19] CRITICAL parallel requests will emit one `source_request.created` per source, each to that source and the requester only; the stock-change re-run (`shortages.service.rematch_waiting`) skips shortages with a plan or open requests, so it does not interfere.
+- [S07 → decision] Released holds trigger no re-run: when a cancel, decline or expiry releases tentative holds, other MATCHING shortages for that product left on "No eligible source" are not re-run (only inventory and offer writes call `rematch_waiting`). Awaiting the user's decision on adding hold release as a §5 trigger.
+- [S07 review] Fixed after merge: the stock-change re-run now waits for each waiting shortage's lock (only shortages with no open request are locked), so a concurrent write's stock is never missed; the publisher commits `seq` before sending to Redis, so Last-Event-ID replay never misses an event.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->

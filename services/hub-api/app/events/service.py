@@ -71,8 +71,9 @@ async def publish_pending(
 ) -> int:
     """Publish every unpublished outbox row, oldest first; returns how many. Each batch is
     one transaction under an advisory lock: rows get consecutive `seq` values in the order
-    they are published, Redis gets them before the commit (at least once: a failed commit
-    leaves them unpublished, so they go out again on the next run)."""
+    they are published. Redis gets them only after the commit, so a stream that reconnects
+    with Last-Event-ID always finds in `missed()` every event it could have been sent live.
+    If Redis then fails, live subscribers miss those events until they reconnect and replay."""
     total = 0
     while True:
         done = await _publish_batch(session, redis, now or datetime.now(UTC))
@@ -99,11 +100,11 @@ async def _publish_batch(session: AsyncSession, redis: Redis, now: datetime) -> 
         row.published_at = now
     await webhooks.schedule(session, rows, now)
     await session.flush()
-    for row in rows:
-        message = json.dumps({"seq": row.seq, "event": row.payload})
-        for org_id in row.org_ids:
-            await redis.publish(channel(org_id), message)
+    messages = [(row.org_ids, json.dumps({"seq": row.seq, "event": row.payload})) for row in rows]
     await session.commit()
+    for org_ids, message in messages:
+        for org_id in org_ids:
+            await redis.publish(channel(org_id), message)
     return len(rows)
 
 

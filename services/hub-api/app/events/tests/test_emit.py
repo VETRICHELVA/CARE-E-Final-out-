@@ -137,6 +137,30 @@ async def test_an_uncommitted_event_is_not_published_until_it_commits(
     await sub.aclose()  # type: ignore[no-untyped-call]
 
 
+async def test_redis_gets_an_event_only_after_its_seq_is_committed(
+    committed: Maker, redis: Redis
+) -> None:
+    """Last-Event-ID replay: a client that reconnects right after a live event must find every
+    later event in `missed()`, so nothing may reach Redis before its publish commits."""
+    async with committed() as session:
+        await events.publish_pending(session, redis)  # whatever earlier tests left behind
+        event = await events.emit(session, EventType.SHORTAGE_STATUS_CHANGED, [uuid.uuid4()], {})
+        await session.commit()
+
+    seen: list[int | None] = []
+
+    class CheckingRedis:
+        async def publish(self, channel: str, message: str) -> int:
+            async with committed() as reader:  # another connection sees only committed rows
+                row = await reader.get_one(EventOutbox, event.id)
+                seen.append(row.seq)
+            return 1
+
+    async with committed() as session:
+        assert await events.publish_pending(session, CheckingRedis()) >= 1  # type: ignore[arg-type]
+    assert seen and all(seq is not None for seq in seen)
+
+
 async def test_the_worker_job_publishes_committed_events(committed: Maker, redis: Redis) -> None:
     async with committed() as session:
         event = await events.emit(session, EventType.SHORTAGE_STATUS_CHANGED, [uuid.uuid4()], {})
