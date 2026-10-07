@@ -11,7 +11,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | S05 | Shortages and the matching engine | done | 2026-10-07 | 235 hub tests (Scenario 1 fixture, split, every gate pass/fail, every ranking tiebreak); spec-guardian fixes: shortfall 0 → 400, ranking on per-unit landed cost, hospital costs hidden from the requester (business-rules §1/§5 updated); `planned_resolution` stored on MatchRun, excluded orgs carry into later runs; cold_chain gate fails every cold-chain product until S11 adds vehicles |
 | S06 | Source requests, holds and timers | todo | | |
 | S07 | Events, webhooks and live updates | todo | | |
-| S08 | Hospital app: inventory, shortages, requests | todo | | |
+| S08 | Hospital app: inventory, shortages, requests | in progress | | Part 1 done 2026-10-07 (against the S05 contract): inventory table (transferable emphasized, read-only), edit/verify dialogs, CSV import with per-row report; shortages list, zod "New shortage" form showing the hub's shortfall; shortage detail with timeline, ranked eligible and grouped rejected candidates (hub reason text verbatim), Re-run match and Cancel; dashboard open-shortage counts; nav hidden by capability. 48 hospital-web + 3 new ui Vitest tests. Part 2 waits for S06/S07: incoming requests, source-requests panel, dashboard countdowns, `useEventStream()`, Playwright Scenario 1 |
 | S09 | Recommendations, approvals, purchase orders | todo | | |
 | S10 | Supplier app | todo | | |
 | S11 | Shipments, routing and the delivery app | todo | | |
@@ -82,6 +82,12 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S05 → S20] Shelf life at delivery uses `(now + eta).date()`, so a run whose delivery lands after 00:00 UTC reports Hospital D as "Expires in 11 days" instead of Scenario 1's "12 days". The S05 test pins `now` at 06:00 UTC; the S20 seed or demo must pin the time of day too, or relax that wording check.
 - [S05 → S08] `GET /shortages/{id}/match-runs/latest` returns eligible candidates by rank, then rejected ones with every gate's result; `planned_resolution` is null with `reason: "No eligible source"` when nothing is eligible.
 - [S03 → S20] Apps reach the hub through a Vite dev proxy, so the hub has no CORS yet; restrict CORS to the three app origins for any non-proxied deployment.
+- [S08 → S08 part 2] After S06: `/requests` screen (product, qty, requesting hospital, deadline countdown, Accept, Decline with `ConfirmDialog`'s optional reason; nav entry already gated by `source_request.respond`), the source-requests panel on shortage detail, dashboard "incoming requests awaiting response" with countdowns. After S07: replace `POLL_MS` polling (`apps/hospital-web/src/api.ts`, 10 s `refetchInterval`) with `useEventStream()`. Then the Playwright Scenario 1 test (two contexts: A creates, B declines, A's detail re-runs); `make e2e` needs Chromium: in the cloud container it is preinstalled (`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers`, executable `/opt/pw-browsers/chromium`), so don't run `playwright install` there.
+- [S08 → S03/S10/S11] Query hooks live in `apps/hospital-web/src/api.ts` (no openapi-react-query). Keys are `[path template, params]`, e.g. `["/api/v1/shortages/{shortage_id}", {shortage_id}]`, so S07 can invalidate by path prefix. Move the helpers to `packages/ui` or `packages/api-client` once a second app needs them.
+- [S08 → S09/S12] `GET /shortages` and `GET /shortages/{id}` require `shortage.create`, so an APPROVER (who has `audit.read`) cannot open a shortage, and the Shortages nav entry is hidden from them. The S12 decision panel on `/shortages/:id` needs the hub to let approvers (and probably receivers) read their org's shortages. Business-rule/contract decision; not changed here.
+- [S08 → hub] The dashboard counts open shortages from the first 200 of `GET /shortages` (no status filter or counts endpoint). Add `?status=` or a summary endpoint if an org can have more than 200 shortages.
+- [S08 → CLAUDE.md] hospital-web now depends on zod 4 (the S08 brief asks for zod form validation; it was already in the lockfile via eslint-plugin-react-hooks). The CLAUDE.md stack list doesn't name zod; add it there if that list is meant to be complete.
+- [S08 → S20] A user without `audit.read` (store manager, requester) sees a timeline built only from the shortage's own `created_at`/`updated_at` and the latest match run; the full status history needs `audit.read`. Decide whether requesters should see their shortage's status history.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
@@ -94,6 +100,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - S03: openapi-typescript 7.13 declares a peer of TypeScript ^5.x; with the pinned TS 6.0.3 pnpm warns, but codegen works and its output typechecks.
 - S03: `@vitejs/plugin-react` is pinned `~6.1.1` because pnpm's minimum-release-age check rejected 6.1.2 (published the same day).
 - S03: Light theme only; there are no dark-mode tokens.
+- S08: Part 1 screens were verified with Vitest against a fake hub, plus a curl replay of every request shape they send (raw `text/csv` import, bodiless cancel/re-run, the 400 "Nothing to source" message, 409 on a repeat cancel) against a hub on a throwaway database. They were not clicked through in a browser: Chromium could not be downloaded here.
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->
