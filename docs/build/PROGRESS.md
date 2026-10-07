@@ -27,7 +27,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 
 ## Milestone gates
 - **M0** (S01–S03): every app logs in against the hub; CI green.
-- **M1** (S04–S08): a shortage finds eligible sources, and one accepts with a hold, in the hospital app.
+- **M1** (S04–S08): a shortage finds eligible sources, and one accepts with a hold, in the hospital app. Passed 2026-10-07 on the merged S05–S08 tree: `make e2e` 4/4 (Scenario 1 across two browser contexts: A reports, B declines, A's match re-runs without B) with `make worker` running and `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium`.
 - **M2** (S09–S13): the full loop from shortage to reconciliation across all three apps, with audit and copilot.
 - **M3** (S14–S19): chat, forecasts, surplus, optimization, cold chain, Critical mode.
 - **M4** (S20): three demo scenarios pass three times in a row.
