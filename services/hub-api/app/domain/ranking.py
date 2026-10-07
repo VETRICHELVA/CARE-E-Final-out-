@@ -2,13 +2,15 @@
 
 CRITICAL: earliest ETA -> highest reliability -> lowest landed cost.
 ROUTINE: lowest landed cost -> near-expiry first -> highest reliability.
-A candidate's landed cost is for what it would supply, min(qty, shortfall): the figure the
-match run stores and shows, so the order can be explained from the displayed numbers.
-Ties end on `key`, so a run is always reproducible."""
+"Landed cost" here is per unit: the landed cost of what a source would supply,
+min(qty, shortfall), divided by that qty. Ranking on the total would put small sources first
+just because they supply less, and the greedy split would then miss larger sources that cover
+the shortfall. Ties end on `key`, so a run is always reproducible."""
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
+from fractions import Fraction
 
 from app.domain import config, costing
 
@@ -33,16 +35,21 @@ class Option:
         """Landed cost of what this source would supply toward `need`."""
         return self.landed_cost(min(self.qty, need))
 
+    def unit_cost(self, need: int) -> Fraction:
+        """Landed cost per unit of what this source would supply toward `need` (exact)."""
+        qty = min(self.qty, need)
+        return Fraction(self.landed_cost(qty), max(qty, 1))
+
 
 def is_near_expiry(expiry_date: date, today: date) -> bool:
     return (expiry_date - today).days <= config.NEAR_EXPIRY_DAYS
 
 
 def rank(options: Iterable[Option], need: int, critical: bool) -> list[Option]:
-    def critical_key(o: Option) -> tuple[float, int, int, str]:
-        return (o.eta_hours, -o.reliability, o.cost(need), o.key)
+    def critical_key(o: Option) -> tuple[float, int, Fraction, str]:
+        return (o.eta_hours, -o.reliability, o.unit_cost(need), o.key)
 
-    def routine_key(o: Option) -> tuple[int, bool, int, str]:
-        return (o.cost(need), not o.near_expiry, -o.reliability, o.key)
+    def routine_key(o: Option) -> tuple[Fraction, bool, int, str]:
+        return (o.unit_cost(need), not o.near_expiry, -o.reliability, o.key)
 
     return sorted(options, key=critical_key if critical else routine_key)

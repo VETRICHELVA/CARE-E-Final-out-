@@ -207,6 +207,13 @@ async def test_scenario_1_critical(
     assert y.landed_cost_paise == pytest.approx(2_400_000, rel=0.05)  # "about Rs 24,000"
     b, sy = scenario1["Hospital B"], scenario1["Supplier Y"]
     assert plan_of(out) == ("TRANSFER", [(b.id, 850)], [sy.id])
+    # A hospital's cost would reveal its unit cost: hidden from the requester, kept in storage.
+    assert c["Hospital B"].landed_cost_paise is None
+    assert out.planned_resolution is not None
+    assert [x.landed_cost_paise for x in out.planned_resolution.lines] == [None]
+    assert out.planned_resolution.alternatives[0].landed_cost_paise == y.landed_cost_paise
+    stored = await session.get_one(Candidate, c["Hospital B"].id)
+    assert stored.landed_cost_paise is not None and stored.landed_cost_paise > 0
     assert (out.run_no, out.triggered_by, out.reason) == (1, Trigger.CREATE, None)
 
 

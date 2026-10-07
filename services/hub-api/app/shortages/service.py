@@ -92,6 +92,14 @@ async def create_shortage(
     product = await session.get(Product, body.product_id)
     if product is None:
         raise AppError(400, "validation", "Unknown product.", {"product_id": str(body.product_id)})
+    gap = shortfall(body.qty_required, body.qty_local_usable)
+    if gap == 0:  # §1: nothing to source, so no shortage and no match
+        raise AppError(
+            400,
+            "validation",
+            "Nothing to source: local usable stock covers the requirement.",
+            {"qty_required": body.qty_required, "qty_local_usable": body.qty_local_usable},
+        )
     min_days = body.min_shelf_life_days
     shortage = Shortage(
         org_id=user.org_id,
@@ -99,7 +107,7 @@ async def create_shortage(
         product_id=product.id,
         qty_required=body.qty_required,
         qty_local_usable=body.qty_local_usable,
-        shortfall=shortfall(body.qty_required, body.qty_local_usable),
+        shortfall=gap,
         required_by=body.required_by,
         priority=body.priority,
         min_shelf_life_days=product.default_min_shelf_life_days if min_days is None else min_days,

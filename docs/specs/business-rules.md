@@ -6,7 +6,7 @@ All rules run deterministically in the hub (`services/hub-api/app/domain/`). AI 
 ```
 shortfall = max(0, qty_required − qty_local_usable)
 ```
-Computed by the hub on create. Any value the client sends is ignored.
+Computed by the hub on create. Any value the client sends is ignored. A shortfall of 0 (local usable stock covers the requirement) is rejected with 400 `validation`: no shortage is stored and no match runs.
 
 ## 2. Transferable quantity (per batch)
 ```
@@ -44,6 +44,8 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 ## 5. Ranking (eligible candidates only)
 - **CRITICAL:** earliest ETA → highest reliability score → lowest landed cost.
 - **ROUTINE:** lowest landed cost → near-expiry first (batch expiring within `NEAR_EXPIRY_DAYS`, default 90) → highest reliability.
+- "Landed cost" in ranking is **per unit**: the landed cost of what the source would supply, min(qty, shortfall), divided by that qty. Ranking on the total would put small sources first only because they supply less, and the greedy split would miss larger sources that cover the shortfall.
+- A hospital source's landed cost is used for ranking but never shown to the requester's org (it would reveal that hospital's unit cost; org isolation). Match runs show landed cost for supplier sources only.
 - An org with no history has reliability 70.
 - **Resolution choice:**
   1. If a single hospital source covers the shortfall → TRANSFER from the top-ranked one.

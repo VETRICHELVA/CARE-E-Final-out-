@@ -1733,7 +1733,7 @@
               }
             ],
             "title": "Landed Cost Paise",
-            "description": "Eligible candidates only."
+            "description": "Eligible supplier candidates only; never shown for a hospital source."
           },
           "eta_hours": {
             "type": "number",
@@ -1772,7 +1772,7 @@
           "rank"
         ],
         "title": "CandidateOut",
-        "description": "What the requester's org sees of a source: no batch ids or raw stock figures."
+        "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
       },
       "FacilityOut": {
         "properties": {
@@ -2367,8 +2367,16 @@
             "title": "Qty"
           },
           "landed_cost_paise": {
-            "type": "integer",
-            "title": "Landed Cost Paise"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Supplier lines only, as for candidates."
           },
           "eta_hours": {
             "type": "number",

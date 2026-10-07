@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog
@@ -96,16 +96,19 @@ async def test_create_computes_the_shortfall_and_ignores_a_client_value(
     assert stored is not None and stored.shortfall == 850
 
 
-async def test_shortfall_is_never_negative(
+@pytest.mark.parametrize("local", [100, 150])
+async def test_no_shortfall_is_400_and_stores_nothing(
     requester_a: httpx.AsyncClient,
     session: AsyncSession,
     world: World,
     products: dict[str, Product],
+    local: int,
 ) -> None:
     facility = await facility_of(session, world.hospital_a)
-    payload = body(facility, products["SURG-KIT-A"], qty_required=100, qty_local_usable=150)
+    payload = body(facility, products["SURG-KIT-A"], qty_required=100, qty_local_usable=local)
     r = await requester_a.post("/shortages", json=payload)
-    assert (r.status_code, r.json()["shortfall"]) == (201, 0)
+    assert (r.status_code, r.json()["code"]) == (400, "validation")
+    assert await session.scalar(select(func.count()).select_from(Shortage)) == 0
 
 
 async def test_min_shelf_life_defaults_to_the_product(

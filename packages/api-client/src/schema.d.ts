@@ -551,7 +551,8 @@ export interface components {
         };
         /**
          * CandidateOut
-         * @description What the requester's org sees of a source: no batch ids or raw stock figures.
+         * @description What the requester's org sees of a source: no batch ids, raw stock figures or, for a
+         *     hospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6).
          */
         CandidateOut: {
             /**
@@ -583,7 +584,7 @@ export interface components {
             eligible: boolean;
             /**
              * Landed Cost Paise
-             * @description Eligible candidates only.
+             * @description Eligible supplier candidates only; never shown for a hospital source.
              */
             landed_cost_paise: number | null;
             /** Eta Hours */
@@ -826,8 +827,11 @@ export interface components {
             source_type: components["schemas"]["SourceType"];
             /** Qty */
             qty: number;
-            /** Landed Cost Paise */
-            landed_cost_paise: number;
+            /**
+             * Landed Cost Paise
+             * @description Supplier lines only, as for candidates.
+             */
+            landed_cost_paise: number | null;
             /** Eta Hours */
             eta_hours: number;
         };
