@@ -11,6 +11,7 @@ export default defineConfig(
     "packages/api-client/src/schema.d.ts",
     "e2e/test-results/",
     "e2e/playwright-report/",
+    ".claude/worktrees/",
   ]),
   js.configs.recommended,
   tseslint.configs.recommended,
