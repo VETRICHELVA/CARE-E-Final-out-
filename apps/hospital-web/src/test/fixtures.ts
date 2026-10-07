@@ -1,6 +1,15 @@
 // Scenario 1 data (demo-scenarios.md) as the hub would return it.
 import type { Me } from "@care-e/api-client";
-import type { AuditRow, Batch, Candidate, Facility, MatchRun, Product, Shortage } from "../api";
+import type {
+  AuditRow,
+  Batch,
+  Candidate,
+  Facility,
+  MatchRun,
+  Product,
+  Shortage,
+  SourceRequest,
+} from "../api";
 
 export const ORG_A = "0a000000-0000-4000-8000-000000000001";
 export const FACILITY_A = "fa000000-0000-4000-8000-000000000001";
@@ -219,5 +228,48 @@ export const auditRows: AuditRow[] = [
     ts: "2026-10-07T06:00:00Z",
   },
 ];
+
+/** The clock the source-request fixtures are relative to (Scenario 1, step 2). */
+export const NOW = Date.parse("2026-10-07T06:00:30Z");
+
+/** Scenario 1 step 2, as Hospital A sees it: the hub asks Hospital B for 850 kits, with a
+ *  15-minute response deadline (14:31 left at NOW). */
+export const requestToB: SourceRequest = {
+  id: "5e000000-0000-4000-8000-000000000001",
+  shortage_id: shortage.id,
+  requester_org_id: ORG_A,
+  requester_org_name: "Hospital A",
+  source_org_id: hospitalB.source_org_id,
+  source_org_name: "Hospital B",
+  product_id: kitA.id,
+  priority: "CRITICAL",
+  required_by: shortage.required_by,
+  qty: 850,
+  status: "REQUESTED",
+  sla_deadline: "2026-10-07T06:15:01Z",
+  hold_expires_at: null,
+  held_qty: 0,
+  holds: null,
+  responded_by: null,
+  responded_at: null,
+  decline_reason: null,
+  reason_source: null,
+  created_at: "2026-10-07T06:00:01Z",
+  updated_at: "2026-10-07T06:00:01Z",
+};
+
+/** A request to Hospital A from Hospital D, as Hospital A's store manager sees it. */
+export const incoming: SourceRequest = {
+  ...requestToB,
+  id: "5e000000-0000-4000-8000-000000000002",
+  shortage_id: "5a000000-0000-4000-8000-000000000009",
+  requester_org_id: "0b000000-0000-4000-8000-0000000000d0",
+  requester_org_name: "Hospital D",
+  source_org_id: ORG_A,
+  source_org_name: "Hospital A",
+  qty: 300,
+  priority: "ROUTINE",
+  holds: [],
+};
 
 export const page = <T>(items: T[]) => ({ items, next_cursor: null });

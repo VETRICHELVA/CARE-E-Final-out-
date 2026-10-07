@@ -29,9 +29,10 @@ import {
   useShortage,
 } from "../api";
 import { PageHeader } from "../components/page";
-import { CANCEL_FROM, qty, RERUN_FROM, TRIGGER_LABELS } from "../display";
+import { CANCEL_FROM, OPEN_REQUEST_STATES, qty, RERUN_FROM, TRIGGER_LABELS } from "../display";
 import { MatchRunCard } from "./match-run";
 import { PriorityBadge } from "./shortages";
+import { SourceRequestsPanel, useShortageRequests } from "./source-requests-panel";
 
 type Event = { ts: string; title: ReactNode; detail?: ReactNode };
 
@@ -102,10 +103,16 @@ function Actions({ shortage }: { shortage: Shortage }) {
   const canAct = useCan("shortage.create");
   const rerun = useRerunMatch(shortage.id);
   const cancel = useCancelShortage(shortage.id);
+  const requests = useShortageRequests(shortage.id);
   if (!canAct) return null;
+  // The hub refuses a manual re-run while a source request is open; it re-runs on its own when
+  // the source answers or the deadline passes. Hidden until the requests are known.
+  const waitingOnSource =
+    !requests.isSuccess ||
+    requests.data.pages.some((p) => p.items.some((r) => OPEN_REQUEST_STATES.has(r.status)));
   return (
     <>
-      {RERUN_FROM.has(shortage.status) && (
+      {RERUN_FROM.has(shortage.status) && !waitingOnSource && (
         <ConfirmDialog
           trigger="Re-run match"
           title="Re-run matching?"
@@ -195,7 +202,7 @@ export function ShortageDetailPage() {
             )}
           </CardContent>
         </Card>
-        <div>
+        <div className="grid gap-4 self-start">
           {run.isPending ? (
             <Loading label="Loading match run…" />
           ) : run.isError ? (
@@ -203,6 +210,7 @@ export function ShortageDetailPage() {
           ) : (
             <MatchRunCard run={run.data} product={product} />
           )}
+          <SourceRequestsPanel shortageId={s.id} product={product} />
         </div>
       </div>
     </div>

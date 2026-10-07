@@ -35,6 +35,7 @@ describe("Inventory", () => {
         "Allocated",
         "Safety",
         "Quarantined",
+        "Held",
         "Transferable",
         "Expiry",
         "Last verified",
@@ -51,6 +52,19 @@ describe("Inventory", () => {
     expect(transferable.getAttribute("aria-readonly")).toBe("true");
     expect(transferable.className).toContain("font-semibold");
     expect(transferable.querySelector("input")).toBeNull();
+  });
+
+  it("shows the hub's held qty, read-only, and transferable net of it", async () => {
+    hub({
+      "GET /api/v1/inventory/batches": page([{ ...batch, held_qty: 850, transferable: 150 }]),
+    });
+    show();
+    const row = (await screen.findByText("SKA-2026-01")).closest("tr")!;
+    const held = within(row).getByTestId("held");
+    expect(held.textContent).toBe("850 kits");
+    expect(held.getAttribute("aria-readonly")).toBe("true");
+    expect(held.querySelector("input")).toBeNull();
+    expect(within(row).getByTestId("transferable").textContent).toBe("150 kits");
   });
 
   it("shows loading, then an empty state", async () => {
