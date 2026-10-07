@@ -8,6 +8,7 @@ from app.inventory.router import router as inventory_router
 from app.iot.router import router as iot_router
 from app.orgs.router import router as orgs_router
 from app.shortages.router import router as shortages_router
+from app.source_requests.router import router as source_requests_router
 
 API = "/api/v1"
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
         inventory_router,
         shortages_router,
         iot_router,
+        source_requests_router,
     ):
         app.include_router(router, prefix=API)
 

@@ -1,7 +1,7 @@
-"""S14: devices and sensor readings (re-chain after S06 0004 at merge)
+"""S14: devices and sensor readings
 
 Revision ID: 0005
-Revises: 0003
+Revises: 0004
 Create Date: 2026-10-07 15:43:17.579030
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0005"
-down_revision: str | Sequence[str] | None = "0003"
+down_revision: str | Sequence[str] | None = "0004"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

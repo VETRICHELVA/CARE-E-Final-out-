@@ -7,7 +7,8 @@ import app.catalog.models
 import app.inventory.models
 import app.iot.models
 import app.orgs.models
-import app.shortages.models  # noqa: F401  (register every model on Base.metadata)
+import app.shortages.models
+import app.source_requests.models  # noqa: F401  (register every model on Base.metadata)
 from alembic import context
 from app.config import settings
 from app.db import Base

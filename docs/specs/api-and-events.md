@@ -18,17 +18,17 @@
 | S02 | GET /orgs/{id}, GET /orgs/{id}/facilities | any | Own org in full; other orgs: name, type, location only |
 | S02 | GET /audit?entity=&entity_id= | `audit.read` | Own org's rows; platform admin sees all |
 | S04 | GET /products, GET /products/{id} | any | |
-| S04 | GET/POST /inventory/batches, PATCH /inventory/batches/{id} | `inventory.edit` for writes (HOSPITAL orgs only) | Own org's batches only. Response includes computed, read-only `transferable`; sending it (or `last_verified_at`) is 422. PATCH cannot change product or facility. Duplicate facility + product + batch_no is 409 `conflict` |
+| S04 | GET/POST /inventory/batches, PATCH /inventory/batches/{id} | `inventory.edit` for writes (HOSPITAL orgs only) | Own org's batches only. Response includes computed, read-only `transferable` (net of active holds, S06) and `held_qty`; sending it (or `last_verified_at`) is 422. PATCH cannot change product or facility. Duplicate facility + product + batch_no is 409 `conflict` |
 | S04 | POST /inventory/batches/import?facility_id=&reason= | `inventory.edit` (HOSPITAL orgs only) | Body is raw `text/csv` (UTF-8, max 1 MB) with a header row: `product_code`, `batch_no`, `on_hand`, `expiry_date` (YYYY-MM-DD) and `unit_cost_paise` required; `reserved`, `allocated`, `safety_stock`, `quarantined` optional (blank = 0). Missing or unknown columns: 400. Valid rows are inserted, invalid rows skipped; returns `{inserted, errors: [{line, message}]}` (header = line 1) |
 | S04 | POST /inventory/batches/{id}/verify | `inventory.edit` (HOSPITAL orgs only) | Body `{method: MANUAL\|SCAN, counted_qty, reason?}`. Writes a VerificationEvent and updates last_verified_at; a different count replaces on_hand |
 | S04 | GET/PUT /supplier-offers | `po.respond` for writes (SUPPLIER orgs only) | Own org's offers only. PUT upserts one offer `{product_id, unit_price_paise, lead_time_hours, available_qty, reason?}` and always refreshes `updated_at` |
 | S05 | POST /shortages | `shortage.create` | Hub computes the shortfall; 0 → 400 `validation` |
 | S05 | GET /shortages, GET /shortages/{id} | `shortage.create` or `recommendation.approve` | Own org only; approvers read the shortages they decide on (S12) |
-| S05 | POST /shortages/{id}/cancel | `shortage.create` | |
-| S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run |
+| S05 | POST /shortages/{id}/cancel | `shortage.create` | Releases tentative holds and supersedes open source requests (S06) |
+| S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run while OPEN or MATCHING; 409 `conflict` while any source request is still open (S06) |
 | S05 | GET /shortages/{id}/match-runs/latest | requester's org | Candidates with gate results and reasons; landed cost for supplier sources only |
-| S06 | GET /source-requests?direction=incoming\|outgoing | any | |
-| S06 | POST /source-requests/{id}/accept, POST /source-requests/{id}/decline | `source_request.respond` | Accept places tentative holds |
+| S06 | GET /source-requests?direction=incoming\|outgoing&status=&shortage_id= | any | `direction` required. incoming: requests to the caller's org; outgoing: requests for its shortages. Both sides see qty, status, deadlines, `held_qty`, `hold_expires_at` and any decline reason; only the source sees `holds` (its batch ids) |
+| S06 | POST /source-requests/{id}/accept, POST /source-requests/{id}/decline | `source_request.respond` (source org only, else 403) | Body `{reason?}`. Accept places tentative holds; 409 `conflict` if the stock no longer covers it (the request is then EXPIRED, "Stock changed before acceptance.", and matching re-runs; `details: {requested_qty, transferable_qty}`). Decline re-runs matching without the org. 409 `invalid_transition` if not REQUESTED, or if the response deadline has passed (the request is then EXPIRED) |
 | S07 | GET /events/stream | any | Server-sent events for the caller's org |
 | S07 | GET/POST/DELETE /webhooks | org admin | Subscriptions |
 | S09 | GET /recommendations/{id} | requester's org | |

@@ -76,6 +76,7 @@ export const batch: Batch = {
   created_at: "2026-10-01T04:00:00Z",
   updated_at: "2026-10-07T04:00:00Z",
   transferable: 1000,
+  held_qty: 0,
 };
 
 export const shortage: Shortage = {
