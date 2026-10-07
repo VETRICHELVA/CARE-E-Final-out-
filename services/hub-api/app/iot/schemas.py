@@ -1,12 +1,23 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 # What a device may call itself; it is also an MQTT topic level, so no '/', '+' or '#'.
 DeviceName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 MAX_BATCH = 1000
+# The same bounds as iot-ingest's Reading, so a reading the ingest accepts is never refused.
+TS_MIN, TS_MAX = datetime(2020, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC)
+
+
+def _in_range(ts: datetime) -> datetime:
+    if not TS_MIN <= ts < TS_MAX:
+        raise ValueError(f"ts must be from {TS_MIN:%Y-%m-%d} up to {TS_MAX:%Y-%m-%d}")
+    return ts
+
+
+Timestamp = Annotated[AwareDatetime, AfterValidator(_in_range)]
 
 
 class ReadingIn(BaseModel):
@@ -15,7 +26,7 @@ class ReadingIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     device_id: DeviceName
-    ts: AwareDatetime
+    ts: Timestamp
     temp_c: float = Field(ge=-55, le=125, allow_inf_nan=False)  # the DS18B20's range
     battery: int | None = Field(default=None, ge=0, le=100)
 

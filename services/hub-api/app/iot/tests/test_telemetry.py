@@ -154,6 +154,8 @@ async def test_battery_is_optional(
         {"temp_c": "warm"},
         {"battery": 101},
         {"ts": "2026-10-07T10:15:00"},  # no timezone
+        {"ts": "0001-01-01T00:00:00+05:00"},  # Postgres can't store it (was a 400)
+        {"ts": "1970-01-01T00:00:10Z"},  # the box's clock never synced
         {"device_id": "cb/01"},
         {"device_id": ""},
         {"humidity": 40},

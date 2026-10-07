@@ -13,8 +13,8 @@ log = logging.getLogger("iot_ingest")
 
 class Outcome(Enum):
     SENT = "sent"  # the hub took the batch (new readings stored, repeats ignored)
-    RETRY = "retry"  # hub unreachable, overloaded or refusing the token: keep and resend
-    REJECTED = "rejected"  # the hub will never take this batch (e.g. 422): drop it
+    RETRY = "retry"  # hub unreachable, misconfigured, overloaded or refusing the token: resend
+    REJECTED = "rejected"  # the hub will never take this batch (400, 422): split or drop it
 
 
 class HubClient:
@@ -44,7 +44,8 @@ class HubClient:
             if result.get("unknown_devices"):
                 log.warning("hub has no Device for %s", ", ".join(result["unknown_devices"]))
             return Outcome.SENT
-        if response.status_code in (401, 403, 429) or response.status_code >= 500:
+        # 404/405 mean a wrong HUB_API_URL, not a bad batch: keep the readings until it's fixed.
+        if response.status_code in (401, 403, 404, 405, 429) or response.status_code >= 500:
             log.error("hub returned %d, will retry: %s", response.status_code, response.text)
             return Outcome.RETRY
         log.error(

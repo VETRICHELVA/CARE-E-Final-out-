@@ -3,9 +3,18 @@
 import json
 import logging
 import re
+from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 
 log = logging.getLogger("iot_ingest")
 
@@ -14,6 +23,17 @@ TOPIC = re.compile(r"^careE/devices/([^/]+)/telemetry$")
 
 # The same limits as the hub's POST /internal/telemetry, so a valid reading is never refused.
 DeviceName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
+TS_MIN, TS_MAX = datetime(2020, 1, 1, tzinfo=UTC), datetime(2100, 1, 1, tzinfo=UTC)
+
+
+def _in_range(ts: datetime) -> datetime:
+    """A clock that never synced (1970) or a corrupt value is not a reading the hub can store."""
+    if not TS_MIN <= ts < TS_MAX:
+        raise ValueError(f"ts must be from {TS_MIN:%Y-%m-%d} up to {TS_MAX:%Y-%m-%d}")
+    return ts
+
+
+Timestamp = Annotated[AwareDatetime, AfterValidator(_in_range)]
 
 
 class Reading(BaseModel):
@@ -23,12 +43,12 @@ class Reading(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
     device_id: DeviceName
-    ts: AwareDatetime
+    ts: Timestamp
     temp_c: float = Field(ge=-55, le=125, allow_inf_nan=False)  # the DS18B20's range
     battery: int | None = Field(default=None, ge=0, le=100)
 
     @property
-    def key(self) -> tuple[str, AwareDatetime]:
+    def key(self) -> tuple[str, datetime]:
         return (self.device_id, self.ts)
 
     def to_hub(self) -> dict[str, object]:

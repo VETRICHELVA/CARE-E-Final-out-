@@ -53,6 +53,9 @@ def test_topic_filter_matches_every_device() -> None:
         (TOPIC, payload(battery=101)),
         (TOPIC, payload(ts="2026-11-20T10:15:00")),  # no timezone
         (TOPIC, payload(ts="yesterday")),
+        (TOPIC, payload(ts="1970-01-01T00:00:10Z")),  # clock never synced
+        (TOPIC, payload(ts="0001-01-01T00:00:00+05:00")),  # Postgres can't store it
+        (TOPIC, payload(ts="2100-01-01T00:00:00Z")),
         (TOPIC, payload(device_id=None)),
     ],
 )

@@ -138,9 +138,51 @@ def test_a_batch_the_hub_rejects_is_dropped(hub: FakeHub, ingest: Ingest) -> Non
     assert len(ingest.batcher) == 0  # resending would be refused again
 
 
+def test_a_rejected_batch_drops_only_the_reading_the_hub_refuses(hub: FakeHub) -> None:
+    bad_second = 20
+    refused: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        hub.requests.append(request)
+        readings = json.loads(request.content)["readings"]
+        if any(r["ts"].endswith(f":{bad_second}Z") for r in readings):
+            refused.append(len(readings))
+            return httpx.Response(422, json={"code": "validation", "message": "x", "details": {}})
+        return httpx.Response(
+            200, json={"stored": len(readings), "duplicates": 0, "unknown_devices": []}
+        )
+
+    client = HubClient("http://hub/api/v1", TOKEN, transport=httpx.MockTransport(handler))
+    ingest = Ingest(Batcher(), client, max_batch=500)
+    deliver(ingest, *(message(second=s) for s in range(0, 60, 10)))
+    assert ingest.flush() == 5
+    assert len(ingest.batcher) == 0
+    assert refused[-1] == 1  # the bad reading was refused alone, then dropped
+
+
+def test_a_retry_while_splitting_keeps_the_rest_queued(hub: FakeHub) -> None:
+    calls = iter([422, 503])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(next(calls), json={"code": "x", "message": "x", "details": {}})
+
+    client = HubClient("http://hub/api/v1", TOKEN, transport=httpx.MockTransport(handler))
+    ingest = Ingest(Batcher(), client, max_batch=500)
+    deliver(ingest, *(message(second=s) for s in range(4)))
+    assert ingest.flush() == 0
+    assert len(ingest.batcher) == 4  # nothing lost: the hub went down mid-split
+
+
 @pytest.mark.parametrize(
     ("status", "outcome"),
-    [(200, Outcome.SENT), (400, Outcome.REJECTED), (422, Outcome.REJECTED), (403, Outcome.RETRY)],
+    [
+        (200, Outcome.SENT),
+        (400, Outcome.REJECTED),
+        (422, Outcome.REJECTED),
+        (403, Outcome.RETRY),
+        (404, Outcome.RETRY),  # a wrong HUB_API_URL must not drop telemetry
+        (405, Outcome.RETRY),
+    ],
 )
 def test_hub_client_outcomes(hub: FakeHub, status: int, outcome: Outcome) -> None:
     reading = parse("careE/devices/cb-01/telemetry", message().payload)

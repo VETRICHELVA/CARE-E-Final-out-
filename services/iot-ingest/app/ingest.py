@@ -13,7 +13,7 @@ from paho.mqtt.reasoncodes import ReasonCode
 from app.batcher import Batcher
 from app.config import Settings
 from app.hub import HubClient, Outcome
-from app.telemetry import TOPIC_FILTER, parse
+from app.telemetry import TOPIC_FILTER, Reading, parse
 
 log = logging.getLogger("iot_ingest")
 
@@ -47,13 +47,29 @@ class Ingest:
         Returns the number of readings the hub accepted."""
         sent = 0
         while batch := self.batcher.take(self.max_batch):
-            outcome = self.hub.post(batch)
-            if outcome is Outcome.RETRY:
-                self.batcher.put_back(batch)
+            accepted, left = self._post(batch)
+            sent += accepted
+            if left:
+                self.batcher.put_back(left)
                 break
-            if outcome is Outcome.SENT:
-                sent += len(batch)
         return sent
+
+    def _post(self, batch: list[Reading]) -> tuple[int, list[Reading]]:
+        """(readings accepted, readings to retry). A rejected batch is split in halves until
+        only the readings the hub refuses on their own are dropped."""
+        outcome = self.hub.post(batch)
+        if outcome is Outcome.SENT:
+            return len(batch), []
+        if outcome is Outcome.RETRY:
+            return 0, batch
+        if len(batch) == 1:
+            return 0, []  # the hub will never take this reading (logged by HubClient)
+        mid = len(batch) // 2
+        first, retry = self._post(batch[:mid])
+        if retry:
+            return first, retry + batch[mid:]
+        second, retry = self._post(batch[mid:])
+        return first + second, retry
 
 
 def run(
