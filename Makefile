@@ -5,7 +5,7 @@ export
 SERVICES := hub-api ai-service iot-ingest
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install up down hub migrate migration client seed lint test test-hub test-web e2e
+.PHONY: install up down hub ingest migrate migration client seed lint test test-hub test-web e2e
 
 install:
 	for s in $(SERVICES); do (cd services/$$s && uv sync) || exit 1; done
@@ -21,6 +21,10 @@ down:
 
 hub:
 	cd services/hub-api && uv run uvicorn --factory app.main:create_app --reload --port 8000
+
+# MQTT telemetry -> hub every 2 s. Its INGEST_TOKEN must match the hub's.
+ingest:
+	cd services/iot-ingest && uv run python -m app
 
 migrate:
 	cd services/hub-api && uv run alembic upgrade head

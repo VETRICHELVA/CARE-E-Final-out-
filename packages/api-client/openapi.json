@@ -1260,6 +1260,120 @@
           }
         }
       }
+    },
+    "/api/v1/internal/telemetry": {
+      "post": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "Post Telemetry",
+        "description": "For services/iot-ingest only (ingest token, scope `telemetry.write`). Idempotent:\na reading whose (device_id, ts) is already stored counts as a duplicate.",
+        "operationId": "post_telemetry_api_v1_internal_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "List Devices",
+        "description": "The caller's own org's devices, with last_seen and battery.",
+        "operationId": "list_devices_api_v1_devices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeviceOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1774,6 +1888,61 @@
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
       },
+      "DeviceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "battery_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Level"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "device_id",
+          "type",
+          "battery_level",
+          "last_seen"
+        ],
+        "title": "DeviceOut"
+      },
       "FacilityOut": {
         "properties": {
           "name": {
@@ -2212,6 +2381,33 @@
         ],
         "title": "Page[BatchOut]"
       },
+      "Page_DeviceOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DeviceOut]"
+      },
       "Page_FacilityOut_": {
         "properties": {
           "items": {
@@ -2547,6 +2743,48 @@
         "title": "PublicOrgView",
         "description": "What any org may see of another org: name, type, location only."
       },
+      "ReadingIn": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Device Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "temp_c": {
+            "type": "number",
+            "maximum": 125.0,
+            "minimum": -55.0,
+            "title": "Temp C"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_id",
+          "ts",
+          "temp_c"
+        ],
+        "title": "ReadingIn",
+        "description": "One reading as the cold box publishes it (apps-ai-iot.md, Firmware)."
+      },
       "ReasonIn": {
         "properties": {
           "reason": {
@@ -2823,6 +3061,53 @@
           "CANCELLED"
         ],
         "title": "Status"
+      },
+      "TelemetryBatch": {
+        "properties": {
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingIn"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Readings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "readings"
+        ],
+        "title": "TelemetryBatch"
+      },
+      "TelemetryResult": {
+        "properties": {
+          "stored": {
+            "type": "integer",
+            "title": "Stored",
+            "description": "New readings saved."
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates",
+            "description": "Readings already stored (same device_id and ts)."
+          },
+          "unknown_devices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Devices",
+            "description": "device_ids with no Device; not stored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored",
+          "duplicates",
+          "unknown_devices"
+        ],
+        "title": "TelemetryResult"
       },
       "TokenPair": {
         "properties": {

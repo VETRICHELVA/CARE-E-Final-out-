@@ -40,8 +40,8 @@
 | S11 | GET /drivers, GET /vehicles | `shipment.assign` | |
 | S12 | POST /shipments/{id}/receipt | `receipt.record` | Triggers reconciliation |
 | S13 | GET /ai/read/* | service token, read-only | Narrow read endpoints for the AI tools |
-| S14 | POST /internal/telemetry | ingest service token | Batch of readings from iot-ingest |
-| S14 | GET /devices, POST /devices/{id}/assign | `shipment.assign` | |
+| S14 | POST /internal/telemetry | ingest service token | Batch of readings from iot-ingest: `{readings: [{device_id, ts, temp_c, battery?}]}`, max 1000. Idempotent: returns `{stored, duplicates, unknown_devices}`; a repeated (device_id, ts) is not stored again, and readings from a device_id with no Device are not stored. The ingest token (scope `telemetry.write`) is refused (401) on every other endpoint, and user tokens are refused here |
+| S14 | GET /devices, POST /devices/{id}/assign | `shipment.assign` | Own org's devices only |
 | S15 | GET /shipments/{id}/coldchain | involved orgs | Readings + events |
 | S16 | POST /routes/optimize | `shipment.assign` | Multi-stop plan for one driver |
 | S18 | GET /forecasts?product_id= | own org | |

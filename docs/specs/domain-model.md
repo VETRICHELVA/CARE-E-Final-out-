@@ -48,7 +48,7 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **CreditLedger**: org_id, delta, reason, shortage_id, ts
 
 ## IoT
-- **Device**: device_id (string, unique), type, assigned_shipment_id, battery_level, last_seen
+- **Device**: org_id (owning org, e.g. the logistics company), device_id (string, unique), type, assigned_shipment_id, battery_level, last_seen
 - **SensorReading**: device_id, ts, temp_c, battery; unique (device_id, ts)
 - **ColdChainEvent**: shipment_id, device_id, type (EXCURSION | DEVICE_SILENT | RECOVERED), threshold, observed_value, severity, ts
 

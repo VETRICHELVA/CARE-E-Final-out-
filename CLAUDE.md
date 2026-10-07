@@ -34,6 +34,7 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 - `make install` — install Python (uv) and JS (pnpm) dependencies and pre-commit hooks
 - `make up` / `make down` — start/stop infra
 - `make hub` — run hub API with reload
+- `make ingest` — run the IoT ingest: MQTT `careE/devices/+/telemetry` → hub `POST /internal/telemetry` every 2 s (needs `make up` and the hub)
 - `make test` — all tests; `make test-hub`, `make test-web`
 - `make lint` — ruff, mypy, eslint, prettier, tsc
 - `make migrate` / `make migration m="msg"` — Alembic

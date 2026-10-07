@@ -375,6 +375,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Telemetry
+         * @description For services/iot-ingest only (ingest token, scope `telemetry.write`). Idempotent:
+         *     a reading whose (device_id, ts) is already stored counts as a duplicate.
+         */
+        post: operations["post_telemetry_api_v1_internal_telemetry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description The caller's own org's devices, with last_seen and battery.
+         */
+        get: operations["list_devices_api_v1_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -597,6 +638,27 @@ export interface components {
              */
             rank: number | null;
         };
+        /** DeviceOut */
+        DeviceOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Device Id */
+            device_id: string;
+            /** Type */
+            type: string;
+            /** Battery Level */
+            battery_level: number | null;
+            /** Last Seen */
+            last_seen: string | null;
+        };
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -777,6 +839,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[DeviceOut] */
+        Page_DeviceOut_: {
+            /** Items */
+            items: components["schemas"]["DeviceOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[FacilityOut] */
         Page_FacilityOut_: {
             /** Items */
@@ -895,6 +964,23 @@ export interface components {
             /** Type */
             type: string;
             location: components["schemas"]["Location"];
+        };
+        /**
+         * ReadingIn
+         * @description One reading as the cold box publishes it (apps-ai-iot.md, Firmware).
+         */
+        ReadingIn: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Temp C */
+            temp_c: number;
+            /** Battery */
+            battery?: number | null;
         };
         /** ReasonIn */
         ReasonIn: {
@@ -1025,6 +1111,29 @@ export interface components {
          * @enum {string}
          */
         Status: "DRAFT" | "OPEN" | "MATCHING" | "AWAITING_DECISION" | "IN_FULFILLMENT" | "RECEIVED" | "RESOLVED" | "PARTIALLY_RESOLVED" | "CANCELLED";
+        /** TelemetryBatch */
+        TelemetryBatch: {
+            /** Readings */
+            readings: components["schemas"]["ReadingIn"][];
+        };
+        /** TelemetryResult */
+        TelemetryResult: {
+            /**
+             * Stored
+             * @description New readings saved.
+             */
+            stored: number;
+            /**
+             * Duplicates
+             * @description Readings already stored (same device_id and ts).
+             */
+            duplicates: number;
+            /**
+             * Unknown Devices
+             * @description device_ids with no Device; not stored.
+             */
+            unknown_devices: string[];
+        };
         /** TokenPair */
         TokenPair: {
             /** Access Token */
@@ -1801,6 +1910,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_telemetry_api_v1_internal_telemetry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelemetryBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_api_v1_devices_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DeviceOut_"];
                 };
             };
             /** @description Validation Error */
