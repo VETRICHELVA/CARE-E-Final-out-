@@ -110,7 +110,13 @@ describe("useEventStream's connection", () => {
       ["shortages", "shortage2", "run2", "audit1", "incoming", "outgoing2"],
     ],
     [
-      // No shortage_id in this event, so every shortage view and request list is refreshed.
+      // The hub sends shortage_id, so only that shortage's views (and unkeyed lists) refresh.
+      "source_request.status_changed",
+      { source_request_id: "r1", shortage_id: "s1", from: "REQUESTED", to: "TENTATIVE_HOLD" },
+      ["batches", "shortages", "shortage1", "run1", "audit1", "incoming", "outgoing1"],
+    ],
+    [
+      // An event without shortage_id refreshes every shortage view and request list.
       "source_request.status_changed",
       { source_request_id: "r1", from: "REQUESTED", to: "TENTATIVE_HOLD" },
       [

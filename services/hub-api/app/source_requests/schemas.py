@@ -27,7 +27,8 @@ class HoldOut(BaseModel):
 
 class SourceRequestOut(BaseModel):
     """Both orgs see the request itself. Only the source org sees which of its batches are
-    held (`holds`); the requester sees the total (`held_qty`) and the hold deadline."""
+    held (`holds`) and which of its users answered (`responded_by`); the requester sees
+    the total (`held_qty`) and the hold deadline."""
 
     id: uuid.UUID
     shortage_id: uuid.UUID
@@ -46,7 +47,9 @@ class SourceRequestOut(BaseModel):
     )
     held_qty: int = Field(description="Units under active (TENTATIVE or FIRM) holds.")
     holds: list[HoldOut] | None = Field(description="Source org only; null for the requester.")
-    responded_by: uuid.UUID | None
+    responded_by: uuid.UUID | None = Field(
+        description="The source org user who answered. Source org only; null for the requester."
+    )
     responded_at: datetime | None
     decline_reason: str | None
     reason_source: Literal["USER", "SYSTEM"] | None = Field(
@@ -83,7 +86,7 @@ class SourceRequestOut(BaseModel):
             hold_expires_at=min(tentative) if tentative else None,
             held_qty=sum(h.qty for h in active),
             holds=[HoldOut.model_validate(h) for h in holds] if source_view else None,
-            responded_by=sr.responded_by,
+            responded_by=sr.responded_by if source_view else None,
             responded_at=sr.responded_at,
             decline_reason=sr.decline_reason,
             reason_source=sr.reason_source,  # type: ignore[arg-type]

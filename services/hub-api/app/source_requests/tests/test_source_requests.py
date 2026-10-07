@@ -166,7 +166,8 @@ async def test_accept_places_tentative_holds_earliest_expiry_first(
         "OK",
         "USER",
     )
-    assert (last.actor_id, last.org_id) == (world.users["b.STORE_MANAGER"].id, world.hospital_a.id)
+    # B's user acted, so the row is in B's org (business-rules.md §10).
+    assert (last.actor_id, last.org_id) == (world.users["b.STORE_MANAGER"].id, b.id)
     for h in await holds_of(session, request_b):
         (created,) = await audit_of(session, h.id)
         assert (created.action, created.org_id) == ("hold.created", b.id)
@@ -266,7 +267,12 @@ async def test_an_answer_after_the_deadline_expires_the_request(
     assert (e.value.error.status, e.value.error.code) == (409, "invalid_transition")
     assert request_b.status == "EXPIRED"
     run = (await runs_of(session, shortage))[-1]
-    assert (run.triggered_by, run.excluded_org_ids) == ("EXPIRY", [world.hospital_b.id])
+    # Expired, not declined: B is not excluded (§7 step 6) and is asked again.
+    assert (run.triggered_by, run.excluded_org_ids) == ("EXPIRY", [])
+    assert [(r.source_org_id, r.status) for r in await requests_of(session, shortage)] == [
+        (world.hospital_b.id, "EXPIRED"),
+        (world.hospital_b.id, "REQUESTED"),
+    ]
 
 
 # --- decline ------------------------------------------------------------------------------------
@@ -409,12 +415,120 @@ async def test_cancel_releases_holds_and_supersedes_requests(
     assert request_b.status == "SUPERSEDED"
     assert {h.status for h in await holds_of(session, request_b)} == {"RELEASED"}
     row = (await audit_of(session, request_b.id))[-1]
-    assert (row.after, row.reason, row.reason_source, row.actor_id) == (
+    assert (row.after, row.reason, row.reason_source, row.actor_id, row.org_id) == (
         {"status": "SUPERSEDED"},
         "Found stock",
         "USER",
         world.users["a.REQUESTER"].id,
+        world.hospital_a.id,
     )
+    # The hold release sits in B's org as a SYSTEM change with the factual cause.
+    for h in await holds_of(session, request_b):
+        released = (await audit_of(session, h.id))[-1]
+        assert (
+            released.after,
+            released.actor_id,
+            released.org_id,
+            released.reason,
+            released.reason_source,
+        ) == (
+            {"status": "RELEASED"},
+            None,
+            world.hospital_b.id,
+            "The requester cancelled the shortage.",
+            "SYSTEM",
+        )
+
+
+async def test_a_cancel_puts_none_of_the_requesters_id_or_text_in_the_source_org(
+    session: AsyncSession,
+    world: World,
+    client_for: ClientFor,
+    shortage: Shortage,
+    request_b: SourceRequest,
+    now: datetime,
+) -> None:
+    await service.accept(session, world.users["b.STORE_MANAGER"], request_b.id, "Yes", now=now)
+    requester = await client_for(world.users["a.REQUESTER"])
+    typed = "Cancelled by A: ward 7 found 900 kits in the back store"
+    r = await requester.post(f"/shortages/{shortage.id}/cancel", json={"reason": typed})
+    assert r.status_code == 200, r.text
+
+    b_rows = list(
+        await session.scalars(select(AuditLog).where(AuditLog.org_id == world.hospital_b.id))
+    )
+    assert b_rows, "B's accept and hold rows are expected in B's org"
+    a_id = str(world.users["a.REQUESTER"].id)
+    for row in b_rows:
+        text = " ".join(str(x) for x in (row.actor_id, row.reason, row.before, row.after))
+        assert a_id not in text and typed not in text and "ward 7" not in text, row.action
+    # B's approver reads its own trail over the API: the same, plus the release cause.
+    b_audit = (await (await client_for(world.users["b.APPROVER"])).get("/audit")).json()
+    assert a_id not in str(b_audit) and "ward 7" not in str(b_audit)
+    assert "The requester cancelled the shortage." in {x["reason"] for x in b_audit["items"]}
+
+
+async def test_the_source_org_audit_shows_its_own_accept(
+    client_for: ClientFor, world: World, request_b: SourceRequest, manager_b: httpx.AsyncClient
+) -> None:
+    r = await manager_b.post(f"/source-requests/{request_b.id}/accept", json={"reason": "Spare"})
+    assert r.status_code == 200, r.text
+    b_audit = await client_for(world.users["b.APPROVER"])
+    items = (await b_audit.get("/audit?entity=source_request")).json()["items"]
+    assert [
+        (x["entity_id"], x["after"]["status"], x["actor_id"], x["reason"], x["reason_source"])
+        for x in items
+    ] == [
+        (
+            str(request_b.id),
+            "TENTATIVE_HOLD",
+            str(world.users["b.STORE_MANAGER"].id),
+            "Spare",
+            "USER",
+        )
+    ]
+    # Hospital A's trail keeps the system rows for its own request, not B's answer.
+    a_audit = await client_for(world.users["a.APPROVER"])
+    a_items = (await a_audit.get(f"/audit?entity=source_request&entity_id={request_b.id}")).json()
+    assert [x["action"] for x in a_items["items"]] == ["source_request.created"]
+
+
+async def test_the_source_org_audit_shows_its_own_decline(
+    client_for: ClientFor, world: World, request_b: SourceRequest, manager_b: httpx.AsyncClient
+) -> None:
+    r = await manager_b.post(
+        f"/source-requests/{request_b.id}/decline", json={"reason": "Needed here"}
+    )
+    assert r.status_code == 200, r.text
+    b_audit = await client_for(world.users["b.APPROVER"])
+    items = (await b_audit.get("/audit?entity=source_request")).json()["items"]
+    assert [
+        (x["entity_id"], x["after"]["status"], x["actor_id"], x["reason"], x["org_id"])
+        for x in items
+    ] == [
+        (
+            str(request_b.id),
+            "DECLINED",
+            str(world.users["b.STORE_MANAGER"].id),
+            "Needed here",
+            str(world.hospital_b.id),
+        )
+    ]
+
+
+async def test_responded_by_is_shown_to_the_source_org_only(
+    client_for: ClientFor, world: World, request_b: SourceRequest, manager_b: httpx.AsyncClient
+) -> None:
+    accepted = await manager_b.post(f"/source-requests/{request_b.id}/accept")
+    b_id = str(world.users["b.STORE_MANAGER"].id)
+    assert accepted.json()["responded_by"] == b_id
+    (incoming,) = (await manager_b.get("/source-requests?direction=incoming")).json()["items"]
+    assert incoming["responded_by"] == b_id
+    requester = await client_for(world.users["a.REQUESTER"])
+    (outgoing,) = (await requester.get("/source-requests?direction=outgoing")).json()["items"]
+    assert (outgoing["responded_by"], outgoing["status"]) == (None, "TENTATIVE_HOLD")
+    assert outgoing["responded_at"] is not None
+    assert b_id not in str(outgoing)
 
 
 async def test_manual_rerun_while_requests_are_open_is_409(

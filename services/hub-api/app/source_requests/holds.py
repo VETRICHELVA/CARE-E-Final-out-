@@ -2,9 +2,12 @@
 counting holds), shortage cancel and the request service. It imports no other service, so
 `app.shortages.service` can use it without an import cycle.
 
-Audit (business-rules.md §10, one row per state change): a request's rows go to the
-requester's org, whose shortage the audit trail follows; a hold's rows go to the source
-org, whose stock it sets aside."""
+Audit (business-rules.md §10, one row per state change, each in exactly one org): a
+request's row goes to the org of the user who acted (the source's accept or decline to the
+source org, the requester's cancel to the requester's org) and a system change of a request
+(created, expired, superseded after a decline or expiry) to the requester's org. A hold's
+rows go to the source org, whose stock it sets aside; a release there is always SYSTEM, so
+the requester's user id and typed text never reach the source org's trail."""
 
 import uuid
 from collections.abc import Iterable, Sequence
@@ -33,6 +36,7 @@ from app.shortages.models import MatchRun, Shortage
 from app.source_requests.models import Hold, SourceRequest
 
 REQUEST, HOLD = "source_request", "hold"
+REQUESTER_CANCELLED = "The requester cancelled the shortage."
 
 
 async def held_by_batch(
@@ -141,7 +145,8 @@ async def move_request(
     **changes: Any,
 ) -> None:
     """Every request transition goes through here: state machine (409 if not allowed),
-    any extra field `changes`, one audit row."""
+    any extra field `changes`, one audit row in the acting user's org (the requester's org
+    for a system change) and one event."""
     before = transition(sr, to, REQUEST_TRANSITIONS)
     for name, value in changes.items():
         setattr(sr, name, value)
@@ -156,13 +161,13 @@ async def move_request(
         {"status": before},
         {"status": sr.status, **changes},
         reason,
-        org_id=shortage.org_id,
+        org_id=actor.org_id if actor else shortage.org_id,
     )
     await events.emit(
         session,
         EventType.SOURCE_REQUEST_STATUS_CHANGED,
         [shortage.org_id, sr.source_org_id],
-        {"source_request_id": sr.id, "from": before, "to": sr.status},
+        {"source_request_id": sr.id, "shortage_id": shortage.id, "from": before, "to": sr.status},
     )
 
 
@@ -206,6 +211,10 @@ async def move_hold(
     actor: User | None,
     reason: str | None,
 ) -> None:
+    """One hold transition, audited in the source org. `actor` must be a source org user
+    or None (SYSTEM): another org's user never appears in the source org's trail."""
+    if actor is not None and actor.org_id != source_org_id:
+        raise ValueError("A hold change is audited in the source org; pass actor=None.")
     before = transition(hold, to, HOLD_TRANSITIONS)
     await session.flush()
     await session.refresh(hold)
@@ -226,14 +235,18 @@ async def release(
     session: AsyncSession,
     shortage: Shortage,
     *,
+    hold_reason: str,
     actor: User | None,
     reason: str | None,
-    superseded_reason: str | None = None,
 ) -> tuple[list[Hold], list[SourceRequest]]:
     """Release every TENTATIVE hold of the shortage's requests and supersede every request
     still open. The one release path for every non-CONFIRMED exit: a decline or expiry
     (via `release_and_rematch`, after the caller has ended the request that caused it) and
-    a shortage cancel. FIRM holds belong to CONFIRMED requests and are left alone."""
+    a shortage cancel. FIRM holds belong to CONFIRMED requests and are left alone.
+
+    The holds are released as SYSTEM with the factual `hold_reason` (their rows go to the
+    source org); the requests are superseded by `actor` with `reason` (their rows go to the
+    actor's org, or to the requester's org when `actor` is None)."""
     rows: Sequence[tuple[Hold, uuid.UUID]] = (
         await session.execute(
             select(Hold, SourceRequest.source_org_id)
@@ -248,10 +261,8 @@ async def release(
         )
     ).all()
     for hold, source_org_id in rows:
-        await move_hold(session, hold, source_org_id, HoldStatus.RELEASED, actor, reason)
+        await move_hold(session, hold, source_org_id, HoldStatus.RELEASED, None, hold_reason)
     superseded = await open_requests(session, shortage.id, lock=True)
     for sr in superseded:
-        await move_request(
-            session, shortage, sr, RequestStatus.SUPERSEDED, actor, superseded_reason or reason
-        )
+        await move_request(session, shortage, sr, RequestStatus.SUPERSEDED, actor, reason)
     return [h for h, _ in rows], superseded

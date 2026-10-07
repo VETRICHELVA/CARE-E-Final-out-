@@ -189,7 +189,12 @@ async def test_a_decline_emits_to_both_orgs(
     assert (await manager_b.post(f"/source-requests/{sr.id}/decline")).status_code == 200
     (changed,) = await outbox(session, EventType.SOURCE_REQUEST_STATUS_CHANGED)
     assert set(changed.org_ids) == {a.id, b.id}
-    assert data(changed) == {"source_request_id": str(sr.id), "from": "REQUESTED", "to": "DECLINED"}
+    assert data(changed) == {
+        "source_request_id": str(sr.id),
+        "shortage_id": str(shortage.id),
+        "from": "REQUESTED",
+        "to": "DECLINED",
+    }
 
 
 async def test_a_cancel_emits_the_shortage_transition_and_each_superseded_request(
@@ -207,6 +212,7 @@ async def test_a_cancel_emits_the_shortage_transition_and_each_superseded_reques
     assert set(superseded.org_ids) == {a.id, b.id}
     assert data(superseded) == {
         "source_request_id": str(sr.id),
+        "shortage_id": str(shortage.id),
         "from": "REQUESTED",
         "to": "SUPERSEDED",
     }
@@ -230,7 +236,14 @@ async def test_a_request_transition_writes_one_audit_row_and_one_event(
     assert [(r.before, r.after["status"]) for r in audited if r.after] == [
         ({"status": "REQUESTED"}, "TENTATIVE_HOLD")
     ]
-    assert [(data(e)["from"], data(e)["to"]) for e in events_] == [("REQUESTED", "TENTATIVE_HOLD")]
+    assert [data(e) for e in events_] == [
+        {
+            "source_request_id": str(sr.id),
+            "shortage_id": str(shortage.id),
+            "from": "REQUESTED",
+            "to": "TENTATIVE_HOLD",
+        }
+    ]
 
 
 async def test_inventory_and_offer_writes_emit_to_their_own_org_only(

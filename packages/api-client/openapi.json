@@ -3810,7 +3810,8 @@
                 "type": "null"
               }
             ],
-            "title": "Responded By"
+            "title": "Responded By",
+            "description": "The source org user who answered. Source org only; null for the requester."
           },
           "responded_at": {
             "anyOf": [
@@ -3887,7 +3888,7 @@
           "updated_at"
         ],
         "title": "SourceRequestOut",
-        "description": "Both orgs see the request itself. Only the source org sees which of its batches are\nheld (`holds`); the requester sees the total (`held_qty`) and the hold deadline."
+        "description": "Both orgs see the request itself. Only the source org sees which of its batches are\nheld (`holds`) and which of its users answered (`responded_by`); the requester sees\nthe total (`held_qty`) and the hold deadline."
       },
       "SourceType": {
         "type": "string",

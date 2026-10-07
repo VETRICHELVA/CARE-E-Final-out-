@@ -27,7 +27,7 @@
 | S05 | POST /shortages/{id}/cancel | `shortage.create` | Releases tentative holds and supersedes open source requests (S06) |
 | S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run while OPEN or MATCHING; 409 `conflict` while any source request is still open (S06) |
 | S05 | GET /shortages/{id}/match-runs/latest | requester's org | Candidates with gate results and reasons; landed cost for supplier sources only |
-| S06 | GET /source-requests?direction=incoming\|outgoing&status=&shortage_id= | any | `direction` required. incoming: requests to the caller's org; outgoing: requests for its shortages. Both sides see qty, status, deadlines, `held_qty`, `hold_expires_at` and any decline reason; only the source sees `holds` (its batch ids) |
+| S06 | GET /source-requests?direction=incoming\|outgoing&status=&shortage_id= | any | `direction` required. incoming: requests to the caller's org; outgoing: requests for its shortages. Both sides see qty, status, deadlines, `held_qty`, `hold_expires_at` and any decline reason; only the source sees `holds` (its batch ids) and `responded_by` (null for the requester) |
 | S06 | POST /source-requests/{id}/accept, POST /source-requests/{id}/decline | `source_request.respond` (source org only, else 403) | Body `{reason?}`. Accept places tentative holds; 409 `conflict` if the stock no longer covers it (the request is then EXPIRED, "Stock changed before acceptance.", and matching re-runs; `details: {requested_qty, transferable_qty}`). Decline re-runs matching without the org. 409 `invalid_transition` if not REQUESTED, or if the response deadline has passed (the request is then EXPIRED) |
 | S07 | POST /events/ticket | any | `{ticket, expires_at}`: a 60-second ticket that opens the stream as the caller (a browser EventSource cannot send the Authorization header). It is refused as an access token, and an access token is refused as a ticket |
 | S07 | GET /events/stream?ticket=&last_event_id= | any (ticket or Bearer token) | Server-sent events for the caller's org only (see Realtime). Each message is `id: <seq>` + `data: <envelope>`; `: heartbeat` after 15 s idle; closes after 15 min. `Last-Event-ID` header or `last_event_id` replays the org's events published after that id; more than 1,000 missed sends `event: reset` instead. Malformed `Last-Event-ID`: 400 |
@@ -62,7 +62,7 @@ Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "
 |---|---|---|
 | shortage.status_changed | Any shortage transition | shortage_id, from, to |
 | source_request.created | Request sent to a source | source_request_id, shortage_id, product_id, qty, deadline |
-| source_request.status_changed | Accepted, declined, expired, superseded, confirmed | source_request_id, from, to |
+| source_request.status_changed | Accepted, declined, expired, superseded, confirmed | source_request_id, shortage_id, from, to |
 | recommendation.ready | Recommendation created | recommendation_id, shortage_id, type |
 | purchase_order.created / purchase_order.status_changed | PO lifecycle | purchase_order_id, from, to |
 | shipment.created / shipment.status_changed | Shipment lifecycle | shipment_id, from, to |
