@@ -122,6 +122,7 @@ A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or 
 - `reason_source = USER` only when the user typed a reason. Otherwise `reason_source = SYSTEM` and the reason is "No reason was entered." (for user actions) or a factual system cause such as "Response deadline passed." (for timers).
 - The system never writes statements about physical events that no one recorded.
 - Each row belongs to one org. A source request's row goes to the org of the user who acted (the source's accept or decline to the source org, the requester's cancel to the requester's org); a system change of a request (created, expired, superseded after a decline or expiry) to the requester's org. A hold's rows always go to the source org. A hold released because of another org's action is recorded as SYSTEM with a factual cause (e.g. "The requester cancelled the shortage."), never with the other org's user id or typed text.
+- A supplier's purchase-order actions (acknowledge, reject, dispatch, and the shipment created on dispatch) follow the same rule: the row is in the supplier's org with its user, mirrored into the hospital's org without the user's id.
 - A source's accept or decline is also mirrored into the requester's org (so the requester's own trail shows the answer, as in Scenario 1 step 8): the same action, reason and `reason_source`, with `actor_id` null and without `responded_by`.
 
 ## 11. Cold chain (S15)

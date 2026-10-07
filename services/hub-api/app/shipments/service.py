@@ -31,8 +31,9 @@ async def create(
     purchase_order_id: uuid.UUID | None = None,
 ) -> Shipment:
     """One CREATED shipment from `from_org_id` to the shortage's org, for one confirmed
-    source request or one dispatched purchase order. Its audit row goes to the shortage's
-    org (the trail it follows); `shipment.created` goes to both orgs."""
+    source request or one dispatched purchase order. Its audit row goes to the acting
+    user's org (the requester's on approval; on dispatch the supplier's, mirrored into the
+    requester's trail without the user's id); `shipment.created` goes to both orgs."""
     product = await session.get_one(Product, shortage.product_id)
     shipment = Shipment(
         id=uuid.uuid4(),
@@ -60,10 +61,12 @@ async def create(
         "requires_cold_chain": shipment.requires_cold_chain,
         "planned_eta": planned_eta,
     }
-    await audit.record(
+    row = await audit.record(
         session, actor, ENTITY, shipment.id, f"{ENTITY}.created", None, after, reason,
-        org_id=shortage.org_id,
+        org_id=actor.org_id if actor else shortage.org_id,
     )  # fmt: skip
+    if actor is not None and actor.org_id != shortage.org_id:
+        await audit.mirror(session, row, shortage.org_id)
     await events.emit(
         session,
         EventType.SHIPMENT_CREATED,

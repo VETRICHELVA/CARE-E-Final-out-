@@ -80,7 +80,9 @@ async def _move(
     before = transition(po, to, PO_TRANSITIONS)
     await session.flush()
     await session.refresh(po)
-    await audit.record(
+    # The supplier acted: its own org's trail has the row with its user, and the hospital's
+    # trail a mirror without the user's id (business-rules.md §10; CLAUDE.md rule 6).
+    row = await audit.record(
         session,
         actor,
         ENTITY,
@@ -89,8 +91,10 @@ async def _move(
         {"status": before},
         {"status": po.status},
         reason,
-        org_id=shortage.org_id,
+        org_id=actor.org_id,
     )
+    if actor.org_id != shortage.org_id:
+        await audit.mirror(session, row, shortage.org_id)
     await events.emit(
         session,
         EventType.PURCHASE_ORDER_STATUS_CHANGED,

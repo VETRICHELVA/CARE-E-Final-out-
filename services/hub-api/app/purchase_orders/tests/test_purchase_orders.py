@@ -108,10 +108,23 @@ async def test_acknowledge_then_dispatch_creates_the_shipment(
     )
     (shipped,) = await outbox(session, EventType.SHIPMENT_CREATED)
     assert shipped["data"]["shipment_id"] == str(shipment.id)
+    created = await audit_of(session, shipment.id)
+    assert {(r_.org_id, r_.actor_id is None) for r_ in created} == {
+        (po.supplier_org_id, False),  # the supplier dispatched, in its own trail
+        (shipment.to_org_id, True),  # mirrored to the hospital without the user's id
+    }
     rows = await audit_of(session, po.id)
-    assert [r_.after["status"] for r_ in rows] == ["SENT", "ACKNOWLEDGED", "DISPATCHED"]  # type: ignore[index]
-    assert (rows[-1].reason, rows[-1].reason_source) == ("Van 4", "USER")
-    assert (rows[1].reason, rows[1].reason_source) == ("No reason was entered.", "SYSTEM")
+    supplier = [r_ for r_ in rows if r_.org_id == po.supplier_org_id]
+    hospital = [r_ for r_ in rows if r_.org_id != po.supplier_org_id]
+    # The supplier's trail has its own actions; the hospital's has the order and mirrors of
+    # the supplier's actions without the supplier user's id.
+    assert [r_.after["status"] for r_ in supplier] == ["ACKNOWLEDGED", "DISPATCHED"]  # type: ignore[index]
+    assert [r_.after["status"] for r_ in hospital] == ["SENT", "ACKNOWLEDGED", "DISPATCHED"]  # type: ignore[index]
+    assert all(r_.actor_id is not None for r_ in supplier)
+    assert [r_.actor_id for r_ in hospital[1:]] == [None, None]
+    for trail in (supplier, hospital):
+        assert (trail[-1].reason, trail[-1].reason_source) == ("Van 4", "USER")
+        assert (trail[-2].reason, trail[-2].reason_source) == ("No reason was entered.", "SYSTEM")
 
 
 async def test_another_supplier_cannot_touch_the_order(
@@ -173,11 +186,16 @@ async def test_a_rejection_rematches_without_that_supplier(
     assert rec.alternatives == []
     assert "Supplier Y (rejected the purchase order)" in rec.explanation
     assert len(await recs_of(session, shortage)) == 2
-    (*_, rejected) = await audit_of(session, po.id)
+    rejected = [
+        r for r in await audit_of(session, po.id) if (r.after or {}).get("status") == "REJECTED"
+    ]
     me = (await desk_y.get("/auth/me")).json()["user"]["id"]
-    assert (str(rejected.actor_id), rejected.reason, rejected.reason_source) == (
-        me,
-        "Out of stock",
-        "USER",
-    )
+    # Y's own trail has its reject with its user; Hospital A's a mirror without Y's user.
+    assert {
+        (str(r.org_id), str(r.actor_id) if r.actor_id else None, r.reason, r.reason_source)
+        for r in rejected
+    } == {
+        (str(y.id), me, "Out of stock", "USER"),
+        (str(shortage.org_id), None, "Out of stock", "USER"),
+    }
     assert not await session.scalar(select(Shipment.id).where(Shipment.purchase_order_id == po.id))
