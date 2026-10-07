@@ -27,6 +27,12 @@ class Capability(StrEnum):
     AUDIT_READ = "audit.read"
 
 
+class ServiceScope(StrEnum):
+    """What a service token may do. A service token is not a user and opens no user endpoint."""
+
+    TELEMETRY_WRITE = "telemetry.write"
+
+
 C = Capability
 ROLE_CAPABILITIES: dict[RoleName, frozenset[Capability]] = {
     RoleName.STORE_MANAGER: frozenset(

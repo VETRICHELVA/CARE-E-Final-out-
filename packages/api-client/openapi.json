@@ -919,6 +919,461 @@
           }
         }
       }
+    },
+    "/api/v1/shortages": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Create Shortage",
+        "description": "Create a shortage in the caller's org. The hub computes the shortfall and runs the\nfirst match, so the shortage comes back MATCHING.",
+        "operationId": "create_shortage_api_v1_shortages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "List Shortages",
+        "description": "The caller's own org's shortages, newest first.",
+        "operationId": "list_shortages_api_v1_shortages_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ShortageOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Get Shortage",
+        "operationId": "get_shortage_api_v1_shortages__shortage_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/cancel": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Cancel Shortage",
+        "description": "Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.",
+        "operationId": "cancel_shortage_api_v1_shortages__shortage_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/match": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Rerun Match",
+        "description": "Manual re-run while the shortage is OPEN or MATCHING; otherwise 409.",
+        "operationId": "rerun_match_api_v1_shortages__shortage_id__match_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/match-runs/latest": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Latest Match Run",
+        "description": "Any user of the requester's org: eligible candidates by rank, then rejected ones with\nevery failed gate's reason.",
+        "operationId": "latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/telemetry": {
+      "post": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "Post Telemetry",
+        "description": "For services/iot-ingest only (ingest token, scope `telemetry.write`). Idempotent:\na reading whose (device_id, ts) is already stored counts as a duplicate.",
+        "operationId": "post_telemetry_api_v1_internal_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "List Devices",
+        "description": "The caller's own org's devices, with last_seen and battery.",
+        "operationId": "list_devices_api_v1_devices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeviceOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1328,6 +1783,166 @@
         "title": "BatchUpdate",
         "description": "Partial update. Product and facility are fixed; omitted or null fields are unchanged."
       },
+      "CandidateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "transferable_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transferable Qty",
+            "description": "Hospital sources: hub-computed."
+          },
+          "offered_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offered Qty",
+            "description": "Supplier sources: the offer's available qty."
+          },
+          "gate_results": {
+            "items": {
+              "$ref": "#/components/schemas/GateOut"
+            },
+            "type": "array",
+            "title": "Gate Results"
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          },
+          "landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Eligible candidates only."
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          },
+          "reliability": {
+            "type": "integer",
+            "title": "Reliability"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank",
+            "description": "1 = best; eligible candidates only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_org_id",
+          "source_org_name",
+          "source_type",
+          "transferable_qty",
+          "offered_qty",
+          "gate_results",
+          "eligible",
+          "landed_cost_paise",
+          "eta_hours",
+          "reliability",
+          "rank"
+        ],
+        "title": "CandidateOut",
+        "description": "What the requester's org sees of a source: no batch ids or raw stock figures."
+      },
+      "DeviceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "battery_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Level"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "device_id",
+          "type",
+          "battery_level",
+          "last_seen"
+        ],
+        "title": "DeviceOut"
+      },
       "FacilityOut": {
         "properties": {
           "name": {
@@ -1367,6 +1982,36 @@
           "has_cold_storage"
         ],
         "title": "FacilityOut"
+      },
+      "GateOut": {
+        "properties": {
+          "gate": {
+            "type": "string",
+            "title": "Gate"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gate",
+          "passed",
+          "reason"
+        ],
+        "title": "GateOut"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1437,6 +2082,83 @@
           "password"
         ],
         "title": "LoginIn"
+      },
+      "MatchRunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "run_no": {
+            "type": "integer",
+            "title": "Run No"
+          },
+          "triggered_by": {
+            "$ref": "#/components/schemas/Trigger"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "excluded_org_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Excluded Org Ids"
+          },
+          "planned_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "\"No eligible source\" when nothing is eligible."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOut"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "description": "Eligible by rank, then rejected."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "run_no",
+          "triggered_by",
+          "ts",
+          "excluded_org_ids",
+          "planned_resolution",
+          "reason",
+          "candidates"
+        ],
+        "title": "MatchRunOut"
       },
       "MeOut": {
         "properties": {
@@ -1659,6 +2381,33 @@
         ],
         "title": "Page[BatchOut]"
       },
+      "Page_DeviceOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DeviceOut]"
+      },
       "Page_FacilityOut_": {
         "properties": {
           "items": {
@@ -1766,6 +2515,115 @@
           "items"
         ],
         "title": "Page[PublicFacilityView]"
+      },
+      "Page_ShortageOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShortageOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[ShortageOut]"
+      },
+      "PlanLine": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "landed_cost_paise": {
+            "type": "integer",
+            "title": "Landed Cost Paise"
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "source_org_id",
+          "source_type",
+          "qty",
+          "landed_cost_paise",
+          "eta_hours"
+        ],
+        "title": "PlanLine"
+      },
+      "PlannedResolution": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "TRANSFER",
+              "TRANSFER_SPLIT",
+              "BUY"
+            ],
+            "title": "Type"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLine"
+            },
+            "type": "array",
+            "title": "Alternatives",
+            "description": "The best BUY, or for a BUY the next one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "lines",
+          "alternatives"
+        ],
+        "title": "PlannedResolution"
+      },
+      "Priority": {
+        "type": "string",
+        "enum": [
+          "CRITICAL",
+          "ROUTINE"
+        ],
+        "title": "Priority"
       },
       "ProductOut": {
         "properties": {
@@ -1877,6 +2735,66 @@
         "title": "PublicOrgView",
         "description": "What any org may see of another org: name, type, location only."
       },
+      "ReadingIn": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Device Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "temp_c": {
+            "type": "number",
+            "maximum": 125.0,
+            "minimum": -55.0,
+            "title": "Temp C"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_id",
+          "ts",
+          "temp_c"
+        ],
+        "title": "ReadingIn",
+        "description": "One reading as the cold box publishes it (apps-ai-iot.md, Firmware)."
+      },
+      "ReasonIn": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReasonIn"
+      },
       "RefreshIn": {
         "properties": {
           "refresh_token": {
@@ -1908,6 +2826,281 @@
         ],
         "title": "RowError"
       },
+      "ShortageCreate": {
+        "properties": {
+          "facility_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Facility Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty_required": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Qty Required"
+          },
+          "qty_local_usable": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Qty Local Usable"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "min_shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Shelf Life Days",
+            "description": "Defaults to the product's default_min_shelf_life_days."
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "facility_id",
+          "product_id",
+          "qty_required",
+          "qty_local_usable",
+          "required_by",
+          "priority"
+        ],
+        "title": "ShortageCreate",
+        "description": "Any unknown field is a 422, except `shortfall`: the hub computes it\n(business-rules.md \u00a71), so a client value is accepted and ignored."
+      },
+      "ShortageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "facility_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Facility Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty_required": {
+            "type": "integer",
+            "title": "Qty Required"
+          },
+          "qty_local_usable": {
+            "type": "integer",
+            "title": "Qty Local Usable"
+          },
+          "shortfall": {
+            "type": "integer",
+            "title": "Shortfall",
+            "description": "Hub-computed max(0, qty_required - qty_local_usable); never taken as input.",
+            "readOnly": true
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "min_shelf_life_days": {
+            "type": "integer",
+            "title": "Min Shelf Life Days"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_shortage_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Shortage Id"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ShortageSource"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "facility_id",
+          "product_id",
+          "qty_required",
+          "qty_local_usable",
+          "shortfall",
+          "required_by",
+          "priority",
+          "min_shelf_life_days",
+          "status",
+          "notes",
+          "parent_shortage_id",
+          "created_by",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ShortageOut"
+      },
+      "ShortageSource": {
+        "type": "string",
+        "enum": [
+          "FORM",
+          "CHAT"
+        ],
+        "title": "ShortageSource"
+      },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "HOSPITAL",
+          "SUPPLIER"
+        ],
+        "title": "SourceType"
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "OPEN",
+          "MATCHING",
+          "AWAITING_DECISION",
+          "IN_FULFILLMENT",
+          "RECEIVED",
+          "RESOLVED",
+          "PARTIALLY_RESOLVED",
+          "CANCELLED"
+        ],
+        "title": "Status"
+      },
+      "TelemetryBatch": {
+        "properties": {
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingIn"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Readings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "readings"
+        ],
+        "title": "TelemetryBatch"
+      },
+      "TelemetryResult": {
+        "properties": {
+          "stored": {
+            "type": "integer",
+            "title": "Stored",
+            "description": "New readings saved."
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates",
+            "description": "Readings already stored (same device_id and ts)."
+          },
+          "unknown_devices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Devices",
+            "description": "device_ids with no Device; not stored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored",
+          "duplicates",
+          "unknown_devices"
+        ],
+        "title": "TelemetryResult"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -1935,6 +3128,17 @@
           "expires_in"
         ],
         "title": "TokenPair"
+      },
+      "Trigger": {
+        "type": "string",
+        "enum": [
+          "CREATE",
+          "DECLINE",
+          "EXPIRY",
+          "MANUAL",
+          "RECOMMENDATION_EXPIRED"
+        ],
+        "title": "Trigger"
       },
       "UserOut": {
         "properties": {

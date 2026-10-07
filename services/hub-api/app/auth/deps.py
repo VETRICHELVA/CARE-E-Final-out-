@@ -1,5 +1,6 @@
 """Request-time authentication and authorization helpers."""
 
+import hmac
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
@@ -8,9 +9,10 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import Select, exists, select
 
-from app.auth.capabilities import Capability, RoleName, capabilities_for
+from app.auth.capabilities import Capability, RoleName, ServiceScope, capabilities_for
 from app.auth.models import RefreshToken, User
 from app.auth.service import decode_access_token, unauthenticated
+from app.config import settings
 from app.db import SessionDep
 from app.errors import AppError
 from app.orgs.models import OrgType
@@ -71,6 +73,28 @@ def require(
                 {"org_type": org_type},
             )
         return user
+
+    return dependency
+
+
+def service_token_scopes(token: str) -> frozenset[ServiceScope]:
+    """Scopes granted to a service bearer token; empty for anything else (user JWTs too)."""
+    ingest = settings.ingest_token.encode()
+    if ingest and hmac.compare_digest(token.encode(), ingest):
+        return frozenset({ServiceScope.TELEMETRY_WRITE})
+    return frozenset()
+
+
+def require_scope(scope: ServiceScope) -> Callable[..., Awaitable[ServiceScope]]:
+    """401 unless the bearer is a service token with `scope`. User access tokens are refused
+    here, and service tokens are refused by `current_user` (they are not JWTs)."""
+
+    async def dependency(
+        creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> ServiceScope:
+        if creds is None or scope not in service_token_scopes(creds.credentials):
+            raise unauthenticated(f"This endpoint needs a service token with scope {scope}.")
+        return scope
 
     return dependency
 

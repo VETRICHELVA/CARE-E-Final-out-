@@ -1,6 +1,7 @@
 """Minimal dev seed: platform admin, Hospital A and B, Supplier X and SwiftMed Logistics with
-one user per role (S02, S04), plus the product catalog (S04). The full demo seed replaces this
-in S20. Run with `make seed`; idempotent per org, so an older seeded DB gains new orgs."""
+one user per role (S02, S04), the product catalog (S04) and SwiftMed's cold box `cb-01` (S14).
+The full demo seed replaces this in S20. Run with `make seed`; idempotent per org (and per
+device), so an older seeded DB gains new orgs."""
 
 import asyncio
 import os
@@ -12,6 +13,7 @@ from app.auth.models import Role, User
 from app.auth.service import hash_password
 from app.catalog.service import seed_catalog
 from app.db import SessionLocal
+from app.iot.models import Device
 from app.orgs.models import Facility, Organization, OrgType
 
 PASSWORD = os.environ.get("SEED_PASSWORD", "demo1234")
@@ -27,6 +29,9 @@ ORGS = [
     ("Supplier X", OrgType.SUPPLIER, "supplier-x.demo", 13.0358, 77.5970, SUPPLIER_ROLES),
     ("SwiftMed Logistics", OrgType.LOGISTICS, "swiftmed.demo", 12.9784, 77.6408, LOGISTICS_ROLES),
 ]
+
+# device_id, owning org: the simulator's default device (scripts/simulate_telemetry.py)
+DEVICES = [("cb-01", "SwiftMed Logistics")]
 
 
 async def seed(session: AsyncSession) -> list[str]:
@@ -63,7 +68,19 @@ async def seed(session: AsyncSession) -> list[str]:
             )
     await session.flush()
     await seed_catalog(session)
+    await seed_devices(session)
     return [o[0] for o in missing]
+
+
+async def seed_devices(session: AsyncSession) -> None:
+    """Register each seed device not present yet, by device_id."""
+    existing = set(await session.scalars(select(Device.device_id)))
+    orgs = await session.execute(select(Organization.name, Organization.id))
+    org_ids = {name: org_id for name, org_id in orgs}
+    for device_id, org_name in DEVICES:
+        if device_id not in existing and org_name in org_ids:
+            session.add(Device(org_id=org_ids[org_name], device_id=device_id))
+    await session.flush()
 
 
 async def main() -> None:
@@ -71,7 +88,7 @@ async def main() -> None:
         created = await seed(session)
         await session.commit()
     print(f"Seeded: {', '.join(created)}." if created else "Seed orgs already present.")
-    print("Catalog loaded from scripts/seed/catalog.py.")
+    print("Catalog loaded from scripts/seed/catalog.py; cold box cb-01 registered.")
     print("Sign in as e.g. approver@hospital-a.demo; password: $SEED_PASSWORD or demo1234")
 
 
