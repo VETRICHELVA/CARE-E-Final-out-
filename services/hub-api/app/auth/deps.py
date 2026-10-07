@@ -77,6 +77,23 @@ def require(
     return dependency
 
 
+def require_any(*capabilities: Capability) -> Callable[..., Awaitable[User]]:
+    """403 unless the user has at least one of `capabilities`."""
+
+    async def dependency(user: CurrentUser) -> User:
+        if user_capabilities(user).isdisjoint(capabilities):
+            names = ", ".join(capabilities)
+            raise AppError(
+                403,
+                "forbidden",
+                f"Needs one of these capabilities: {names}.",
+                {"capabilities": list(capabilities)},
+            )
+        return user
+
+    return dependency
+
+
 def service_token_scopes(token: str) -> frozenset[ServiceScope]:
     """Scopes granted to a service bearer token; empty for anything else (user JWTs too)."""
     ingest = settings.ingest_token.encode()

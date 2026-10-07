@@ -22,7 +22,8 @@
 | S04 | POST /inventory/batches/import?facility_id=&reason= | `inventory.edit` (HOSPITAL orgs only) | Body is raw `text/csv` (UTF-8, max 1 MB) with a header row: `product_code`, `batch_no`, `on_hand`, `expiry_date` (YYYY-MM-DD) and `unit_cost_paise` required; `reserved`, `allocated`, `safety_stock`, `quarantined` optional (blank = 0). Missing or unknown columns: 400. Valid rows are inserted, invalid rows skipped; returns `{inserted, errors: [{line, message}]}` (header = line 1) |
 | S04 | POST /inventory/batches/{id}/verify | `inventory.edit` (HOSPITAL orgs only) | Body `{method: MANUAL\|SCAN, counted_qty, reason?}`. Writes a VerificationEvent and updates last_verified_at; a different count replaces on_hand |
 | S04 | GET/PUT /supplier-offers | `po.respond` for writes (SUPPLIER orgs only) | Own org's offers only. PUT upserts one offer `{product_id, unit_price_paise, lead_time_hours, available_qty, reason?}` and always refreshes `updated_at` |
-| S05 | POST /shortages, GET /shortages, GET /shortages/{id} | `shortage.create` | Hub computes the shortfall; 0 → 400 `validation` |
+| S05 | POST /shortages | `shortage.create` | Hub computes the shortfall; 0 → 400 `validation` |
+| S05 | GET /shortages, GET /shortages/{id} | `shortage.create` or `recommendation.approve` | Own org only; approvers read the shortages they decide on (S12) |
 | S05 | POST /shortages/{id}/cancel | `shortage.create` | |
 | S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run |
 | S05 | GET /shortages/{id}/match-runs/latest | requester's org | Candidates with gate results and reasons; landed cost for supplier sources only |

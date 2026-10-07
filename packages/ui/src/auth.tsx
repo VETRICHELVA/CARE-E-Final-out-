@@ -22,11 +22,14 @@ export function useMe() {
   });
 }
 
-/** Whether to show an action. Display only: the hub still checks every call. */
-export const can = (me: Me | undefined, capability: string) =>
-  me?.capabilities.includes(capability) ?? false;
+/** Whether to show an action: the user has `capability`, or any one of a list of them.
+ *  Display only: the hub still checks every call. */
+export const can = (me: Me | undefined, capability: string | readonly string[]) =>
+  typeof capability === "string"
+    ? (me?.capabilities.includes(capability) ?? false)
+    : capability.some((c) => me?.capabilities.includes(c) ?? false);
 
-export const useCan = (capability: string) => can(useMe().data, capability);
+export const useCan = (capability: string | readonly string[]) => can(useMe().data, capability);
 
 export function LoginPage({ appName }: { appName: string }) {
   const navigate = useNavigate();

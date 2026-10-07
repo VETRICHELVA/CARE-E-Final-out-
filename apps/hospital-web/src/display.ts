@@ -5,6 +5,9 @@ import type { Candidate, Product } from "./api";
 /** business-rules.md §8: the Shortage states the hub accepts each requester action from.
  *  Used to hide buttons that would only earn a 409. */
 export const RERUN_FROM = new Set(["OPEN", "MATCHING"]);
+/** api-and-events.md (S05): who may list and read their org's shortages. Writes stay
+ *  `shortage.create` only. */
+export const SHORTAGE_READERS = ["shortage.create", "recommendation.approve"] as const;
 export const CANCEL_FROM = new Set(["OPEN", "MATCHING", "AWAITING_DECISION"]);
 /** Shortage states that are still being worked on (the dashboard's "open" shortages). */
 export const OPEN_STATES = [

@@ -12,8 +12,9 @@ import { EmptyState } from "./states";
 export type NavItem = {
   to: string;
   label: string;
-  /** Hide the entry from users without this capability (display only; the hub still checks). */
-  capability?: string;
+  /** Hide the entry from users without this capability, or without any one of a list of them
+   *  (display only; the hub still checks). */
+  capability?: string | readonly string[];
   /** The screen; a placeholder until its section lands. */
   element?: ReactNode;
 };

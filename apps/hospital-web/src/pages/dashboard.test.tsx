@@ -42,7 +42,13 @@ describe("Dashboard", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Hub is down.");
   });
 
-  it("doesn't ask for shortages without shortage.create", async () => {
+  it("shows an approver their org's open shortages", async () => {
+    fakeHub({ "GET /api/v1/shortages": page([at("AWAITING_DECISION", 1)]) });
+    renderAs(meAs("APPROVER"), <DashboardPage />);
+    expect((await screen.findByTestId("count-AWAITING_DECISION")).textContent).toBe("1");
+  });
+
+  it("doesn't ask for shortages without shortage.create or recommendation.approve", async () => {
     const fake = fakeHub({});
     renderAs(meAs("RECEIVER"), <DashboardPage />);
     expect(await screen.findByText("Nothing to show yet")).toBeTruthy();

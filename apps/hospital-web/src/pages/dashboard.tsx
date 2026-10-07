@@ -14,7 +14,7 @@ import {
 } from "@care-e/ui";
 import { useShortages } from "../api";
 import { PageHeader } from "../components/page";
-import { OPEN_STATES } from "../display";
+import { OPEN_STATES, SHORTAGE_READERS } from "../display";
 
 function OpenShortages() {
   const shortages = useShortages();
@@ -41,7 +41,7 @@ function OpenShortages() {
 }
 
 export function DashboardPage() {
-  const canSeeShortages = useCan("shortage.create");
+  const canSeeShortages = useCan(SHORTAGE_READERS);
   return (
     <>
       <PageHeader title="Dashboard" />

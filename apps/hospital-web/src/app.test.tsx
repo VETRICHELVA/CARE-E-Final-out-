@@ -67,6 +67,14 @@ describe(config.name, () => {
     expect(navLabels()).toEqual(["Dashboard", "Inventory", "Deliveries", "Forecasts"]);
   });
 
+  it("shows an approver Shortages, since approvers read their org's shortages", async () => {
+    signInAs("HOSPITAL", ["recommendation.approve", "audit.read"]);
+    render(<App />);
+    await screen.findByText("Test HOSPITAL org");
+    expect(navLabels()).toContain("Shortages");
+    expect(navLabels()).not.toContain("Requests");
+  });
+
   it("shows a requester Shortages but not Requests", async () => {
     signInAs("HOSPITAL", ["shortage.create"]);
     render(<App />);

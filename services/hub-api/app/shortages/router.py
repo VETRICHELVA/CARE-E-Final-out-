@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from app.auth.capabilities import Capability
-from app.auth.deps import CurrentUser, org_scoped, require
+from app.auth.deps import CurrentUser, org_scoped, require, require_any
 from app.auth.models import User
 from app.db import SessionDep
 from app.errors import AppError
@@ -16,8 +16,13 @@ from app.shortages.schemas import MatchRunOut, ReasonIn, ShortageCreate, Shortag
 
 router = APIRouter(prefix="/shortages", tags=["shortages"])
 
-# api-and-events.md (S05): create, list, read, cancel and re-run need `shortage.create`.
+# api-and-events.md (S05): create, cancel and re-run need `shortage.create`; list and read
+# also admit approvers, who decide on their org's recommendations (S09/S12).
 Requester = Annotated[User, Depends(require(Capability.SHORTAGE_CREATE))]
+Reader = Annotated[
+    User,
+    Depends(require_any(Capability.SHORTAGE_CREATE, Capability.RECOMMENDATION_APPROVE)),
+]
 
 
 @router.post("", status_code=201)
@@ -33,7 +38,7 @@ async def create_shortage(
 
 @router.get("")
 async def list_shortages(
-    user: Requester, session: SessionDep, limit: Limit = 50, cursor: Cursor = None
+    user: Reader, session: SessionDep, limit: Limit = 50, cursor: Cursor = None
 ) -> Page[ShortageOut]:
     """The caller's own org's shortages, newest first."""
     stmt = org_scoped(select(Shortage), user)
@@ -46,7 +51,7 @@ async def list_shortages(
 
 
 @router.get("/{shortage_id}")
-async def get_shortage(shortage_id: uuid.UUID, user: Requester, session: SessionDep) -> ShortageOut:
+async def get_shortage(shortage_id: uuid.UUID, user: Reader, session: SessionDep) -> ShortageOut:
     return ShortageOut.model_validate(await service.get_shortage(session, user, shortage_id))
 
 

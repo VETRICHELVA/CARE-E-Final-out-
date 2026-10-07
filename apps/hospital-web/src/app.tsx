@@ -1,4 +1,5 @@
 import { type AppConfig, CareApp } from "@care-e/ui";
+import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { InventoryPage } from "./pages/inventory";
 import { ShortageDetailPage } from "./pages/shortage-detail";
@@ -16,7 +17,7 @@ export const config: AppConfig = {
     {
       to: "/shortages",
       label: "Shortages",
-      capability: "shortage.create",
+      capability: SHORTAGE_READERS,
       element: <ShortagesPage />,
     },
     { to: "/requests", label: "Requests", capability: "source_request.respond" },

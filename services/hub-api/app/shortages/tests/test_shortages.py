@@ -221,6 +221,46 @@ async def test_hospital_b_cannot_read_hospital_as_shortage(
         assert (r.status_code, r.json()["code"]) == (403, "forbidden")
 
 
+async def test_an_approver_reads_their_orgs_shortages_but_cannot_change_them(
+    client_for: ClientFor,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+    shortage_a: dict[str, Any],
+) -> None:
+    approver = await client_for(world.users["a.APPROVER"])  # no shortage.create
+    sid = shortage_a["id"]
+    r = await approver.get(f"/shortages/{sid}")
+    assert (r.status_code, r.json()["id"]) == (200, sid)
+    r = await approver.get("/shortages")
+    assert [s["id"] for s in r.json()["items"]] == [sid]
+    facility = await facility_of(session, world.hospital_a)
+    for r in (
+        await approver.post("/shortages", json=body(facility, products["SURG-KIT-A"])),
+        await approver.post(f"/shortages/{sid}/cancel"),
+        await approver.post(f"/shortages/{sid}/match"),
+    ):
+        assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+
+
+async def test_another_orgs_approver_cannot_read_the_shortage(
+    client_for: ClientFor, world: World, shortage_a: dict[str, Any]
+) -> None:
+    approver_b = await client_for(world.users["b.APPROVER"])
+    r = await approver_b.get(f"/shortages/{shortage_a['id']}")
+    assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+    assert (await approver_b.get("/shortages")).json()["items"] == []
+
+
+async def test_reading_needs_shortage_create_or_recommendation_approve(
+    client_for: ClientFor, world: World, shortage_a: dict[str, Any]
+) -> None:
+    receiver = await client_for(world.users["a.RECEIVER"])
+    for path in ("/shortages", f"/shortages/{shortage_a['id']}"):
+        r = await receiver.get(path)
+        assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+
+
 async def test_unknown_shortage_is_404(requester_a: httpx.AsyncClient) -> None:
     r = await requester_a.get(f"/shortages/{uuid.uuid4()}")
     assert (r.status_code, r.json()["code"]) == (404, "not_found")
