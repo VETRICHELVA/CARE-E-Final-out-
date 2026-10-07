@@ -1323,7 +1323,8 @@ export interface components {
         /**
          * SourceRequestOut
          * @description Both orgs see the request itself. Only the source org sees which of its batches are
-         *     held (`holds`); the requester sees the total (`held_qty`) and the hold deadline.
+         *     held (`holds`) and which of its users answered (`responded_by`); the requester sees
+         *     the total (`held_qty`) and the hold deadline.
          */
         SourceRequestOut: {
             /**
@@ -1385,7 +1386,10 @@ export interface components {
              * @description Source org only; null for the requester.
              */
             holds: components["schemas"]["HoldOut"][] | null;
-            /** Responded By */
+            /**
+             * Responded By
+             * @description The source org user who answered. Source org only; null for the requester.
+             */
             responded_by: string | null;
             /** Responded At */
             responded_at: string | null;

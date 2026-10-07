@@ -112,14 +112,15 @@ async def release_and_rematch(
     """§7 step 6, used by every non-CONFIRMED exit of a request: release every tentative
     hold of the shortage, supersede its other open requests, put the shortage back to
     MATCHING if it had moved on, and start a new match run without `exclude` (for this
-    shortage). `reason` is the factual SYSTEM cause. The caller has locked the shortage and
-    already ended the request that caused this. Returns None if the shortage is closed."""
+    shortage; only a source that declined is excluded). `reason` is the factual SYSTEM
+    cause. The caller has locked the shortage and already ended the request that caused
+    this. Returns None if the shortage is closed."""
     await holds.release(
         session,
         shortage,
+        hold_reason=reason,
         actor=None,
-        reason=reason,
-        superseded_reason=f"Another source request for this shortage ended: {reason}",
+        reason=f"Another source request for this shortage ended: {reason}",
     )
     if shortage.status in REMATCH_FROM:
         await shortages.move_shortage(session, shortage, Status.MATCHING, None, reason)
@@ -133,14 +134,11 @@ async def release_and_rematch(
 async def _expire(
     session: AsyncSession, sr: SourceRequest, shortage: Shortage, reason: str, now: datetime
 ) -> None:
-    """End a request by its deadline (or a stock change), then release and re-run. A source
-    that let its response deadline pass is left out of the re-run for this shortage, as one
-    that declined is (§7 step 6); a passed hold deadline or a stock change excludes no one."""
+    """End a request by its deadline (or a stock change), then release and re-run. An
+    expiry excludes no one (§7 step 6: declined -> excluded; expired -> not excluded), so a
+    source that missed its response deadline can be asked again."""
     await holds.move_request(session, shortage, sr, RequestStatus.EXPIRED, None, reason)
-    exclude = [sr.source_org_id] if reason == RESPONSE_DEADLINE_PASSED else []
-    await release_and_rematch(
-        session, shortage, reason, trigger=Trigger.EXPIRY, exclude=exclude, now=now
-    )
+    await release_and_rematch(session, shortage, reason, trigger=Trigger.EXPIRY, now=now)
 
 
 async def _expire_if_overdue(

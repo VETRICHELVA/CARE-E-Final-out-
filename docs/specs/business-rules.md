@@ -73,7 +73,7 @@ Timers are stored as deadlines in the database and enforced by arq jobs, so they
 5. The requester **approves**:
    - Transfer: holds become FIRM, requests become CONFIRMED, one Shipment per source (→ IN_FULFILLMENT).
    - Buy: a PurchaseOrder is created (→ IN_FULFILLMENT).
-6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun excluding the declining source for this shortage.
+6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun. Only a source that actively declined is excluded from this shortage's later runs: **declined → excluded; expired → not excluded** (a source that missed its response deadline can be asked again).
 7. Receipt and reconciliation close it (§9).
 
 ## 8. State machines
@@ -93,13 +93,15 @@ Any transition not listed returns 409 `invalid_transition`.
 | RECEIVED | PARTIALLY_RESOLVED | Accepted < shortfall (residual created) |
 | OPEN, MATCHING, AWAITING_DECISION | CANCELLED | Requester cancels (releases holds) |
 
+A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or MATCHING (else 409 `invalid_transition`), and returns 409 `conflict` while any source request for the shortage is still open (REQUESTED or TENTATIVE_HOLD): matching re-runs on its own when those requests are declined or expire.
+
 **SourceRequest**
 | From | To | Trigger |
 |---|---|---|
 | REQUESTED | TENTATIVE_HOLD | Source accepts |
 | REQUESTED | DECLINED | Source declines (reason optional) |
 | REQUESTED | EXPIRED | Response deadline passed |
-| REQUESTED, TENTATIVE_HOLD | SUPERSEDED | Another source won (CRITICAL) or the shortage was cancelled |
+| REQUESTED, TENTATIVE_HOLD | SUPERSEDED | Another source won (CRITICAL), a split partner declined or expired, or the shortage was cancelled |
 | TENTATIVE_HOLD | CONFIRMED | Requester approves |
 | TENTATIVE_HOLD | EXPIRED | Hold deadline passed, or recommendation rejected/expired |
 
@@ -119,6 +121,7 @@ Any transition not listed returns 409 `invalid_transition`.
 - Every state change above writes one AuditLog row in the same database transaction.
 - `reason_source = USER` only when the user typed a reason. Otherwise `reason_source = SYSTEM` and the reason is "No reason was entered." (for user actions) or a factual system cause such as "Response deadline passed." (for timers).
 - The system never writes statements about physical events that no one recorded.
+- Each row belongs to one org. A source request's row goes to the org of the user who acted (the source's accept or decline to the source org, the requester's cancel to the requester's org); a system change of a request (created, expired, superseded after a decline or expiry) to the requester's org. A hold's rows always go to the source org. A hold released because of another org's action is recorded as SYSTEM with a factual cause (e.g. "The requester cancelled the shortage."), never with the other org's user id or typed text.
 
 ## 11. Cold chain (S15)
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].

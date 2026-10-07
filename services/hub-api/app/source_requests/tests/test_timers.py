@@ -89,19 +89,31 @@ async def test_a_critical_request_expires_after_15_minutes_and_its_holds_are_rel
         None,
     )
     assert by_org[p.id].status == "SUPERSEDED"
+    superseded = await last_audit(session, by_org[p.id].id)
+    assert (superseded.actor_id, superseded.org_id, superseded.reason_source) == (
+        None,
+        world.hospital_a.id,
+        "SYSTEM",
+    )
     run = (await runs_of(session, shortage))[-1]
-    assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (2, "EXPIRY", [q.id])
+    # Q expired, it did not decline, so no one is excluded (§7 step 6).
+    assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (2, "EXPIRY", [])
     run_row = await last_audit(session, run.id)
     assert (run_row.reason, run_row.reason_source) == ("Response deadline passed.", "SYSTEM")
-    # Without Q, P's 500 cannot cover 850: BUY from Supplier Y.
+    # P's 500 is free again and Q is still in: the same split, both asked again.
     assert run.planned_resolution is not None
-    assert run.planned_resolution["type"] == "BUY"
-    assert run.planned_resolution["lines"][0]["source_org_id"] == str(y.id)
+    assert run.planned_resolution["type"] == "TRANSFER_SPLIT"
+    assert y.id not in {sr.source_org_id for sr in await requests_of(session, shortage)}
+    reasked = [sr for sr in await requests_of(session, shortage) if sr.status == "REQUESTED"]
+    assert sorted((sr.source_org_id, sr.qty) for sr in reasked) == sorted(
+        [(p.id, 500), (q.id, 350)]
+    )
 
 
-async def test_scenario_1_b_not_answering_in_15_minutes_falls_back_to_buy(
+async def test_scenario_1_b_not_answering_is_asked_again_but_a_decline_excludes_it(
     session: AsyncSession, world: World, products: dict[str, Product], s1: Orgs, now: datetime
 ) -> None:
+    """Expired -> not excluded; declined -> excluded (business-rules.md §7 step 6)."""
     shortage = await create_shortage(
         session, world.users["a.REQUESTER"], products["SURG-KIT-A"], now
     )
@@ -109,7 +121,21 @@ async def test_scenario_1_b_not_answering_in_15_minutes_falls_back_to_buy(
     assert await service.expire_overdue(session, now + timedelta(minutes=15)) == 1
     assert request_b.status == "EXPIRED"
     run = (await runs_of(session, shortage))[-1]
-    assert run.excluded_org_ids == [world.hospital_b.id]
+    assert run.excluded_org_ids == []
+    assert run.planned_resolution is not None
+    assert run.planned_resolution["type"] == "TRANSFER"
+    assert run.planned_resolution["lines"][0]["source_org_id"] == str(world.hospital_b.id)
+    _, again = await requests_of(session, shortage)
+    assert (again.source_org_id, again.status) == (world.hospital_b.id, "REQUESTED")
+
+    later = now + timedelta(minutes=16)
+    await service.decline(session, world.users["b.STORE_MANAGER"], again.id, None, now=later)
+    run = (await runs_of(session, shortage))[-1]
+    assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (
+        3,
+        "DECLINE",
+        [world.hospital_b.id],
+    )
     assert run.planned_resolution is not None
     assert run.planned_resolution["type"] == "BUY"
     assert run.planned_resolution["lines"][0]["source_org_id"] == str(s1["Supplier Y"].id)

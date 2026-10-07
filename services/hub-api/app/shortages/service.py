@@ -138,10 +138,14 @@ async def cancel_shortage(
     session: AsyncSession, user: User, shortage_id: uuid.UUID, reason: str | None
 ) -> Shortage:
     """From OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
-    Releases every tentative hold and supersedes every open source request (§8)."""
+    Releases every tentative hold and supersedes every open source request (§8). The
+    supersedes are the requester's (their org, their reason); the hold releases sit in the
+    source orgs as SYSTEM with the factual cause, never the requester's id or text (§10)."""
     shortage = await get_shortage(session, user, shortage_id, lock=True)
     await move_shortage(session, shortage, Status.CANCELLED, user, reason)
-    await holds.release(session, shortage, actor=user, reason=reason)
+    await holds.release(
+        session, shortage, hold_reason=holds.REQUESTER_CANCELLED, actor=user, reason=reason
+    )
     return shortage
 
 
