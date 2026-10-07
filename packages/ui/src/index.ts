@@ -1,4 +1,5 @@
-export { CareApp, type AppConfig, type NavItem } from "./app";
+export { CareApp, type AppConfig, type ExtraRoute, type NavItem } from "./app";
+export { ConfirmDialog } from "./confirm";
 export { can, LoginPage, ProtectedRoute, useCan, useMe, useSignedIn } from "./auth";
 export { formatDateTime, formatMoney, formatQty } from "./format";
 export { EmptyState, ErrorState, Loading } from "./states";
@@ -11,6 +12,7 @@ export * from "./components/ui/dialog";
 export * from "./components/ui/field";
 export * from "./components/ui/input";
 export * from "./components/ui/label";
+export * from "./components/ui/native-select";
 export * from "./components/ui/select";
 export * from "./components/ui/separator";
 export * from "./components/ui/sonner";
