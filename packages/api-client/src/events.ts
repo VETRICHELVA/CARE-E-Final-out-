@@ -45,6 +45,7 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   "inventory.changed": [BATCHES, AUDIT],
   "supplier_offer.changed": [OFFERS, AUDIT],
   "recommendation.ready": [...SHORTAGE_VIEWS, RECOMMENDATION],
+  "recommendation.status_changed": [...SHORTAGE_VIEWS, RECOMMENDATION],
   "purchase_order.created": [PURCHASE_ORDERS, SHORTAGE, AUDIT],
   "purchase_order.status_changed": [PURCHASE_ORDERS, SHORTAGE, AUDIT],
   "shipment.created": [...SHIPMENT_VIEWS, SHORTAGE],

@@ -37,6 +37,7 @@ from app.source_requests.models import Hold, SourceRequest
 
 REQUEST, HOLD = "source_request", "hold"
 REQUESTER_CANCELLED = "The requester cancelled the shortage."
+REQUESTER_APPROVED = "The requester approved the transfer."
 
 
 async def held_by_batch(

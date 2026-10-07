@@ -13,6 +13,8 @@ from app.catalog.models import Product, ProductAuthorization, SupplierOffer
 from app.conftest import World
 from app.inventory.models import InventoryBatch
 from app.orgs.models import Facility, Organization, OrgType
+from app.recommendations import service as rec_service
+from app.recommendations import transitions as recommendations
 from app.shortages import service
 from app.shortages.models import Candidate, Priority, Shortage, Trigger
 from app.shortages.schemas import CandidateOut, MatchRunOut, ShortageCreate
@@ -251,10 +253,13 @@ async def test_scenario_1_rerun_without_b_buys_from_y_with_x_as_alternative(
     x, y = scenario1["Supplier X"], scenario1["Supplier Y"]
     assert plan_of(out) == ("BUY", [(y.id, 850)], [x.id])
     assert (run.run_no, run.excluded_org_ids) == (2, [b.id])
-    # The exclusion holds for this shortage's later runs, manual ones included.
-    again = await service.rerun_match(
-        session, world.users["a.REQUESTER"], shortage.id, None, now=NOW
-    )
+    # The exclusion holds for this shortage's later runs. The BUY plan is now awaiting a
+    # decision (S09), so the next run comes from rejecting its recommendation.
+    rec = await recommendations.open_for(session, shortage.id)
+    assert rec is not None
+    await rec_service.reject(session, world.users["a.APPROVER"], rec.id, None, now=NOW)
+    again = await service.latest_run(session, shortage.id)
+    assert again is not None
     assert (again.run_no, again.triggered_by, again.excluded_org_ids) == (3, "MANUAL", [b.id])
 
 

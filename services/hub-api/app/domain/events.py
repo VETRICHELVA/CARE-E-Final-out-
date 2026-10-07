@@ -8,6 +8,7 @@ class EventType(StrEnum):
     SOURCE_REQUEST_CREATED = "source_request.created"
     SOURCE_REQUEST_STATUS_CHANGED = "source_request.status_changed"
     RECOMMENDATION_READY = "recommendation.ready"
+    RECOMMENDATION_STATUS_CHANGED = "recommendation.status_changed"
     PURCHASE_ORDER_CREATED = "purchase_order.created"
     PURCHASE_ORDER_STATUS_CHANGED = "purchase_order.status_changed"
     SHIPMENT_CREATED = "shipment.created"

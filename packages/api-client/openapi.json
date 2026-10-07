@@ -1898,10 +1898,580 @@
           }
         }
       }
+    },
+    "/api/v1/recommendations/{recommendation_id}": {
+      "get": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Get Recommendation",
+        "description": "Any user of the requester's org (403 otherwise). A hospital source's cost is never\nshown, only supplier costs.",
+        "operationId": "get_recommendation_api_v1_recommendations__recommendation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/approve": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Approve Recommendation",
+        "description": "PENDING or ESCALATED -> APPROVED. Transfer: holds become FIRM, requests CONFIRMED,\none shipment per source. Buy: a purchase order is sent. The shortage -> IN_FULFILLMENT.\n409 if already decided, or if it (or a hold) has expired: it is then expired and\nmatching re-runs.",
+        "operationId": "approve_recommendation_api_v1_recommendations__recommendation_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/reject": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Reject Recommendation",
+        "description": "PENDING or ESCALATED -> REJECTED (reason optional). Releases every hold and re-runs\nmatching. 409 if already decided or expired.",
+        "operationId": "reject_recommendation_api_v1_recommendations__recommendation_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/escalate": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Escalate Recommendation",
+        "description": "PENDING -> ESCALATED, notifying every APPROVER of the org. 409 otherwise.",
+        "operationId": "escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders": {
+      "get": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "List Purchase Orders",
+        "description": "Purchase orders sent to the caller's supplier org, newest first; optional `status`.",
+        "operationId": "list_purchase_orders_api_v1_purchase_orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PurchaseOrderOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/acknowledge": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Acknowledge Purchase Order",
+        "description": "SENT -> ACKNOWLEDGED. Only the supplier the order went to (403 otherwise); 409 from\nany other status.",
+        "operationId": "acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/reject": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Reject Purchase Order",
+        "description": "SENT or ACKNOWLEDGED -> REJECTED (reason optional). The shortage goes back to\nMATCHING and matching re-runs without this supplier; 409 from any other status.",
+        "operationId": "reject_purchase_order_api_v1_purchase_orders__po_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/dispatch": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Dispatch Purchase Order",
+        "description": "ACKNOWLEDGED -> DISPATCHED, creating the shipment from the supplier to the hospital\n(`shipment_id`). 409 unless the order has been acknowledged.",
+        "operationId": "dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApprovalOut": {
+        "properties": {
+          "recommendation": {
+            "$ref": "#/components/schemas/RecommendationOut"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "business-rules.md \u00a713 wording for the approved type."
+          },
+          "shipment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Shipment Ids",
+            "description": "Transfers: one per source."
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id",
+            "description": "BUY: the order sent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendation",
+          "message",
+          "shipment_ids",
+          "purchase_order_id"
+        ],
+        "title": "ApprovalOut"
+      },
       "AuditOut": {
         "properties": {
           "id": {
@@ -2489,6 +3059,7 @@
           "source_request.created",
           "source_request.status_changed",
           "recommendation.ready",
+          "recommendation.status_changed",
           "purchase_order.created",
           "purchase_order.status_changed",
           "shipment.created",
@@ -3122,6 +3693,33 @@
         ],
         "title": "Page[PublicFacilityView]"
       },
+      "Page_PurchaseOrderOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[PurchaseOrderOut]"
+      },
       "Page_ShortageOut_": {
         "properties": {
           "items": {
@@ -3285,6 +3883,17 @@
         ],
         "title": "PlannedResolution"
       },
+      "PoStatus": {
+        "type": "string",
+        "enum": [
+          "SENT",
+          "ACKNOWLEDGED",
+          "DISPATCHED",
+          "DELIVERED",
+          "REJECTED"
+        ],
+        "title": "PoStatus"
+      },
       "Priority": {
         "type": "string",
         "enum": [
@@ -3403,6 +4012,97 @@
         "title": "PublicOrgView",
         "description": "What any org may see of another org: name, type, location only."
       },
+      "PurchaseOrderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "supplier_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Supplier Org Id"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id",
+            "description": "The buying hospital (the shortage's org)."
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "unit_price_paise": {
+            "type": "integer",
+            "title": "Unit Price Paise"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PoStatus"
+          },
+          "eta": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Eta"
+          },
+          "shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipment Id",
+            "description": "Set once the order is dispatched."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "supplier_org_id",
+          "to_org_id",
+          "to_org_name",
+          "product_id",
+          "qty",
+          "unit_price_paise",
+          "status",
+          "eta",
+          "shipment_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PurchaseOrderOut",
+        "description": "A purchase order as the supplier it was sent to sees it."
+      },
       "ReadingIn": {
         "properties": {
           "device_id": {
@@ -3462,6 +4162,259 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ReasonIn"
+      },
+      "RecStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "REJECTED",
+          "ESCALATED",
+          "EXPIRED"
+        ],
+        "title": "RecStatus"
+      },
+      "RecommendationLineOut": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id",
+            "description": "Hospital sources: the request."
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          },
+          "shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shelf Life Days",
+            "description": "Hospital sources: days of shelf life left at delivery on the held stock."
+          },
+          "unit_price_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Paise",
+            "description": "Supplier sources only."
+          },
+          "landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Supplier sources only; always null for a hospital source."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "source_org_id",
+          "source_org_name",
+          "source_type",
+          "source_request_id",
+          "qty",
+          "eta_hours",
+          "shelf_life_days",
+          "unit_price_paise",
+          "landed_cost_paise"
+        ],
+        "title": "RecommendationLineOut",
+        "description": "One source of a recommendation as the requester's org sees it. A hospital source's\nlanded cost is never shown: it is quantity x that hospital's unit cost + transport + a\n2% handling fee, and transport follows from the two public locations, so any cost figure\nfor a hospital line would reveal its unit cost (CLAUDE.md rule 6)."
+      },
+      "RecommendationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "match_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Match Run Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "TRANSFER",
+              "TRANSFER_SPLIT",
+              "BUY"
+            ],
+            "title": "Type"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecStatus"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationLineOut"
+            },
+            "type": "array",
+            "title": "Alternatives",
+            "description": "The best BUY for a transfer, or for a BUY the next supplier."
+          },
+          "total_landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Landed Cost Paise",
+            "description": "BUY only (supplier lines); null whenever a hospital source is involved."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Built by the hub from the stored candidate data."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "What the decider typed, or a timer's cause; null if nothing was typed."
+          },
+          "reason_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "SYSTEM"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Source"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "match_run_id",
+          "type",
+          "status",
+          "lines",
+          "alternatives",
+          "total_landed_cost_paise",
+          "explanation",
+          "expires_at",
+          "decided_by",
+          "decided_at",
+          "reason",
+          "reason_source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecommendationOut"
       },
       "RefreshIn": {
         "properties": {

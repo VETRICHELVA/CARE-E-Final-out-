@@ -326,7 +326,8 @@ async def test_scenario_1_step_3_decline_without_reason_reruns_without_b(
     assert plan["type"] == "BUY"
     assert [x["source_org_id"] for x in plan["lines"]] == [str(s1["Supplier Y"].id)]
     assert [x["source_org_id"] for x in plan["alternatives"]] == [str(s1["Supplier X"].id)]
-    assert shortage.status == "MATCHING"
+    # S09: a BUY plan gets its recommendation at once (business-rules.md §7 step 4).
+    assert shortage.status == "AWAITING_DECISION"
     assert len(await requests_of(session, shortage)) == 1  # a BUY asks no one
 
 

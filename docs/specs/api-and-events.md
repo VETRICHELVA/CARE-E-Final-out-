@@ -32,9 +32,9 @@
 | S07 | POST /events/ticket | any | `{ticket, expires_at}`: a 60-second ticket that opens the stream as the caller (a browser EventSource cannot send the Authorization header). It is refused as an access token, and an access token is refused as a ticket |
 | S07 | GET /events/stream?ticket=&last_event_id= | any (ticket or Bearer token) | Server-sent events for the caller's org only (see Realtime). Each message is `id: <seq>` + `data: <envelope>`; `: heartbeat` after 15 s idle; closes after 15 min. `Last-Event-ID` header or `last_event_id` replays the org's events published after that id; more than 1,000 missed sends `event: reset` instead. Malformed `Last-Event-ID`: 400 |
 | S07 | GET /webhooks, POST /webhooks, DELETE /webhooks/{id} | org admin (ADMIN role) | Own org's subscriptions only (403 otherwise). POST `{url (http/https, max 2048), event_types (≥ 1 known type), reason?}` → 201 with `secret`, shown only then; GET never returns it. DELETE → 204 and stops its deliveries. Create and delete are audited |
-| S09 | GET /recommendations/{id} | requester's org | |
-| S09 | POST /recommendations/{id}/approve \| reject \| escalate | `recommendation.approve` | |
-| S09 | GET /purchase-orders, POST /purchase-orders/{id}/acknowledge \| reject \| dispatch | `po.respond` | Supplier side |
+| S09 | GET /recommendations/{id} | requester's org | Any user of the shortage's org (403 otherwise). `lines` and `alternatives` give source, qty, ETA, and for hospital sources `shelf_life_days` at delivery; `landed_cost_paise` and `unit_price_paise` for supplier sources only, and `total_landed_cost_paise` only when every line is a supplier (BUY): a hospital's cost would reveal its unit cost (CLAUDE.md rule 6). `explanation` is built by the hub from the stored candidate data |
+| S09 | POST /recommendations/{id}/approve \| reject \| escalate | `recommendation.approve` (requester's org only, else 403) | Body `{reason?}`. From PENDING (approve and reject also from ESCALATED); otherwise 409 `invalid_transition`. A decision after `expires_at`, or an approval after a tentative hold lapsed, expires the recommendation (and the request), re-runs matching and returns 409. Approve returns `{recommendation, message, shipment_ids, purchase_order_id}`, `message` in the business-rules §13 wording. Reject releases holds and re-runs matching (`triggered_by = MANUAL`). Escalate writes a Notification for every APPROVER of the org. A recommendation also ends EXPIRED when its shortage leaves AWAITING_DECISION another way (a hold expired: "Hold deadline passed."; a cancel: "The shortage was cancelled.") |
+| S09 | GET /purchase-orders?status=, POST /purchase-orders/{id}/acknowledge \| reject \| dispatch | `po.respond` (SUPPLIER orgs only) | Supplier side: the orders sent to the caller's org (403 for another org's). Body `{reason?}`. Acknowledge SENT → ACKNOWLEDGED; dispatch ACKNOWLEDGED → DISPATCHED and creates the Shipment from the supplier to the hospital (`shipment_id`); reject SENT or ACKNOWLEDGED → REJECTED, the shortage goes back to MATCHING and matching re-runs without that supplier (`triggered_by = DECLINE`). Any other transition: 409 |
 | S11 | GET /shipments?status=, GET /shipments/{id} | involved orgs | |
 | S11 | POST /shipments/{id}/assign, POST /shipments/{id}/unassign | `shipment.assign` | Driver + vehicle |
 | S11 | POST /shipments/{id}/status | `shipment.update_status` | Assigned driver only |
@@ -64,8 +64,9 @@ Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "
 | source_request.created | Request sent to a source | source_request_id, shortage_id, product_id, qty, deadline |
 | source_request.status_changed | Accepted, declined, expired, superseded, confirmed | source_request_id, shortage_id, from, to |
 | recommendation.ready | Recommendation created | recommendation_id, shortage_id, type |
-| purchase_order.created / purchase_order.status_changed | PO lifecycle | purchase_order_id, from, to |
-| shipment.created / shipment.status_changed | Shipment lifecycle | shipment_id, from, to |
+| recommendation.status_changed | Approved, rejected, escalated or expired (S09) | recommendation_id, shortage_id, from, to |
+| purchase_order.created / purchase_order.status_changed | PO lifecycle (`created`: from null, to SENT) | purchase_order_id, from, to |
+| shipment.created / shipment.status_changed | Shipment lifecycle (`created`: from null, to CREATED) | shipment_id, from, to |
 | shipment.location | Driver ping | shipment_id, lat, lng, ts |
 | coldchain.reading | New reading on an active shipment | shipment_id, temp_c, ts |
 | coldchain.excursion / coldchain.device_silent / coldchain.recovered | Cold-chain events | shipment_id, observed_value, threshold |
@@ -74,7 +75,7 @@ Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "
 | inventory.changed | A batch is created, edited, verified or imported (S04) | batch_ids, product_ids |
 | supplier_offer.changed | A supplier offer is created or updated (S04) | offer_id, product_id |
 
-Who receives them (`org_ids`): `shortage.status_changed` the shortage's org; `source_request.*` the requester's and the source's orgs; `inventory.changed` and `supplier_offer.changed` the writing org only (other orgs see only what matching offers them). Built in S07: the shortage, source request, inventory and offer events. The others are emitted by the sections that build those records.
+Who receives them (`org_ids`): `shortage.status_changed` and `recommendation.*` the shortage's org; `source_request.*` the requester's and the source's orgs; `purchase_order.*` the buying hospital and the supplier; `shipment.created` the from and to orgs (S11 adds the carrier); `inventory.changed` and `supplier_offer.changed` the writing org only (other orgs see only what matching offers them). Built in S07: the shortage, source request, inventory and offer events; S09: recommendation, purchase order and `shipment.created`. The others are emitted by the sections that build those records.
 
 An inventory or offer change also re-runs, in the same transaction, every other org's MATCHING shortage for that product whose latest run found no eligible source and has no open request (business-rules.md §5); that run is `triggered_by = STOCK_CHANGE`. Released tentative holds re-run the same shortages from the worker after the release commits (business-rules.md §5).
 

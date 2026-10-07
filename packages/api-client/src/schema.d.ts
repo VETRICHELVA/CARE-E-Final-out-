@@ -575,10 +575,197 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/recommendations/{recommendation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Recommendation
+         * @description Any user of the requester's org (403 otherwise). A hospital source's cost is never
+         *     shown, only supplier costs.
+         */
+        get: operations["get_recommendation_api_v1_recommendations__recommendation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Recommendation
+         * @description PENDING or ESCALATED -> APPROVED. Transfer: holds become FIRM, requests CONFIRMED,
+         *     one shipment per source. Buy: a purchase order is sent. The shortage -> IN_FULFILLMENT.
+         *     409 if already decided, or if it (or a hold) has expired: it is then expired and
+         *     matching re-runs.
+         */
+        post: operations["approve_recommendation_api_v1_recommendations__recommendation_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Recommendation
+         * @description PENDING or ESCALATED -> REJECTED (reason optional). Releases every hold and re-runs
+         *     matching. 409 if already decided or expired.
+         */
+        post: operations["reject_recommendation_api_v1_recommendations__recommendation_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Escalate Recommendation
+         * @description PENDING -> ESCALATED, notifying every APPROVER of the org. 409 otherwise.
+         */
+        post: operations["escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Purchase Orders
+         * @description Purchase orders sent to the caller's supplier org, newest first; optional `status`.
+         */
+        get: operations["list_purchase_orders_api_v1_purchase_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Purchase Order
+         * @description SENT -> ACKNOWLEDGED. Only the supplier the order went to (403 otherwise); 409 from
+         *     any other status.
+         */
+        post: operations["acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Purchase Order
+         * @description SENT or ACKNOWLEDGED -> REJECTED (reason optional). The shortage goes back to
+         *     MATCHING and matching re-runs without this supplier; 409 from any other status.
+         */
+        post: operations["reject_purchase_order_api_v1_purchase_orders__po_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Purchase Order
+         * @description ACKNOWLEDGED -> DISPATCHED, creating the shipment from the supplier to the hospital
+         *     (`shipment_id`). 409 unless the order has been acknowledged.
+         */
+        post: operations["dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApprovalOut */
+        ApprovalOut: {
+            recommendation: components["schemas"]["RecommendationOut"];
+            /**
+             * Message
+             * @description business-rules.md §13 wording for the approved type.
+             */
+            message: string;
+            /**
+             * Shipment Ids
+             * @description Transfers: one per source.
+             */
+            shipment_ids: string[];
+            /**
+             * Purchase Order Id
+             * @description BUY: the order sent.
+             */
+            purchase_order_id: string | null;
+        };
         /** AuditOut */
         AuditOut: {
             /**
@@ -832,7 +1019,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
+        EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "recommendation.status_changed" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -1074,6 +1261,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[PurchaseOrderOut] */
+        Page_PurchaseOrderOut_: {
+            /** Items */
+            items: components["schemas"]["PurchaseOrderOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[ShortageOut] */
         Page_ShortageOut_: {
             /** Items */
@@ -1134,6 +1328,11 @@ export interface components {
             alternatives: components["schemas"]["PlanLine"][];
         };
         /**
+         * PoStatus
+         * @enum {string}
+         */
+        PoStatus: "SENT" | "ACKNOWLEDGED" | "DISPATCHED" | "DELIVERED" | "REJECTED";
+        /**
          * Priority
          * @enum {string}
          */
@@ -1180,6 +1379,65 @@ export interface components {
             location: components["schemas"]["Location"];
         };
         /**
+         * PurchaseOrderOut
+         * @description A purchase order as the supplier it was sent to sees it.
+         */
+        PurchaseOrderOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Supplier Org Id
+             * Format: uuid
+             */
+            supplier_org_id: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             * @description The buying hospital (the shortage's org).
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty */
+            qty: number;
+            /** Unit Price Paise */
+            unit_price_paise: number;
+            status: components["schemas"]["PoStatus"];
+            /**
+             * Eta
+             * Format: date-time
+             */
+            eta: string;
+            /**
+             * Shipment Id
+             * @description Set once the order is dispatched.
+             */
+            shipment_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
          * ReadingIn
          * @description One reading as the cold box publishes it (apps-ai-iot.md, Firmware).
          */
@@ -1200,6 +1458,124 @@ export interface components {
         ReasonIn: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * RecStatus
+         * @enum {string}
+         */
+        RecStatus: "PENDING" | "APPROVED" | "REJECTED" | "ESCALATED" | "EXPIRED";
+        /**
+         * RecommendationLineOut
+         * @description One source of a recommendation as the requester's org sees it. A hospital source's
+         *     landed cost is never shown: it is quantity x that hospital's unit cost + transport + a
+         *     2% handling fee, and transport follows from the two public locations, so any cost figure
+         *     for a hospital line would reveal its unit cost (CLAUDE.md rule 6).
+         */
+        RecommendationLineOut: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            source_type: components["schemas"]["SourceType"];
+            /**
+             * Source Request Id
+             * @description Hospital sources: the request.
+             */
+            source_request_id: string | null;
+            /** Qty */
+            qty: number;
+            /** Eta Hours */
+            eta_hours: number;
+            /**
+             * Shelf Life Days
+             * @description Hospital sources: days of shelf life left at delivery on the held stock.
+             */
+            shelf_life_days: number | null;
+            /**
+             * Unit Price Paise
+             * @description Supplier sources only.
+             */
+            unit_price_paise: number | null;
+            /**
+             * Landed Cost Paise
+             * @description Supplier sources only; always null for a hospital source.
+             */
+            landed_cost_paise: number | null;
+        };
+        /** RecommendationOut */
+        RecommendationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Match Run Id
+             * Format: uuid
+             */
+            match_run_id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "TRANSFER" | "TRANSFER_SPLIT" | "BUY";
+            status: components["schemas"]["RecStatus"];
+            /** Lines */
+            lines: components["schemas"]["RecommendationLineOut"][];
+            /**
+             * Alternatives
+             * @description The best BUY for a transfer, or for a BUY the next supplier.
+             */
+            alternatives: components["schemas"]["RecommendationLineOut"][];
+            /**
+             * Total Landed Cost Paise
+             * @description BUY only (supplier lines); null whenever a hospital source is involved.
+             */
+            total_landed_cost_paise: number | null;
+            /**
+             * Explanation
+             * @description Built by the hub from the stored candidate data.
+             */
+            explanation: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Reason
+             * @description What the decider typed, or a timer's cause; null if nothing was typed.
+             */
+            reason: string | null;
+            /** Reason Source */
+            reason_source: ("USER" | "SYSTEM") | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** RefreshIn */
         RefreshIn: {
@@ -2609,6 +2985,280 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recommendation_api_v1_recommendations__recommendation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_recommendation_api_v1_recommendations__recommendation_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_recommendation_api_v1_recommendations__recommendation_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_purchase_orders_api_v1_purchase_orders_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PoStatus"] | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PurchaseOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_purchase_order_api_v1_purchase_orders__po_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
             };
             /** @description Validation Error */
             422: {
