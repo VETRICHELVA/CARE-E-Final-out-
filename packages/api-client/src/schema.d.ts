@@ -743,6 +743,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/network/demand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Network Demand
+         * @description Open shortfall totals for each product the caller's supplier org offers (one row per
+         *     offer, oldest offer first; 0 when nothing is open). Totals only: no hospital, facility,
+         *     shortage or count of them.
+         */
+        get: operations["network_demand_api_v1_network_demand_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -989,6 +1011,23 @@ export interface components {
              */
             rank: number | null;
         };
+        /**
+         * DemandOut
+         * @description Open network demand for one product the caller's supplier org offers. Aggregated over
+         *     every hospital: no hospital, facility, shortage or count of either (CLAUDE.md rule 6).
+         */
+        DemandOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Open Shortfall Qty
+             * @description Sum of the hub-computed shortfall of every other org's shortage for this product that is OPEN, MATCHING or AWAITING_DECISION; 0 when there is none.
+             */
+            open_shortfall_qty: number;
+        };
         /** DeviceOut */
         DeviceOut: {
             /**
@@ -1223,6 +1262,13 @@ export interface components {
         Page_BatchOut_: {
             /** Items */
             items: components["schemas"]["BatchOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[DemandOut] */
+        Page_DemandOut_: {
+            /** Items */
+            items: components["schemas"]["DemandOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -3258,6 +3304,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_demand_api_v1_network_demand_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DemandOut_"];
                 };
             };
             /** @description Validation Error */

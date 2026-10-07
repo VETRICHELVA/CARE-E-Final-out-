@@ -20,6 +20,7 @@ const LATEST_RUN = `${API}/shortages/{shortage_id}/match-runs/latest`;
 const SOURCE_REQUESTS = `${API}/source-requests`;
 const BATCHES = `${API}/inventory/batches`;
 const OFFERS = `${API}/supplier-offers`;
+const NETWORK_DEMAND = `${API}/network/demand`;
 const AUDIT = `${API}/audit`;
 const RECOMMENDATION = `${API}/recommendations/{recommendation_id}`;
 const PURCHASE_ORDERS = `${API}/purchase-orders`;
@@ -43,11 +44,13 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   // Accepting or releasing a request places or frees holds, which change `transferable`.
   "source_request.status_changed": [...SHORTAGE_VIEWS, SOURCE_REQUESTS, BATCHES],
   "inventory.changed": [BATCHES, AUDIT],
-  "supplier_offer.changed": [OFFERS, AUDIT],
+  // A new or changed offer can add a product to the supplier's network demand.
+  "supplier_offer.changed": [OFFERS, NETWORK_DEMAND, AUDIT],
   "recommendation.ready": [...SHORTAGE_VIEWS, RECOMMENDATION],
   "recommendation.status_changed": [...SHORTAGE_VIEWS, RECOMMENDATION],
-  "purchase_order.created": [PURCHASE_ORDERS, SHORTAGE, AUDIT],
-  "purchase_order.status_changed": [PURCHASE_ORDERS, SHORTAGE, AUDIT],
+  // An approved BUY leaves open demand; a supplier's rejection sends it back to matching.
+  "purchase_order.created": [PURCHASE_ORDERS, SHORTAGE, AUDIT, NETWORK_DEMAND],
+  "purchase_order.status_changed": [PURCHASE_ORDERS, SHORTAGE, AUDIT, NETWORK_DEMAND],
   "shipment.created": [...SHIPMENT_VIEWS, SHORTAGE],
   "shipment.status_changed": [...SHIPMENT_VIEWS, SHORTAGE],
   "shipment.location": [SHIPMENT],
