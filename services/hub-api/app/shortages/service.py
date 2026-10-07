@@ -23,6 +23,7 @@ from app.domain.costing import (
     transport_cost_paise,
     transport_eta_hours,
 )
+from app.domain.events import EventType
 from app.domain.gates import PASS, GateResult
 from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.ranking import Option, is_near_expiry, rank
@@ -30,6 +31,7 @@ from app.domain.resolution import BUY, TRANSFER_SPLIT, Line, Plan, plan
 from app.domain.shortage import TRANSITIONS, Status, shortfall
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
+from app.events import service as events
 from app.inventory.models import InventoryBatch
 from app.inventory.service import own_facility
 from app.orgs.models import Facility, Organization, OrgStatus, OrgType
@@ -73,6 +75,7 @@ ROUTING: RoutingProvider = HaversineProvider()  # S11 adds OSRM, falling back to
 # ponytail: there is no Vehicle table until S11, so no cold-chain vehicle is on record and
 # every cold-chain product fails the cold_chain gate; S11 replaces this with a Vehicle query.
 COLD_CHAIN_VEHICLE_ON_RECORD = False
+STOCK_CHANGED = "Inventory or supplier offers for this product changed."
 
 
 async def get_shortage(
@@ -182,6 +185,50 @@ async def move_shortage(
         reason,
         org_id=shortage.org_id,
     )
+    await events.emit(
+        session,
+        EventType.SHORTAGE_STATUS_CHANGED,
+        [shortage.org_id],
+        {"shortage_id": shortage.id, "from": before, "to": shortage.status},
+    )
+
+
+async def rematch_waiting(
+    session: AsyncSession,
+    product_ids: Iterable[uuid.UUID],
+    changed_by: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> list[MatchRun]:
+    """§5: a shortage left MATCHING with "No eligible source" is re-run when inventory or
+    supplier offers for its product change. Called in the transaction of that change, by the
+    org `changed_by`, whose own shortages are skipped (matching never uses an org's own stock).
+    A shortage another transaction holds locked is skipped (SKIP LOCKED): that transaction is
+    already changing it, and waiting here could deadlock against the batch locks taken first."""
+    ids = sorted(set(product_ids))
+    if not ids:
+        return []
+    waiting = await session.scalars(
+        select(Shortage)
+        .where(
+            Shortage.status == Status.MATCHING,
+            Shortage.product_id.in_(ids),
+            Shortage.org_id != changed_by,
+        )
+        .order_by(Shortage.id)
+        .with_for_update(skip_locked=True)
+    )
+    runs = []
+    for shortage in list(waiting):
+        last = await latest_run(session, shortage.id)
+        if last is None or last.planned_resolution is not None:
+            continue  # it has a plan: it is waiting on its sources or a decision, not on stock
+        if await holds.open_requests(session, shortage.id):
+            continue
+        runs.append(
+            await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=STOCK_CHANGED, now=now)
+        )
+    return runs
 
 
 async def latest_run(session: AsyncSession, shortage_id: uuid.UUID) -> MatchRun | None:

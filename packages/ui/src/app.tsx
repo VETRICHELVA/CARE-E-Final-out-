@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
-import { createQueryClient, logout, useAuth } from "@care-e/api-client";
+import { createQueryClient, logout, useAuth, useEventStream } from "@care-e/api-client";
 import { can, LoginPage, ProtectedRoute, useMe } from "./auth";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
@@ -31,10 +31,17 @@ export type AppConfig = {
   refusal: string;
   nav: NavItem[];
   routes?: ExtraRoute[];
+  /** Refresh screens from the hub's event stream (`useEventStream`) instead of polling. */
+  liveUpdates?: boolean;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
-function AppShell({ name, nav }: Pick<AppConfig, "name" | "nav">) {
+function AppShell({
+  name,
+  nav,
+  liveUpdates = false,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates">) {
+  useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
   return (
@@ -87,7 +94,7 @@ const placeholder = (label: string) => (
 );
 
 /** One app: sign-in, the org-type gate, the header and nav, and its screens. */
-export function CareApp({ name, allow, refusal, nav, routes = [] }: AppConfig) {
+export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
   useEffect(
@@ -100,7 +107,7 @@ export function CareApp({ name, allow, refusal, nav, routes = [] }: AppConfig) {
         <Routes>
           <Route path="/login" element={<LoginPage appName={name} />} />
           <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
-            <Route element={<AppShell name={name} nav={nav} />}>
+            <Route element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} />}>
               {nav.map((item) => (
                 <Route
                   key={item.to}

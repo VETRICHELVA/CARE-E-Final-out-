@@ -575,7 +575,7 @@
           "catalog"
         ],
         "summary": "Put Offer",
-        "description": "Create or update one offer of the caller's supplier org (SUPPLIER orgs only).",
+        "description": "Create or update one offer of the caller's supplier org (SUPPLIER orgs only). Then\nre-runs other orgs' \"No eligible source\" shortages for the product (\u00a75).",
         "operationId": "put_offer_api_v1_supplier_offers_put",
         "security": [
           {
@@ -1614,6 +1614,290 @@
           }
         }
       }
+    },
+    "/api/v1/events/ticket": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Stream Ticket",
+        "description": "A 60-second ticket that opens GET /events/stream as the caller (`?ticket=`), because\na browser EventSource cannot send an Authorization header.",
+        "operationId": "create_stream_ticket_api_v1_events_ticket_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicketOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/stream": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Event Stream",
+        "description": "Server-sent events for the caller's org: only events whose `org_ids` include it.\n\nEach message is `id: <seq>` and `data: <envelope>`, where the envelope is\n`{id, type, occurred_at, org_ids, data}` (api-and-events.md, Events). A comment line\n(`: heartbeat`) is sent after 15 seconds without events. Reconnect with the last `id` as the\n`Last-Event-ID` header or `last_event_id` query parameter to replay what was missed; if too\nmuch was missed, the stream sends `event: reset` instead, and the client should refetch.\nThe stream closes after 15 minutes; reconnect with a new ticket.",
+        "operationId": "event_stream_api_v1_events_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Event Id"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A stream ticket from POST /events/ticket.",
+              "title": "Ticket"
+            },
+            "description": "A stream ticket from POST /events/ticket."
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List Webhooks",
+        "description": "The caller's org's subscriptions, oldest first. Secrets are never listed.",
+        "operationId": "list_webhooks_api_v1_webhooks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WebhookOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Webhook",
+        "description": "Subscribe the caller's org: events of `event_types` addressed to it are POSTed to\n`url`, signed in `X-CareE-Signature`. The secret is in this response only.",
+        "operationId": "create_webhook_api_v1_webhooks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}": {
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Delete Webhook",
+        "description": "Own org's subscription only (403 otherwise). Its pending deliveries stop.",
+        "operationId": "delete_webhook_api_v1_webhooks__webhook_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2197,6 +2481,29 @@
           "outgoing"
         ],
         "title": "Direction"
+      },
+      "EventType": {
+        "type": "string",
+        "enum": [
+          "shortage.status_changed",
+          "source_request.created",
+          "source_request.status_changed",
+          "recommendation.ready",
+          "purchase_order.created",
+          "purchase_order.status_changed",
+          "shipment.created",
+          "shipment.status_changed",
+          "shipment.location",
+          "coldchain.reading",
+          "coldchain.excursion",
+          "coldchain.device_silent",
+          "coldchain.recovered",
+          "reconciliation.completed",
+          "surplus.matched",
+          "inventory.changed",
+          "supplier_offer.changed"
+        ],
+        "title": "EventType"
       },
       "FacilityOut": {
         "properties": {
@@ -2868,6 +3175,33 @@
           "items"
         ],
         "title": "Page[SourceRequestOut]"
+      },
+      "Page_WebhookOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[WebhookOut]"
       },
       "PlanLine": {
         "properties": {
@@ -3578,6 +3912,27 @@
         ],
         "title": "Status"
       },
+      "StreamTicketOut": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "Pass as `?ticket=` to GET /events/stream (EventSource cannot send headers)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Open the stream before this; it lasts 60 seconds."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_at"
+        ],
+        "title": "StreamTicketOut"
+      },
       "TelemetryBatch": {
         "properties": {
           "readings": {
@@ -3660,7 +4015,8 @@
           "DECLINE",
           "EXPIRY",
           "MANUAL",
-          "RECOMMENDATION_EXPIRED"
+          "RECOMMENDATION_EXPIRED",
+          "STOCK_CHANGE"
         ],
         "title": "Trigger"
       },
@@ -3778,6 +4134,114 @@
         ],
         "title": "VerifyIn",
         "description": "`method` is required: the hub records only the count method the user stated."
+      },
+      "WebhookCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "title": "Event Types"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret",
+            "description": "Shown only now. Verify `X-CareE-Signature: sha256=<hex HMAC-SHA256 of the raw body>` with it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "created_at",
+          "secret"
+        ],
+        "title": "WebhookCreated"
+      },
+      "WebhookIn": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Event Types"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "event_types"
+        ],
+        "title": "WebhookIn"
+      },
+      "WebhookOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "title": "Event Types"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "created_at"
+        ],
+        "title": "WebhookOut"
       }
     },
     "securitySchemes": {

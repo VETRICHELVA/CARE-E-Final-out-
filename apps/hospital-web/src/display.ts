@@ -36,6 +36,7 @@ export const TRIGGER_LABELS: Record<string, string> = {
   EXPIRY: "A request expired",
   MANUAL: "Manual re-run",
   RECOMMENDATION_EXPIRED: "Recommendation expired",
+  STOCK_CHANGE: "Stock or offers changed",
 };
 
 export const PRIORITY_LABELS: Record<string, string> = { CRITICAL: "Critical", ROUTINE: "Routine" };

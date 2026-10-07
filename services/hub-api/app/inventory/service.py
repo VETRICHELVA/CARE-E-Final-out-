@@ -1,5 +1,7 @@
 """Inventory batches: create, edit, verify and CSV import. Every change writes an audit row
-in the same transaction. Writers are HOSPITAL-org users with `inventory.edit` (router)."""
+and an `inventory.changed` event (own org only) in the same transaction. Writers are
+HOSPITAL-org users with `inventory.edit` (router). The routers then re-run waiting shortages
+(`shortages.service.rematch_waiting`, which imports this module)."""
 
 import csv
 import io
@@ -17,7 +19,9 @@ from app.audit import service as audit
 from app.auth.models import User
 from app.catalog.models import Product
 from app.db import flush_or_conflict
+from app.domain.events import EventType
 from app.errors import BAD_VALUE, AppError, is_data_error
+from app.events import service as events
 from app.inventory.models import QTY_FIELDS, InventoryBatch, VerificationEvent
 from app.inventory.schemas import (
     BatchCreate,
@@ -55,6 +59,21 @@ def _duplicate(batch_no: str) -> str:
     return f"Batch {batch_no} of this product already exists at this facility."
 
 
+async def _changed(session: AsyncSession, user: User, batches: list[InventoryBatch]) -> None:
+    """One `inventory.changed` event per write, to the batches' own org only: other orgs
+    never learn about a hospital's stock records, only what matching offers them."""
+    if batches:
+        await events.emit(
+            session,
+            EventType.INVENTORY_CHANGED,
+            [user.org_id],
+            {
+                "batch_ids": [b.id for b in batches],
+                "product_ids": sorted({b.product_id for b in batches}, key=str),
+            },
+        )
+
+
 async def own_facility(session: AsyncSession, user: User, facility_id: uuid.UUID) -> Facility:
     facility = await session.get(Facility, facility_id)
     if facility is None:
@@ -86,6 +105,7 @@ async def create_batch(session: AsyncSession, user: User, body: BatchCreate) -> 
         raise AppError(400, "validation", "Unknown product.", {"product_id": str(body.product_id)})
     batch = InventoryBatch(org_id=user.org_id, **body.model_dump(exclude={"reason"}))
     await _insert(session, user, batch, f"{ENTITY}.created", body.reason)
+    await _changed(session, user, [batch])
     return batch
 
 
@@ -105,6 +125,7 @@ async def update_batch(
     await audit.record(
         session, user, ENTITY, batch.id, f"{ENTITY}.updated", before, changes, body.reason
     )
+    await _changed(session, user, [batch])
     return batch
 
 
@@ -130,6 +151,7 @@ async def verify_batch(
     await audit.record(
         session, user, ENTITY, batch.id, f"{ENTITY}.verified", before, after, body.reason
     )
+    await _changed(session, user, [batch])
     return batch
 
 
@@ -159,9 +181,10 @@ def _row_batch(
 
 async def import_csv(
     session: AsyncSession, user: User, facility_id: uuid.UUID, raw: bytes, reason: str | None
-) -> ImportResult:
+) -> tuple[ImportResult, set[uuid.UUID]]:
     """Insert every valid row; skip invalid ones and report them by CSV line number
-    (the header is line 1). A bad file (encoding, header) is a 400 for the whole file."""
+    (the header is line 1). A bad file (encoding, header) is a 400 for the whole file.
+    Also returns the products of the inserted rows."""
     await own_facility(session, user, facility_id)
     try:
         reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
@@ -179,16 +202,19 @@ async def import_csv(
     # validated codes if the catalog grows to thousands.
     products = {p.code: p for p in await session.scalars(select(Product))}
     # ponytail: one savepoint + audit row per line; fine for store-sized files (1 MB cap)
-    inserted, errors = 0, []
+    inserted: list[InventoryBatch] = []
+    errors = []
     for line, row in rows:
         try:
             batch = _row_batch(row, products, user, facility_id)
             await _insert(session, user, batch, f"{ENTITY}.imported", reason)
-            inserted += 1
+            inserted.append(batch)
         except (ValueError, AppError) as e:
             errors.append(RowError(line=line, message=_row_error(e)))
         except DBAPIError as e:  # its savepoint was rolled back; the other rows go on
             if not is_data_error(e):
                 raise
             errors.append(RowError(line=line, message=BAD_VALUE))
-    return ImportResult(inserted=inserted, errors=errors)
+    await _changed(session, user, inserted)
+    result = ImportResult(inserted=len(inserted), errors=errors)
+    return result, {b.product_id for b in inserted}

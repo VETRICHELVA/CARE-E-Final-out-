@@ -29,8 +29,9 @@
 | S05 | GET /shortages/{id}/match-runs/latest | requester's org | Candidates with gate results and reasons; landed cost for supplier sources only |
 | S06 | GET /source-requests?direction=incoming\|outgoing&status=&shortage_id= | any | `direction` required. incoming: requests to the caller's org; outgoing: requests for its shortages. Both sides see qty, status, deadlines, `held_qty`, `hold_expires_at` and any decline reason; only the source sees `holds` (its batch ids) |
 | S06 | POST /source-requests/{id}/accept, POST /source-requests/{id}/decline | `source_request.respond` (source org only, else 403) | Body `{reason?}`. Accept places tentative holds; 409 `conflict` if the stock no longer covers it (the request is then EXPIRED, "Stock changed before acceptance.", and matching re-runs; `details: {requested_qty, transferable_qty}`). Decline re-runs matching without the org. 409 `invalid_transition` if not REQUESTED, or if the response deadline has passed (the request is then EXPIRED) |
-| S07 | GET /events/stream | any | Server-sent events for the caller's org |
-| S07 | GET/POST/DELETE /webhooks | org admin | Subscriptions |
+| S07 | POST /events/ticket | any | `{ticket, expires_at}`: a 60-second ticket that opens the stream as the caller (a browser EventSource cannot send the Authorization header). It is refused as an access token, and an access token is refused as a ticket |
+| S07 | GET /events/stream?ticket=&last_event_id= | any (ticket or Bearer token) | Server-sent events for the caller's org only (see Realtime). Each message is `id: <seq>` + `data: <envelope>`; `: heartbeat` after 15 s idle; closes after 15 min. `Last-Event-ID` header or `last_event_id` replays the org's events published after that id; more than 1,000 missed sends `event: reset` instead. Malformed `Last-Event-ID`: 400 |
+| S07 | GET /webhooks, POST /webhooks, DELETE /webhooks/{id} | org admin (ADMIN role) | Own org's subscriptions only (403 otherwise). POST `{url (http/https, max 2048), event_types (≥ 1 known type), reason?}` → 201 with `secret`, shown only then; GET never returns it. DELETE → 204 and stops its deliveries. Create and delete are audited |
 | S09 | GET /recommendations/{id} | requester's org | |
 | S09 | POST /recommendations/{id}/approve \| reject \| escalate | `recommendation.approve` | |
 | S09 | GET /purchase-orders, POST /purchase-orders/{id}/acknowledge \| reject \| dispatch | `po.respond` | Supplier side |
@@ -53,7 +54,7 @@
 The AI service has its own API (S13, S17): `POST /copilot/ask`, `POST /chat/draft`.
 
 ## Events
-Written to EventOutbox in the same transaction as the state change, then published by a worker: to Redis pub/sub for the SSE stream, and to webhook subscriptions.
+Written to EventOutbox in the same transaction as the state change (`app.events.service.emit`), so a rolled-back change never publishes anything. The arq worker (`make worker`) publishes committed rows in order about every second: it gives each a publish sequence number (`seq`, the SSE `id`), publishes it on one Redis channel per org in `org_ids`, and schedules its webhook deliveries.
 
 Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "data": {…} }`
 
@@ -70,11 +71,20 @@ Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "
 | coldchain.excursion / coldchain.device_silent / coldchain.recovered | Cold-chain events | shipment_id, observed_value, threshold |
 | reconciliation.completed | Reconciliation done | shortage_id, outcome, residual_shortage_id |
 | surplus.matched | A surplus post matches a shortage or forecast | surplus_id, org_id |
+| inventory.changed | A batch is created, edited, verified or imported (S04) | batch_ids, product_ids |
+| supplier_offer.changed | A supplier offer is created or updated (S04) | offer_id, product_id |
+
+Who receives them (`org_ids`): `shortage.status_changed` the shortage's org; `source_request.*` the requester's and the source's orgs; `inventory.changed` and `supplier_offer.changed` the writing org only (other orgs see only what matching offers them). Built in S07: the shortage, source request, inventory and offer events. The others are emitted by the sections that build those records.
+
+An inventory or offer change also re-runs, in the same transaction, every other org's MATCHING shortage for that product whose latest run found no eligible source and has no open request (business-rules.md §5); that run is `triggered_by = STOCK_CHANGE`.
 
 ## Webhooks
 - Signed: header `X-CareE-Signature: sha256=<HMAC of the raw body with the subscription secret>`.
-- Retries with exponential backoff (1 min doubling, capped at 1 h) for 24 h; then marked FAILED.
+- Body: the event envelope as JSON. A subscription receives only events addressed to its own org, of its `event_types`.
+- Any 2xx is delivered. Otherwise (other status, timeout after 10 s, no connection; redirects are not followed) it retries with exponential backoff (1 min doubling, capped at 1 h) for 24 h after the event was published; then marked FAILED. Each attempt is one WebhookDelivery row.
 - Receivers must treat the event `id` as idempotency key.
 
 ## Realtime in the apps
 Apps subscribe to `/events/stream` (SSE) and, on each event, invalidate the matching TanStack Query keys. They never apply event data as state on their own.
+
+`useEventStream()` in `packages/api-client` does this: it fetches a ticket, opens the stream, and maps each event type to the API paths it makes stale (`EVENT_QUERIES`). Query keys start with the path template, then params (`["/api/v1/shortages/{shortage_id}", {shortage_id}]`); a key is invalidated when its path is listed and every param the event also carries (e.g. `shortage_id`) matches. On an error or when the stream ends it reconnects after 1 s doubling to 30 s, with a new ticket and `last_event_id`; `event: reset` refetches every query. An app turns it on with `liveUpdates: true` in its `CareApp` config.

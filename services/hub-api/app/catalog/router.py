@@ -13,6 +13,7 @@ from app.catalog.schemas import OfferIn, OfferOut, ProductOut
 from app.db import SessionDep
 from app.orgs.models import OrgType
 from app.pagination import Cursor, Limit, Page, paginate
+from app.shortages.service import rematch_waiting
 
 router = APIRouter(tags=["catalog"])
 
@@ -53,7 +54,9 @@ async def put_offer(
     user: Annotated[User, Depends(require(Capability.PO_RESPOND, OrgType.SUPPLIER))],
     session: SessionDep,
 ) -> OfferOut:
-    """Create or update one offer of the caller's supplier org (SUPPLIER orgs only)."""
+    """Create or update one offer of the caller's supplier org (SUPPLIER orgs only). Then
+    re-runs other orgs' "No eligible source" shortages for the product (§5)."""
     offer = await service.put_offer(session, user, body)
+    await rematch_waiting(session, [offer.product_id], user.org_id)
     await session.commit()
     return OfferOut.model_validate(offer)

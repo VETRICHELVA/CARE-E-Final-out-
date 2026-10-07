@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
 from app.auth.models import User
+from app.domain.events import EventType
 from app.domain.resolution import TRANSFER, TRANSFER_SPLIT
 from app.domain.source_request import (
     ACTIVE_HOLD,
@@ -27,6 +28,7 @@ from app.domain.source_request import (
     response_deadline,
 )
 from app.domain.state_machine import transition
+from app.events import service as events
 from app.shortages.models import MatchRun, Shortage
 from app.source_requests.models import Hold, SourceRequest
 
@@ -114,8 +116,18 @@ async def create_requests(
             f"Match run {run.run_no} planned a {planned['type']} from this source.",
             org_id=shortage.org_id,
         )
-        # S07: emit("source_request.created", source_request_id, shortage_id, product_id,
-        #           qty, deadline) to the requester's and the source's orgs.
+        await events.emit(
+            session,
+            EventType.SOURCE_REQUEST_CREATED,
+            [shortage.org_id, sr.source_org_id],
+            {
+                "source_request_id": sr.id,
+                "shortage_id": shortage.id,
+                "product_id": shortage.product_id,
+                "qty": sr.qty,
+                "deadline": sr.sla_deadline,
+            },
+        )
     return created
 
 
@@ -146,7 +158,12 @@ async def move_request(
         reason,
         org_id=shortage.org_id,
     )
-    # S07: emit("source_request.status_changed", source_request_id, from=before, to=sr.status)
+    await events.emit(
+        session,
+        EventType.SOURCE_REQUEST_STATUS_CHANGED,
+        [shortage.org_id, sr.source_org_id],
+        {"source_request_id": sr.id, "from": before, "to": sr.status},
+    )
 
 
 async def add_hold(

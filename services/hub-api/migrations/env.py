@@ -4,6 +4,7 @@ from logging.config import fileConfig
 import app.audit.models
 import app.auth.models
 import app.catalog.models
+import app.events.models
 import app.inventory.models
 import app.iot.models
 import app.orgs.models

@@ -15,11 +15,13 @@ from app.inventory.models import InventoryBatch
 from app.inventory.schemas import BatchCreate, BatchOut, BatchUpdate, ImportResult, VerifyIn
 from app.orgs.models import OrgType
 from app.pagination import Cursor, Limit, Page, paginate
+from app.shortages.service import rematch_waiting
 from app.source_requests.holds import held_by_batch
 
 router = APIRouter(prefix="/inventory/batches", tags=["inventory"])
 
-# Batch writes: `inventory.edit` in a HOSPITAL org (business-rules.md §2).
+# Batch writes: `inventory.edit` in a HOSPITAL org (business-rules.md §2). Each write then
+# re-runs other orgs' "No eligible source" shortages for the product (§5), in its transaction.
 Editor = Annotated[User, Depends(require(Capability.INVENTORY_EDIT, OrgType.HOSPITAL))]
 MAX_CSV_BYTES = 1_000_000
 
@@ -46,6 +48,7 @@ async def _out(session: AsyncSession, batch: InventoryBatch) -> BatchOut:
 @router.post("", status_code=201)
 async def create_batch(body: BatchCreate, user: Editor, session: SessionDep) -> BatchOut:
     batch = await service.create_batch(session, user, body)
+    await rematch_waiting(session, [batch.product_id], user.org_id)
     await session.commit()
     return BatchOut.of(batch, service.today())
 
@@ -77,7 +80,8 @@ async def import_batches(
         raw += chunk
         if len(raw) > MAX_CSV_BYTES:
             raise AppError(400, "validation", "The CSV file is larger than 1 MB.")
-    result = await service.import_csv(session, user, facility_id, bytes(raw), reason)
+    result, product_ids = await service.import_csv(session, user, facility_id, bytes(raw), reason)
+    await rematch_waiting(session, product_ids, user.org_id)
     await session.commit()
     return result
 
@@ -87,6 +91,7 @@ async def update_batch(
     batch_id: uuid.UUID, body: BatchUpdate, user: Editor, session: SessionDep
 ) -> BatchOut:
     batch = await service.update_batch(session, user, batch_id, body)
+    await rematch_waiting(session, [batch.product_id], user.org_id)
     out = await _out(session, batch)
     await session.commit()
     return out
@@ -99,6 +104,7 @@ async def verify_batch(
     """Record a physical count: writes a VerificationEvent, sets last_verified_at, and a
     count that differs from on_hand replaces it."""
     batch = await service.verify_batch(session, user, batch_id, body)
+    await rematch_waiting(session, [batch.product_id], user.org_id)
     out = await _out(session, batch)
     await session.commit()
     return out
