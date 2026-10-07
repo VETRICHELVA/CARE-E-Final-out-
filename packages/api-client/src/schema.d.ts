@@ -272,6 +272,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shortages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shortages
+         * @description The caller's own org's shortages, newest first.
+         */
+        get: operations["list_shortages_api_v1_shortages_get"];
+        put?: never;
+        /**
+         * Create Shortage
+         * @description Create a shortage in the caller's org. The hub computes the shortfall and runs the
+         *     first match, so the shortage comes back MATCHING.
+         */
+        post: operations["create_shortage_api_v1_shortages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Shortage */
+        get: operations["get_shortage_api_v1_shortages__shortage_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Shortage
+         * @description Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.
+         */
+        post: operations["cancel_shortage_api_v1_shortages__shortage_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun Match
+         * @description Manual re-run while the shortage is OPEN or MATCHING; otherwise 409.
+         */
+        post: operations["rerun_match_api_v1_shortages__shortage_id__match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/match-runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest Match Run
+         * @description Any user of the requester's org: eligible candidates by rank, then rejected ones with
+         *     every failed gate's reason.
+         */
+        get: operations["latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -446,6 +549,53 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /**
+         * CandidateOut
+         * @description What the requester's org sees of a source: no batch ids or raw stock figures.
+         */
+        CandidateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            source_type: components["schemas"]["SourceType"];
+            /**
+             * Transferable Qty
+             * @description Hospital sources: hub-computed.
+             */
+            transferable_qty: number | null;
+            /**
+             * Offered Qty
+             * @description Supplier sources: the offer's available qty.
+             */
+            offered_qty: number | null;
+            /** Gate Results */
+            gate_results: components["schemas"]["GateOut"][];
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Landed Cost Paise
+             * @description Eligible candidates only.
+             */
+            landed_cost_paise: number | null;
+            /** Eta Hours */
+            eta_hours: number;
+            /** Reliability */
+            reliability: number;
+            /**
+             * Rank
+             * @description 1 = best; eligible candidates only.
+             */
+            rank: number | null;
+        };
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -465,6 +615,15 @@ export interface components {
             address: string;
             /** Has Cold Storage */
             has_cold_storage: boolean;
+        };
+        /** GateOut */
+        GateOut: {
+            /** Gate */
+            gate: string;
+            /** Passed */
+            passed: boolean;
+            /** Reason */
+            reason: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -491,6 +650,40 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** MatchRunOut */
+        MatchRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Run No */
+            run_no: number;
+            triggered_by: components["schemas"]["Trigger"];
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Excluded Org Ids */
+            excluded_org_ids: string[];
+            planned_resolution: components["schemas"]["PlannedResolution"] | null;
+            /**
+             * Reason
+             * @description "No eligible source" when nothing is eligible.
+             */
+            reason: string | null;
+            /**
+             * Candidates
+             * @description Eligible by rank, then rejected.
+             */
+            candidates: components["schemas"]["CandidateOut"][];
         };
         /** MeOut */
         MeOut: {
@@ -611,6 +804,53 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ShortageOut] */
+        Page_ShortageOut_: {
+            /** Items */
+            items: components["schemas"]["ShortageOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** PlanLine */
+        PlanLine: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            source_type: components["schemas"]["SourceType"];
+            /** Qty */
+            qty: number;
+            /** Landed Cost Paise */
+            landed_cost_paise: number;
+            /** Eta Hours */
+            eta_hours: number;
+        };
+        /** PlannedResolution */
+        PlannedResolution: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "TRANSFER" | "TRANSFER_SPLIT" | "BUY";
+            /** Lines */
+            lines: components["schemas"]["PlanLine"][];
+            /**
+             * Alternatives
+             * @description The best BUY, or for a BUY the next one.
+             */
+            alternatives: components["schemas"]["PlanLine"][];
+        };
+        /**
+         * Priority
+         * @enum {string}
+         */
+        Priority: "CRITICAL" | "ROUTINE";
         /** ProductOut */
         ProductOut: {
             /**
@@ -652,6 +892,11 @@ export interface components {
             type: string;
             location: components["schemas"]["Location"];
         };
+        /** ReasonIn */
+        ReasonIn: {
+            /** Reason */
+            reason?: string | null;
+        };
         /** RefreshIn */
         RefreshIn: {
             /** Refresh Token */
@@ -664,6 +909,118 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * ShortageCreate
+         * @description Any unknown field is a 422, except `shortfall`: the hub computes it
+         *     (business-rules.md §1), so a client value is accepted and ignored.
+         */
+        ShortageCreate: {
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /**
+             * Min Shelf Life Days
+             * @description Defaults to the product's default_min_shelf_life_days.
+             */
+            min_shelf_life_days?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ShortageOut */
+        ShortageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Shortfall
+             * @description Hub-computed max(0, qty_required - qty_local_usable); never taken as input.
+             */
+            readonly shortfall: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /** Min Shelf Life Days */
+            min_shelf_life_days: number;
+            status: components["schemas"]["Status"];
+            /** Notes */
+            notes: string | null;
+            /** Parent Shortage Id */
+            parent_shortage_id: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ShortageSource
+         * @enum {string}
+         */
+        ShortageSource: "FORM" | "CHAT";
+        /**
+         * SourceType
+         * @enum {string}
+         */
+        SourceType: "HOSPITAL" | "SUPPLIER";
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "DRAFT" | "OPEN" | "MATCHING" | "AWAITING_DECISION" | "IN_FULFILLMENT" | "RECEIVED" | "RESOLVED" | "PARTIALLY_RESOLVED" | "CANCELLED";
         /** TokenPair */
         TokenPair: {
             /** Access Token */
@@ -678,6 +1035,11 @@ export interface components {
             /** Expires In */
             expires_in: number;
         };
+        /**
+         * Trigger
+         * @enum {string}
+         */
+        Trigger: "CREATE" | "DECLINE" | "EXPIRY" | "MANUAL" | "RECOMMENDATION_EXPIRED";
         /** UserOut */
         UserOut: {
             /**
@@ -1238,6 +1600,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shortages_api_v1_shortages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ShortageOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_shortage_api_v1_shortages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shortage_api_v1_shortages__shortage_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_shortage_api_v1_shortages__shortage_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rerun_match_api_v1_shortages__shortage_id__match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
                 };
             };
             /** @description Validation Error */

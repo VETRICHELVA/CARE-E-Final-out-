@@ -8,7 +8,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | S02 | Hub foundation: auth, orgs, roles, audit | done | 2026-10-05 | 62 hub tests on a separate `care_test` DB + Redis DB 15; spec Conventions gained 429 `rate_limited` and named error codes |
 | S03 | Frontend foundation and API client | done | 2026-10-05 | React 19 + react-router + Tailwind v4 + shadcn; apps on :5173/:5174/:5175 call the hub through a Vite `/api` proxy (no hub CORS yet); 32 Vitest tests + 3-test Playwright login smoke (`make e2e`); client regenerated after S04 merged |
 | S04 | Catalog and inventory | done | 2026-10-05 | 40-product catalog (`SURG-KIT-A`, `DIAG-RDK`, `IV-CAN-20G`); 134 hub tests; batch writes HOSPITAL-only, offer writes SUPPLIER-only, a verify count replaces on_hand (business-rules §2 updated); dev seed adds Supplier X and SwiftMed Logistics |
-| S05 | Shortages and the matching engine | todo | | |
+| S05 | Shortages and the matching engine | done | 2026-10-07 | 232 hub tests (Scenario 1 fixture, split, every gate pass/fail, every ranking tiebreak); `planned_resolution` stored on MatchRun, excluded orgs carry into later runs; cold_chain gate fails every cold-chain product until S11 adds vehicles |
 | S06 | Source requests, holds and timers | todo | | |
 | S07 | Events, webhooks and live updates | todo | | |
 | S08 | Hospital app: inventory, shortages, requests | todo | | |
@@ -67,6 +67,11 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S03 → S08/S10/S11] The nav shows every route to every role (e.g. delivery-web "Driver jobs" is for DRIVER); hide entries by capability when the screens land.
 - [S03 → S20] The login rate limit (5/min/IP, every attempt counts) applies to local e2e runs; the smoke test uses 3 logins, so a second `make e2e` within ~60 s gets 429. "make e2e ×3" needs a test-configurable limit or a pause.
 - [S03 → S20] e2e is not in CI (it needs Postgres, Redis and a seeded hub); add a CI e2e job.
+- [S05 → S06] Matching calls `batch_transferable(r, today)` with no held qty; count active holds as `reserved` (§2) once holds exist. `cancel_shortage` must release holds and supersede requests then. `run_match(..., exclude=[org])` is the hook for a decline/expiry re-run.
+- [S05 → S07] Shortage transitions and match runs emit no `shortage.status_changed` events yet; a "No eligible source" shortage stays MATCHING and needs the S07 re-run on inventory/offer change.
+- [S05 → S11] `COLD_CHAIN_VEHICLE_ON_RECORD = False` in `app/shortages/service.py`: with no Vehicle table every cold-chain product (e.g. Rapid Diagnostic Kit, Scenario 2) fails the cold_chain gate. Replace with a cold-chain Vehicle query, and swap `ROUTING` to OSRM with haversine fallback.
+- [S05 → S19] Candidate reliability is always `DEFAULT_RELIABILITY` (70); read ReliabilityScore once it exists.
+- [S05 → S08] `GET /shortages/{id}/match-runs/latest` returns eligible candidates by rank, then rejected ones with every gate's result; `planned_resolution` is null with `reason: "No eligible source"` when nothing is eligible.
 - [S03 → S20] Apps reach the hub through a Vite dev proxy, so the hub has no CORS yet; restrict CORS to the three app origins for any non-proxied deployment.
 
 ## Known gaps
