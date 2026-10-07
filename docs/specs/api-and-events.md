@@ -76,7 +76,7 @@ Envelope: `{ "id", "type", "occurred_at", "org_ids": [orgs allowed to see it], "
 
 Who receives them (`org_ids`): `shortage.status_changed` the shortage's org; `source_request.*` the requester's and the source's orgs; `inventory.changed` and `supplier_offer.changed` the writing org only (other orgs see only what matching offers them). Built in S07: the shortage, source request, inventory and offer events. The others are emitted by the sections that build those records.
 
-An inventory or offer change also re-runs, in the same transaction, every other org's MATCHING shortage for that product whose latest run found no eligible source and has no open request (business-rules.md §5); that run is `triggered_by = STOCK_CHANGE`.
+An inventory or offer change also re-runs, in the same transaction, every other org's MATCHING shortage for that product whose latest run found no eligible source and has no open request (business-rules.md §5); that run is `triggered_by = STOCK_CHANGE`. Released tentative holds re-run the same shortages from the worker after the release commits (business-rules.md §5).
 
 ## Webhooks
 - Signed: header `X-CareE-Signature: sha256=<HMAC of the raw body with the subscription secret>`.

@@ -242,7 +242,7 @@ async def test_a_cancel_emits_the_shortage_transition_and_each_superseded_reques
     }
 
 
-async def test_a_request_transition_writes_one_audit_row_and_one_event(
+async def test_a_request_transition_writes_one_audit_row_per_org_and_one_event(
     session: AsyncSession, world: World, products: dict[str, Product], client_for: ClientFor
 ) -> None:
     shortage = await scenario1(session, world, products)
@@ -257,9 +257,10 @@ async def test_a_request_transition_writes_one_audit_row_and_one_event(
         )
     )
     events_ = await outbox(session, EventType.SOURCE_REQUEST_STATUS_CHANGED)
-    assert [(r.before, r.after["status"]) for r in audited if r.after] == [
-        ({"status": "REQUESTED"}, "TENTATIVE_HOLD")
-    ]
+    # B's row and its mirror in A's trail (a source's answer); one event for both orgs.
+    assert sorted((str(r.org_id), r.after["status"]) for r in audited if r.after) == sorted(
+        [(str(world.hospital_b.id), "TENTATIVE_HOLD"), (str(world.hospital_a.id), "TENTATIVE_HOLD")]
+    )
     assert [data(e) for e in events_] == [
         {
             "source_request_id": str(sr.id),

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from typing import Any
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -29,7 +29,7 @@ from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.ranking import Option, is_near_expiry, rank
 from app.domain.resolution import BUY, TRANSFER_SPLIT, Line, Plan, plan
 from app.domain.shortage import TRANSITIONS, Status, shortfall
-from app.domain.source_request import OPEN_REQUEST
+from app.domain.source_request import OPEN_REQUEST, HoldStatus
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
 from app.events import service as events
@@ -48,7 +48,7 @@ from app.shortages.models import (
 from app.shortages.schemas import NO_ELIGIBLE_SOURCE, MatchRunOut, PlannedResolution, ShortageCreate
 from app.source_requests import holds
 from app.source_requests.hooks import on_sources_ready
-from app.source_requests.models import SourceRequest
+from app.source_requests.models import Hold, SourceRequest
 
 ENTITY = "shortage"
 SNAPSHOT = (
@@ -78,6 +78,7 @@ ROUTING: RoutingProvider = HaversineProvider()  # S11 adds OSRM, falling back to
 # every cold-chain product fails the cold_chain gate; S11 replaces this with a Vehicle query.
 COLD_CHAIN_VEHICLE_ON_RECORD = False
 STOCK_CHANGED = "Inventory or supplier offers for this product changed."
+HOLDS_RELEASED = "Held stock for this product was released."
 
 
 async def get_shortage(
@@ -244,6 +245,62 @@ async def rematch_waiting(
             await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=STOCK_CHANGED, now=now)
         )
     return runs
+
+
+async def rematch_after_releases(session: AsyncSession, *, now: datetime | None = None) -> int:
+    """§5: released holds free stock, so re-run each shortage still waiting on "No eligible
+    source" (MATCHING, latest run without a plan, no open request) for whose product a hold
+    was released after that run. Called by the worker after the release has committed, in
+    its own transaction holding no other locks, so it sees the freed stock and cannot
+    deadlock with the release. The new run is newer than the release, so each release
+    re-runs a shortage once. A shortage another transaction holds is skipped this tick and
+    picked up on the next one. The caller commits. Returns how many shortages were re-run."""
+    now = now or datetime.now(UTC)
+    latest = (
+        select(MatchRun.shortage_id, func.max(MatchRun.run_no).label("run_no"))
+        .group_by(MatchRun.shortage_id)
+        .subquery()
+    )
+    other = Shortage.__table__.alias("released_for")
+    released_since_run = (
+        exists()
+        .where(
+            Hold.source_request_id == SourceRequest.id,
+            SourceRequest.shortage_id == other.c.id,
+            other.c.product_id == Shortage.product_id,
+            Hold.status == HoldStatus.RELEASED,
+            Hold.updated_at > MatchRun.ts,
+        )
+        .correlate(Shortage, MatchRun)
+    )
+    no_plan = or_(
+        MatchRun.planned_resolution.is_(None),
+        func.jsonb_typeof(MatchRun.planned_resolution) == "null",
+    )
+    waiting = await session.scalars(
+        select(Shortage)
+        .join(latest, latest.c.shortage_id == Shortage.id)
+        .join(
+            MatchRun,
+            (MatchRun.shortage_id == Shortage.id) & (MatchRun.run_no == latest.c.run_no),
+        )
+        .where(
+            Shortage.status == Status.MATCHING,
+            no_plan,
+            released_since_run,
+            ~exists().where(
+                SourceRequest.shortage_id == Shortage.id,
+                SourceRequest.status.in_(OPEN_REQUEST),
+            ),
+        )
+        .order_by(Shortage.id)
+        .with_for_update(of=Shortage, skip_locked=True)
+    )
+    count = 0
+    for shortage in list(waiting):
+        await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=HOLDS_RELEASED, now=now)
+        count += 1
+    return count
 
 
 async def latest_run(session: AsyncSession, shortage_id: uuid.UUID) -> MatchRun | None:

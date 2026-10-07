@@ -50,3 +50,33 @@ async def record(
     session.add(row)
     await session.flush()
     return row
+
+
+async def mirror(
+    session: AsyncSession,
+    row: AuditLog,
+    org_id: uuid.UUID,
+    *,
+    hide: tuple[str, ...] = (),
+) -> AuditLog:
+    """Copy `row` into another org's trail for an action that org must see (e.g. a source's
+    answer to the requester's request). The actor's id is left out (org isolation) and so are
+    the `hide` fields of `before`/`after`; the reason and its source are kept as recorded."""
+
+    def strip(values: dict[str, Any] | None) -> dict[str, Any] | None:
+        return None if values is None else {k: v for k, v in values.items() if k not in hide}
+
+    copy = AuditLog(
+        actor_id=None,
+        org_id=org_id,
+        entity=row.entity,
+        entity_id=row.entity_id,
+        action=row.action,
+        before=strip(row.before),
+        after=strip(row.after),
+        reason=row.reason,
+        reason_source=row.reason_source,
+    )
+    session.add(copy)
+    await session.flush()
+    return copy

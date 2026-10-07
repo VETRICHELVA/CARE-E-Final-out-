@@ -20,6 +20,7 @@ from app.db import SessionLocal
 from app.domain import config
 from app.events import service as events
 from app.events import webhooks
+from app.shortages import service as shortages
 from app.source_requests import service as source_requests
 
 WEBHOOK_INTERVAL_SECONDS = 5
@@ -40,6 +41,15 @@ async def expire_source_requests(ctx: dict[str, Any]) -> int:
     sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
     async with sessionmaker() as session:
         return await source_requests.expire_overdue(session)
+
+
+async def rematch_after_releases(ctx: dict[str, Any]) -> int:
+    """Re-run shortages waiting on "No eligible source" once held stock is released (§5)."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    async with sessionmaker() as session:
+        count = await shortages.rematch_after_releases(session)
+        await session.commit()
+        return count
 
 
 async def publish_events(ctx: dict[str, Any]) -> int:
@@ -64,6 +74,12 @@ class WorkerSettings:
             second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
             run_at_startup=True,
             unique=True,  # one run per tick, however many workers are up
+        ),
+        cron(
+            rematch_after_releases,
+            second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
+            run_at_startup=True,
+            unique=True,
         ),
         cron(publish_events, second=set(range(60)), run_at_startup=True, unique=True),
         cron(

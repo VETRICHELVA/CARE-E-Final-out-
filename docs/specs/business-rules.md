@@ -52,7 +52,7 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
   2. Else, if 2–3 hospital sources together cover it → TRANSFER_SPLIT, taking the greedy top-ranked sources until covered (max `MAX_SPLIT_SOURCES` = 3).
   3. Else → BUY from the top-ranked eligible supplier.
 - The best BUY option is always computed and stored as an alternative, so the fallback is ready.
-- If nothing is eligible: no recommendation; the shortage stays MATCHING with reason "No eligible source", and is re-run when inventory or offers change.
+- If nothing is eligible: no recommendation; the shortage stays MATCHING with reason "No eligible source", and is re-run when inventory or offers change, or when tentative holds on that product are released (a cancel, decline or expiry frees held stock). Released holds are picked up by the worker within one timer tick, after the release commits; the run is `triggered_by = STOCK_CHANGE` with the cause "Held stock for this product was released."
 
 ## 6. Time limits
 | Limit | CRITICAL | ROUTINE |
@@ -122,6 +122,7 @@ A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or 
 - `reason_source = USER` only when the user typed a reason. Otherwise `reason_source = SYSTEM` and the reason is "No reason was entered." (for user actions) or a factual system cause such as "Response deadline passed." (for timers).
 - The system never writes statements about physical events that no one recorded.
 - Each row belongs to one org. A source request's row goes to the org of the user who acted (the source's accept or decline to the source org, the requester's cancel to the requester's org); a system change of a request (created, expired, superseded after a decline or expiry) to the requester's org. A hold's rows always go to the source org. A hold released because of another org's action is recorded as SYSTEM with a factual cause (e.g. "The requester cancelled the shortage."), never with the other org's user id or typed text.
+- A source's accept or decline is also mirrored into the requester's org (so the requester's own trail shows the answer, as in Scenario 1 step 8): the same action, reason and `reason_source`, with `actor_id` null and without `responded_by`.
 
 ## 11. Cold chain (S15)
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].

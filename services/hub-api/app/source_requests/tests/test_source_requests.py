@@ -157,17 +157,21 @@ async def test_accept_places_tentative_holds_earliest_expiry_first(
     ]
     assert short.id not in {h.batch_id for h in await holds_of(session, request_b)}
 
-    rows = await audit_of(session, request_b.id)
-    assert [(x.action, x.after) for x in rows][-1][0] == "source_request.status_changed"
-    last = rows[-1]
-    assert (last.before, last.after["status"], last.reason, last.reason_source) == (  # type: ignore[index]
-        {"status": "REQUESTED"},
-        "TENTATIVE_HOLD",
-        "OK",
-        "USER",
-    )
-    # B's user acted, so the row is in B's org (business-rules.md §10).
-    assert (last.actor_id, last.org_id) == (world.users["b.STORE_MANAGER"].id, b.id)
+    rows = [r for r in await audit_of(session, request_b.id) if r.action.endswith("changed")]
+    by_org = {r.org_id: r for r in rows}
+    assert len(rows) == 2 and set(by_org) == {b.id, world.hospital_a.id}
+    for row in rows:
+        assert (row.before, row.after["status"], row.reason, row.reason_source) == (  # type: ignore[index]
+            {"status": "REQUESTED"},
+            "TENTATIVE_HOLD",
+            "OK",
+            "USER",
+        )
+    # B's user acted, so B's org has the row with B's user (business-rules.md §10); A's trail
+    # mirrors it without the user's id.
+    assert by_org[b.id].actor_id == world.users["b.STORE_MANAGER"].id
+    mirrored = by_org[world.hospital_a.id]
+    assert mirrored.actor_id is None and "responded_by" not in (mirrored.after or {})
     for h in await holds_of(session, request_b):
         (created,) = await audit_of(session, h.id)
         assert (created.action, created.org_id) == ("hold.created", b.id)
@@ -294,14 +298,22 @@ async def test_scenario_1_step_3_decline_without_reason_reruns_without_b(
         None,
         "SYSTEM",
     )
-    row = (await audit_of(session, request_b.id))[-1]
-    assert (row.before, row.after["status"], row.reason, row.reason_source) == (  # type: ignore[index]
-        {"status": "REQUESTED"},
-        "DECLINED",
-        "No reason was entered.",
-        "SYSTEM",
-    )
-    assert row.actor_id == world.users["b.STORE_MANAGER"].id
+    declined = [
+        r
+        for r in await audit_of(session, request_b.id)
+        if r.after and r.after.get("status") == "DECLINED"
+    ]
+    for row in declined:
+        assert (row.before, row.reason, row.reason_source) == (
+            {"status": "REQUESTED"},
+            "No reason was entered.",
+            "SYSTEM",
+        )
+    # Step 8: B's decline is in A's own trail (no B user id), and in B's with B's user.
+    assert {(r.org_id, r.actor_id) for r in declined} == {
+        (world.hospital_a.id, None),
+        (world.hospital_b.id, world.users["b.STORE_MANAGER"].id),
+    }
     # Step 4: C, D and E still fail, so the re-run (without B) buys from Y, X as alternative.
     run = (await runs_of(session, shortage))[-1]
     assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (
@@ -487,10 +499,15 @@ async def test_the_source_org_audit_shows_its_own_accept(
             "USER",
         )
     ]
-    # Hospital A's trail keeps the system rows for its own request, not B's answer.
+    # Hospital A's trail mirrors B's answer without B's user id or responded_by.
     a_audit = await client_for(world.users["a.APPROVER"])
     a_items = (await a_audit.get(f"/audit?entity=source_request&entity_id={request_b.id}")).json()
-    assert [x["action"] for x in a_items["items"]] == ["source_request.created"]
+    answer = [x for x in a_items["items"] if x["action"] == "source_request.status_changed"]
+    assert [
+        (x["after"]["status"], x["actor_id"], x["reason"], x["reason_source"]) for x in answer
+    ] == [("TENTATIVE_HOLD", None, "Spare", "USER")]
+    assert "responded_by" not in answer[0]["after"]
+    assert str(world.users["b.STORE_MANAGER"].id) not in str(a_items)
 
 
 async def test_the_source_org_audit_shows_its_own_decline(
@@ -609,3 +626,51 @@ async def test_list_incoming_and_outgoing(
         r = await supplier.get(f"/source-requests?direction={direction}")
         assert (r.status_code, r.json()["items"]) == (200, [])
     assert (await supplier.get("/source-requests")).status_code == 422
+
+
+# --- released holds re-run waiting shortages (§5) -----------------------------------------------
+
+
+async def test_released_holds_rerun_a_shortage_waiting_on_no_eligible_source(
+    session: AsyncSession, now: datetime
+) -> None:
+    product = Product(
+        code="REL-1",
+        name="Release test kit",
+        category="Test",
+        unit="each",
+        default_min_shelf_life_days=30,
+    )
+    session.add(product)
+    source = await add_org(session, "Source S", OrgType.HOSPITAL, 12.93, 77.62)
+    source_user = await add_user(session, source, "STORE_MANAGER", "sm@s.test")
+    first = await add_org(session, "Requester One", OrgType.HOSPITAL, 12.97, 77.59)
+    second = await add_org(session, "Requester Two", OrgType.HOSPITAL, 12.98, 77.60)
+    first_user = await add_user(session, first, "REQUESTER", "req@one.test")
+    second_user = await add_user(session, second, "REQUESTER", "req@two.test")
+    await add_batch(session, source, product, now, on_hand=1000, expiry_days=180)
+    authorize(session, product, source)
+
+    held = await create_shortage(
+        session, first_user, product, now, qty_required=850, qty_local_usable=0
+    )
+    (sr,) = await requests_of(session, held)
+    await service.accept(session, source_user, sr.id, None, now=now)
+    waiting = await create_shortage(
+        session, second_user, product, now, qty_required=850, qty_local_usable=0
+    )
+    assert (await runs_of(session, waiting))[-1].planned_resolution is None  # 150 left
+    assert await shortages.rematch_after_releases(session) == 0  # nothing released yet
+
+    await shortages.cancel_shortage(session, first_user, held.id, None)  # releases 850
+    assert await shortages.rematch_after_releases(session) == 1
+
+    runs = await runs_of(session, waiting)
+    assert [r.triggered_by for r in runs] == ["CREATE", "STOCK_CHANGE"]
+    plan = runs[-1].planned_resolution
+    assert plan is not None and plan["type"] == "TRANSFER"
+    assert [line["source_org_id"] for line in plan["lines"]] == [str(source.id)]
+    row = (await audit_of(session, runs[-1].id))[-1]
+    assert (row.reason, row.reason_source) == (shortages.HOLDS_RELEASED, "SYSTEM")
+    # The new run is newer than the release, so the same release never re-runs it again.
+    assert await shortages.rematch_after_releases(session) == 0

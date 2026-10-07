@@ -146,13 +146,14 @@ async def move_request(
 ) -> None:
     """Every request transition goes through here: state machine (409 if not allowed),
     any extra field `changes`, one audit row in the acting user's org (the requester's org
-    for a system change) and one event."""
+    for a system change; a source's answer is mirrored there without the user's id) and one
+    event."""
     before = transition(sr, to, REQUEST_TRANSITIONS)
     for name, value in changes.items():
         setattr(sr, name, value)
     await session.flush()
     await session.refresh(sr)  # updated_at is set by the database
-    await audit.record(
+    row = await audit.record(
         session,
         actor,
         REQUEST,
@@ -163,6 +164,10 @@ async def move_request(
         reason,
         org_id=actor.org_id if actor else shortage.org_id,
     )
+    if actor is not None and actor.org_id != shortage.org_id:
+        # The source answered: the requester's trail records it too, without the source
+        # user's id (demo-scenarios.md Scenario 1 step 8; CLAUDE.md rule 6).
+        await audit.mirror(session, row, shortage.org_id, hide=("responded_by",))
     await events.emit(
         session,
         EventType.SOURCE_REQUEST_STATUS_CHANGED,

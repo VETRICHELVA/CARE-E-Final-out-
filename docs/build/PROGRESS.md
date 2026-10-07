@@ -111,8 +111,9 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S07 → S20] The stream ticket travels in the query string (EventSource cannot send headers), so uvicorn's access log records it; it expires after 60 s and opens only the stream. Turn off uvicorn's access log (`app/log.py` already logs path and status) if that matters.
 - [S07 → hub] arq logs every `publish_events` run (once a second) at INFO; lower arq's log level if the worker log gets noisy.
 - [S07 → S19] CRITICAL parallel requests will emit one `source_request.created` per source, each to that source and the requester only; the stock-change re-run (`shortages.service.rematch_waiting`) skips shortages with a plan or open requests, so it does not interfere.
-- [S07 → decision] Released holds trigger no re-run: when a cancel, decline or expiry releases tentative holds, other MATCHING shortages for that product left on "No eligible source" are not re-run (only inventory and offer writes call `rematch_waiting`). Awaiting the user's decision on adding hold release as a §5 trigger.
+- [S07 → decision] Resolved 2026-10-07 (user approved): released holds re-run waiting shortages. `rematch_after_releases` in `app/shortages/service.py` runs as the worker job `rematch_after_releases` every timer tick, after the release commits (no deadlock with the releasing transaction, sees the freed stock, durable because it is derived from Hold.updated_at > latest run ts). business-rules.md §5 updated.
 - [S07 review] Fixed after merge: the stock-change re-run now waits for each waiting shortage's lock (only shortages with no open request are locked), so a concurrent write's stock is never missed; the publisher commits `seq` before sending to Redis, so Last-Event-ID replay never misses an event.
+- [S06 → S20] Scenario 1 step 8 resolved 2026-10-07 (user approved): a source's accept or decline is mirrored into the requester's audit trail (`audit.mirror`, actor_id null, no `responded_by`), so Hospital A's own `GET /audit` shows B's decline. business-rules.md §10 updated.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
