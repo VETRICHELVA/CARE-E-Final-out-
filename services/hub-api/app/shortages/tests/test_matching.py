@@ -16,6 +16,8 @@ from app.orgs.models import Facility, Organization, OrgType
 from app.shortages import service
 from app.shortages.models import Candidate, Priority, Shortage, Trigger
 from app.shortages.schemas import CandidateOut, MatchRunOut, ShortageCreate
+from app.source_requests import holds
+from app.source_requests import service as sr_service
 
 pytestmark = pytest.mark.anyio
 
@@ -233,9 +235,13 @@ async def test_scenario_1_rerun_without_b_buys_from_y_with_x_as_alternative(
 ) -> None:
     shortage = await create(session, world, products["SURG-KIT-A"])
     b = scenario1["Hospital B"]
-    run = await service.run_match(
-        session, shortage, Trigger.DECLINE, exclude=[b.id], reason="Hospital B declined.", now=NOW
+    # B declines its source request (S06), which re-runs matching without B.
+    (request,) = await holds.open_requests(session, shortage.id)
+    await sr_service.decline(
+        session, world.users["b.STORE_MANAGER"], request.id, "Hospital B declined.", now=NOW
     )
+    run = await service.latest_run(session, shortage.id)
+    assert run is not None
     out = await latest(session, shortage)
     c = by_name(out)
     assert "Hospital B" not in c

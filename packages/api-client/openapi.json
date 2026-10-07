@@ -1260,6 +1260,246 @@
           }
         }
       }
+    },
+    "/api/v1/source-requests": {
+      "get": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "List Source Requests",
+        "description": "`incoming`: requests the caller's org is asked to supply. `outgoing`: requests sent\nfor the caller's org's shortages. Newest first; optional `status` and `shortage_id`.",
+        "operationId": "list_source_requests_api_v1_source_requests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "direction",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Direction"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RequestStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "shortage_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shortage Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SourceRequestOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/source-requests/{request_id}/accept": {
+      "post": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "Accept Source Request",
+        "description": "Source org only. Places TENTATIVE holds on the source's batches (earliest expiry\nfirst) and moves the request to TENTATIVE_HOLD. 409 `conflict` if the stock no longer\ncovers it: the request is then EXPIRED (\"Stock changed before acceptance.\") and matching\nre-runs. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.",
+        "operationId": "accept_source_request_api_v1_source_requests__request_id__accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/source-requests/{request_id}/decline": {
+      "post": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "Decline Source Request",
+        "description": "Source org only; the reason is optional. Matching re-runs without this org for the\nshortage. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.",
+        "operationId": "decline_source_request_api_v1_source_requests__request_id__decline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1524,6 +1764,12 @@
             "title": "Transferable",
             "description": "Hub-computed (business-rules.md \u00a72); never accepted as input.",
             "readOnly": true
+          },
+          "held_qty": {
+            "type": "integer",
+            "title": "Held Qty",
+            "description": "Units under active source-request holds; counted as reserved.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -1543,7 +1789,8 @@
           "last_verified_at",
           "created_at",
           "updated_at",
-          "transferable"
+          "transferable",
+          "held_qty"
         ],
         "title": "BatchOut"
       },
@@ -1774,6 +2021,14 @@
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
       },
+      "Direction": {
+        "type": "string",
+        "enum": [
+          "incoming",
+          "outgoing"
+        ],
+        "title": "Direction"
+      },
       "FacilityOut": {
         "properties": {
           "name": {
@@ -1856,6 +2111,50 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HoldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HoldStatus"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "batch_id",
+          "qty",
+          "status",
+          "expires_at"
+        ],
+        "title": "HoldOut"
+      },
+      "HoldStatus": {
+        "type": "string",
+        "enum": [
+          "TENTATIVE",
+          "FIRM",
+          "RELEASED"
+        ],
+        "title": "HoldStatus"
       },
       "ImportResult": {
         "properties": {
@@ -2347,6 +2646,33 @@
         ],
         "title": "Page[ShortageOut]"
       },
+      "Page_SourceRequestOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRequestOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[SourceRequestOut]"
+      },
       "PlanLine": {
         "properties": {
           "candidate_id": {
@@ -2578,6 +2904,18 @@
         ],
         "title": "RefreshIn"
       },
+      "RequestStatus": {
+        "type": "string",
+        "enum": [
+          "REQUESTED",
+          "TENTATIVE_HOLD",
+          "DECLINED",
+          "EXPIRED",
+          "SUPERSEDED",
+          "CONFIRMED"
+        ],
+        "title": "RequestStatus"
+      },
       "RowError": {
         "properties": {
           "line": {
@@ -2800,6 +3138,184 @@
           "CHAT"
         ],
         "title": "ShortageSource"
+      },
+      "SourceRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "requester_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Requester Org Id"
+          },
+          "requester_org_name": {
+            "type": "string",
+            "title": "Requester Org Name"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "sla_deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sla Deadline",
+            "description": "When the source must accept or decline."
+          },
+          "hold_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Expires At",
+            "description": "When the tentative holds lapse unless the requester decides."
+          },
+          "held_qty": {
+            "type": "integer",
+            "title": "Held Qty",
+            "description": "Units under active (TENTATIVE or FIRM) holds."
+          },
+          "holds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HoldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holds",
+            "description": "Source org only; null for the requester."
+          },
+          "responded_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded By"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "decline_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decline Reason"
+          },
+          "reason_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "SYSTEM"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Source",
+            "description": "On a decline: USER if the source typed a reason, else SYSTEM."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "requester_org_id",
+          "requester_org_name",
+          "source_org_id",
+          "source_org_name",
+          "product_id",
+          "priority",
+          "required_by",
+          "qty",
+          "status",
+          "sla_deadline",
+          "hold_expires_at",
+          "held_qty",
+          "holds",
+          "responded_by",
+          "responded_at",
+          "decline_reason",
+          "reason_source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceRequestOut",
+        "description": "Both orgs see the request itself. Only the source org sees which of its batches are\nheld (`holds`); the requester sees the total (`held_qty`) and the hold deadline."
       },
       "SourceType": {
         "type": "string",

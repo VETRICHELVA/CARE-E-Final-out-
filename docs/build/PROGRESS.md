@@ -9,7 +9,7 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 | S03 | Frontend foundation and API client | done | 2026-10-05 | React 19 + react-router + Tailwind v4 + shadcn; apps on :5173/:5174/:5175 call the hub through a Vite `/api` proxy (no hub CORS yet); 32 Vitest tests + 3-test Playwright login smoke (`make e2e`); client regenerated after S04 merged |
 | S04 | Catalog and inventory | done | 2026-10-05 | 40-product catalog (`SURG-KIT-A`, `DIAG-RDK`, `IV-CAN-20G`); 134 hub tests; batch writes HOSPITAL-only, offer writes SUPPLIER-only, a verify count replaces on_hand (business-rules §2 updated); dev seed adds Supplier X and SwiftMed Logistics |
 | S05 | Shortages and the matching engine | done | 2026-10-07 | 235 hub tests (Scenario 1 fixture, split, every gate pass/fail, every ranking tiebreak); spec-guardian fixes: shortfall 0 → 400, ranking on per-unit landed cost, hospital costs hidden from the requester (business-rules §1/§5 updated); `planned_resolution` stored on MatchRun, excluded orgs carry into later runs; cold_chain gate fails every cold-chain product until S11 adds vehicles |
-| S06 | Source requests, holds and timers | todo | | |
+| S06 | Source requests, holds and timers | done | 2026-10-07 | 286 hub tests (51 new): TRANSFER/SPLIT runs send requests, accept row-locks batches (race test on a committed DB: one 200, one 409), decline/expiry/stock-change go through `release_and_rematch`, arq worker (`make worker`) every 30 s and at startup; tunables in `app/domain/config.py` overridable by env; migration 0004 |
 | S07 | Events, webhooks and live updates | todo | | |
 | S08 | Hospital app: inventory, shortages, requests | todo | | |
 | S09 | Recommendations, approvals, purchase orders | todo | | |
@@ -75,6 +75,14 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - [S05 → S20] Shelf life at delivery uses `(now + eta).date()`, so a run whose delivery lands after 00:00 UTC reports Hospital D as "Expires in 11 days" instead of Scenario 1's "12 days". The S05 test pins `now` at 06:00 UTC; the S20 seed or demo must pin the time of day too, or relax that wording check.
 - [S05 → S08] `GET /shortages/{id}/match-runs/latest` returns eligible candidates by rank, then rejected ones with every gate's result; `planned_resolution` is null with `reason: "No eligible source"` when nothing is eligible.
 - [S03 → S20] Apps reach the hub through a Vite dev proxy, so the hub has no CORS yet; restrict CORS to the three app origins for any non-proxied deployment.
+- [S06 → S07] Hook points marked `# S07: emit(...)`: `source_request.created` in `app/source_requests/holds.py:create_requests`, `source_request.status_changed` in `holds.move_request` (every request transition passes through it). Shortage transitions still go through `shortages.service.move_shortage`.
+- [S06 → S09] `on_sources_ready(session, shortage, run)` in `app/source_requests/hooks.py` is a no-op TODO; it runs once every request of a run's plan is TENTATIVE_HOLD, and right after a BUY run (§7 step 4 "immediately for BUY"). Approval should use `holds.move_hold` (TENTATIVE → FIRM) and `holds.move_request` (→ CONFIRMED); rejection or recommendation expiry should call `service.release_and_rematch(..., trigger=Trigger.RECOMMENDATION_EXPIRED)`, which already moves AWAITING_DECISION or IN_FULFILLMENT back to MATCHING. Hold rows already carry `expires_at`; the timer expires TENTATIVE_HOLD requests when a tentative hold lapses.
+- [S06 → S08] `GET /source-requests?direction=incoming|outgoing` (required) with optional `status`, `shortage_id`. The requester's view has `holds: null` (the source's batch ids stay private) but `held_qty` and `hold_expires_at`. Batches gained read-only `held_qty`; `transferable` is net of active holds. Accept's 409 `conflict` has `details: {requested_qty, transferable_qty}`; a late answer is 409 `invalid_transition` and the request comes back EXPIRED. A manual re-run while requests are open is 409 `conflict` with `details.open_source_request_ids`.
+- [S06 → S09/S20] Audit org per row (`audit.record` writes one row): request transitions go to the requester's org (its shortage's trail shows B's decline, Scenario 1 step 8); hold rows go to the source org. So the source's `GET /audit` shows its holds but not its own accept/decline rows. Decide whether cross-org transitions should write one row per involved org.
+- [S06 → S19] CRITICAL parallel requests: the partial unique index `uq_source_request_open` allows one open request per (shortage, source org). `holds.release` supersedes every open request of the shortage; S19's "first to accept wins" must supersede only the siblings and keep the winner's holds.
+- [S06 → S11] PATCH or verify can drop a batch's `on_hand` below its active holds (transferable then shows 0, but the hold stays). Decide whether to refuse that or release/shrink holds; FIRM holds are drawn down at pickup (§9).
+- [S06 → S20] Demo timers need `make worker` running beside `make hub`; `make e2e` does not start it. The concurrency tests create a second database `<test db without _test>_conc_test` (needs CREATEDB, as `care_test` already does).
+- [S06 → any] The conftest guard refuses a test DB whose name does not end in `_test` (e.g. `care_test_s06`); use names like `care_s06_test` for per-agent test databases.
 
 ## Known gaps
 <!-- Things knowingly left incomplete, with the reason. -->
@@ -87,6 +95,9 @@ Updated by `/build-section` at the end of each section. Status: `todo`, `in prog
 - S03: openapi-typescript 7.13 declares a peer of TypeScript ^5.x; with the pinned TS 6.0.3 pnpm warns, but codegen works and its output typechecks.
 - S03: `@vitejs/plugin-react` is pinned `~6.1.1` because pnpm's minimum-release-age check rejected 6.1.2 (published the same day).
 - S03: Light theme only; there are no dark-mode tokens.
+- S06: arq is pinned at 0.25.0 (Dec 2022): arq 0.26 requires redis-py < 6 and the hub uses redis-py 8.1. 0.25 was checked against redis-py 8 (cron ticks, `make worker`); revisit when arq supports redis 6+.
+- S06: Accept re-checks quantity and shelf life against current stock (holds included) but not the other gates (freshness, authorization, deadline); those were checked by the match run that created the request.
+- S06: A split decline or expiry supersedes the other sources' requests and releases their holds (§7 step 6 "every related hold"); the re-run may ask them again.
 
 ## Hardening checklist (S20)
 <!-- Record the outcome of each check from S20. -->

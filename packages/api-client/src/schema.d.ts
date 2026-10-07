@@ -375,6 +375,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/source-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Requests
+         * @description `incoming`: requests the caller's org is asked to supply. `outgoing`: requests sent
+         *     for the caller's org's shortages. Newest first; optional `status` and `shortage_id`.
+         */
+        get: operations["list_source_requests_api_v1_source_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-requests/{request_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Source Request
+         * @description Source org only. Places TENTATIVE holds on the source's batches (earliest expiry
+         *     first) and moves the request to TENTATIVE_HOLD. 409 `conflict` if the stock no longer
+         *     covers it: the request is then EXPIRED ("Stock changed before acceptance.") and matching
+         *     re-runs. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.
+         */
+        post: operations["accept_source_request_api_v1_source_requests__request_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Source Request
+         * @description Source org only; the reason is optional. Matching re-runs without this org for the
+         *     shortage. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.
+         */
+        post: operations["decline_source_request_api_v1_source_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -524,6 +589,11 @@ export interface components {
              * @description Hub-computed (business-rules.md §2); never accepted as input.
              */
             readonly transferable: number;
+            /**
+             * Held Qty
+             * @description Units under active source-request holds; counted as reserved.
+             */
+            readonly held_qty: number;
         };
         /**
          * BatchUpdate
@@ -597,6 +667,11 @@ export interface components {
              */
             rank: number | null;
         };
+        /**
+         * Direction
+         * @enum {string}
+         */
+        Direction: "incoming" | "outgoing";
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -631,6 +706,32 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HoldOut */
+        HoldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Qty */
+            qty: number;
+            status: components["schemas"]["HoldStatus"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * HoldStatus
+         * @enum {string}
+         */
+        HoldStatus: "TENTATIVE" | "FIRM" | "RELEASED";
         /** ImportResult */
         ImportResult: {
             /** Inserted */
@@ -812,6 +913,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[SourceRequestOut] */
+        Page_SourceRequestOut_: {
+            /** Items */
+            items: components["schemas"]["SourceRequestOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** PlanLine */
         PlanLine: {
             /**
@@ -906,6 +1014,11 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /**
+         * RequestStatus
+         * @enum {string}
+         */
+        RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
         /** RowError */
         RowError: {
             /** Line */
@@ -1015,6 +1128,93 @@ export interface components {
          * @enum {string}
          */
         ShortageSource: "FORM" | "CHAT";
+        /**
+         * SourceRequestOut
+         * @description Both orgs see the request itself. Only the source org sees which of its batches are
+         *     held (`holds`); the requester sees the total (`held_qty`) and the hold deadline.
+         */
+        SourceRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Requester Org Id
+             * Format: uuid
+             */
+            requester_org_id: string;
+            /** Requester Org Name */
+            requester_org_name: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            /** Qty */
+            qty: number;
+            status: components["schemas"]["RequestStatus"];
+            /**
+             * Sla Deadline
+             * Format: date-time
+             * @description When the source must accept or decline.
+             */
+            sla_deadline: string;
+            /**
+             * Hold Expires At
+             * @description When the tentative holds lapse unless the requester decides.
+             */
+            hold_expires_at: string | null;
+            /**
+             * Held Qty
+             * @description Units under active (TENTATIVE or FIRM) holds.
+             */
+            held_qty: number;
+            /**
+             * Holds
+             * @description Source org only; null for the requester.
+             */
+            holds: components["schemas"]["HoldOut"][] | null;
+            /** Responded By */
+            responded_by: string | null;
+            /** Responded At */
+            responded_at: string | null;
+            /** Decline Reason */
+            decline_reason: string | null;
+            /**
+             * Reason Source
+             * @description On a decline: USER if the source typed a reason, else SYSTEM.
+             */
+            reason_source: ("USER" | "SYSTEM") | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * SourceType
          * @enum {string}
@@ -1801,6 +2001,111 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_requests_api_v1_source_requests_get: {
+        parameters: {
+            query: {
+                direction: components["schemas"]["Direction"];
+                status?: components["schemas"]["RequestStatus"] | null;
+                shortage_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SourceRequestOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_source_request_api_v1_source_requests__request_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_source_request_api_v1_source_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRequestOut"];
                 };
             };
             /** @description Validation Error */

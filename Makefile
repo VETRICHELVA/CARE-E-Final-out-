@@ -5,7 +5,7 @@ export
 SERVICES := hub-api ai-service iot-ingest
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install up down hub migrate migration client seed lint test test-hub test-web e2e
+.PHONY: install up down hub worker migrate migration client seed lint test test-hub test-web e2e
 
 install:
 	for s in $(SERVICES); do (cd services/$$s && uv sync) || exit 1; done
@@ -21,6 +21,10 @@ down:
 
 hub:
 	cd services/hub-api && uv run uvicorn --factory app.main:create_app --reload --port 8000
+
+# arq worker for the hub's timers (source request and hold deadlines).
+worker:
+	cd services/hub-api && uv run arq app.worker.WorkerSettings
 
 migrate:
 	cd services/hub-api && uv run alembic upgrade head

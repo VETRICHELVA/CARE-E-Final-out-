@@ -95,10 +95,21 @@ class BatchOut(BaseModel):
         description="Hub-computed (business-rules.md §2); never accepted as input.",
     )
 
+    held_qty: int = Field(
+        json_schema_extra={"readOnly": True},
+        description="Units under active source-request holds; counted as reserved.",
+    )
+
     @classmethod
-    def of(cls, batch: InventoryBatch, today: date) -> "BatchOut":
-        fields = {f: getattr(batch, f) for f in cls.model_fields if f != "transferable"}
-        return cls(**fields, transferable=batch_transferable(batch, today))
+    def of(cls, batch: InventoryBatch, today: date, held_qty: int = 0) -> "BatchOut":
+        """`held_qty`: the batch's active (TENTATIVE or FIRM) holds (business-rules.md §2)."""
+        skip = {"transferable", "held_qty"}
+        fields = {f: getattr(batch, f) for f in cls.model_fields if f not in skip}
+        return cls(
+            **fields,
+            held_qty=held_qty,
+            transferable=batch_transferable(batch, today, held_qty),
+        )
 
 
 class RowError(BaseModel):
