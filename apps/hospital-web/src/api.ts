@@ -12,11 +12,10 @@ export type MatchRun = Schemas["MatchRunOut"];
 export type Candidate = Schemas["CandidateOut"];
 export type AuditRow = Schemas["AuditOut"];
 
-/** Until S07's `useEventStream()` lands, screens poll the hub this often. */
-export const POLL_MS = 10_000;
 const PAGE = 200; // the hub's maximum `limit`
 
-// Query keys are [path template, params]: S07's event handler can invalidate by path.
+// Query keys are [path template, params]: `useEventStream()` (on in app.tsx) invalidates
+// them by path when the hub reports a change, so no screen polls.
 export const keys = {
   batches: ["/api/v1/inventory/batches"] as const,
   products: ["/api/v1/products"] as const,
@@ -43,7 +42,6 @@ export function useBatches() {
       ),
     initialPageParam: undefined as Cursor,
     getNextPageParam: nextCursor,
-    refetchInterval: POLL_MS,
   });
 }
 
@@ -57,7 +55,6 @@ export function useShortages(enabled = true) {
       ),
     initialPageParam: undefined as Cursor,
     getNextPageParam: nextCursor,
-    refetchInterval: POLL_MS,
     enabled,
   });
 }
@@ -111,7 +108,6 @@ export function useShortage(id: string) {
       unwrap(
         client.GET("/api/v1/shortages/{shortage_id}", { params: { path: { shortage_id: id } } }),
       ),
-    refetchInterval: POLL_MS,
   });
 }
 
@@ -131,7 +127,6 @@ export function useLatestRun(id: string) {
         throw e;
       }
     },
-    refetchInterval: POLL_MS,
   });
 }
 
@@ -146,7 +141,6 @@ export function useAudit(entity: string, id: string, enabled: boolean) {
         }),
       ),
     enabled,
-    refetchInterval: POLL_MS,
   });
 }
 

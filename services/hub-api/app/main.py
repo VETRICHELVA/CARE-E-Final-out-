@@ -4,6 +4,7 @@ from app import errors, log
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
 from app.catalog.router import router as catalog_router
+from app.events.router import router as events_router
 from app.inventory.router import router as inventory_router
 from app.iot.router import router as iot_router
 from app.orgs.router import router as orgs_router
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
         shortages_router,
         iot_router,
         source_requests_router,
+        events_router,
     ):
         app.include_router(router, prefix=API)
 

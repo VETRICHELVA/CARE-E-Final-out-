@@ -89,5 +89,7 @@ async def after_store(
     """Hook for each device's newly stored readings (none on a replay). Still to come:
     - S14 part 3 (needs S11 Shipment): set `reading.shipment_id = device.assigned_shipment_id`
       only while that shipment is ASSIGNED, PICKED_UP or IN_TRANSIT.
-    - S07: emit `coldchain.reading` {shipment_id, temp_c, ts} for each linked reading.
+    - Then emit `coldchain.reading` {shipment_id, temp_c, ts} for each linked reading with
+      `app.events.service.emit(session, EventType.COLDCHAIN_READING, <shipment orgs>, ...)`
+      (S07 built the outbox; there is no shipment to link or address yet).
     - S15: evaluate the cold-chain rules on the linked readings."""

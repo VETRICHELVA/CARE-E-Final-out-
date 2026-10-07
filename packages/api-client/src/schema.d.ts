@@ -183,7 +183,8 @@ export interface paths {
         get: operations["list_offers_api_v1_supplier_offers_get"];
         /**
          * Put Offer
-         * @description Create or update one offer of the caller's supplier org (SUPPLIER orgs only).
+         * @description Create or update one offer of the caller's supplier org (SUPPLIER orgs only). Then
+         *     re-runs other orgs' "No eligible source" shortages for the product (§5).
          */
         put: operations["put_offer_api_v1_supplier_offers_put"];
         post?: never;
@@ -481,6 +482,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events/ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Stream Ticket
+         * @description A 60-second ticket that opens GET /events/stream as the caller (`?ticket=`), because
+         *     a browser EventSource cannot send an Authorization header.
+         */
+        post: operations["create_stream_ticket_api_v1_events_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Event Stream
+         * @description Server-sent events for the caller's org: only events whose `org_ids` include it.
+         *
+         *     Each message is `id: <seq>` and `data: <envelope>`, where the envelope is
+         *     `{id, type, occurred_at, org_ids, data}` (api-and-events.md, Events). A comment line
+         *     (`: heartbeat`) is sent after 15 seconds without events. Reconnect with the last `id` as the
+         *     `Last-Event-ID` header or `last_event_id` query parameter to replay what was missed; if too
+         *     much was missed, the stream sends `event: reset` instead, and the client should refetch.
+         *     The stream closes after 15 minutes; reconnect with a new ticket.
+         */
+        get: operations["event_stream_api_v1_events_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Webhooks
+         * @description The caller's org's subscriptions, oldest first. Secrets are never listed.
+         */
+        get: operations["list_webhooks_api_v1_webhooks_get"];
+        put?: never;
+        /**
+         * Create Webhook
+         * @description Subscribe the caller's org: events of `event_types` addressed to it are POSTed to
+         *     `url`, signed in `X-CareE-Signature`. The secret is in this response only.
+         */
+        post: operations["create_webhook_api_v1_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Webhook
+         * @description Own org's subscription only (403 otherwise). Its pending deliveries stop.
+         */
+        delete: operations["delete_webhook_api_v1_webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -734,6 +828,11 @@ export interface components {
          * @enum {string}
          */
         Direction: "incoming" | "outgoing";
+        /**
+         * EventType
+         * @enum {string}
+         */
+        EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -986,6 +1085,13 @@ export interface components {
         Page_SourceRequestOut_: {
             /** Items */
             items: components["schemas"]["SourceRequestOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[WebhookOut] */
+        Page_WebhookOut_: {
+            /** Items */
+            items: components["schemas"]["WebhookOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -1311,6 +1417,20 @@ export interface components {
          * @enum {string}
          */
         Status: "DRAFT" | "OPEN" | "MATCHING" | "AWAITING_DECISION" | "IN_FULFILLMENT" | "RECEIVED" | "RESOLVED" | "PARTIALLY_RESOLVED" | "CANCELLED";
+        /** StreamTicketOut */
+        StreamTicketOut: {
+            /**
+             * Ticket
+             * @description Pass as `?ticket=` to GET /events/stream (EventSource cannot send headers).
+             */
+            ticket: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Open the stream before this; it lasts 60 seconds.
+             */
+            expires_at: string;
+        };
         /** TelemetryBatch */
         TelemetryBatch: {
             /** Readings */
@@ -1352,7 +1472,7 @@ export interface components {
          * Trigger
          * @enum {string}
          */
-        Trigger: "CREATE" | "DECLINE" | "EXPIRY" | "MANUAL" | "RECOMMENDATION_EXPIRED";
+        Trigger: "CREATE" | "DECLINE" | "EXPIRY" | "MANUAL" | "RECOMMENDATION_EXPIRED" | "STOCK_CHANGE";
         /** UserOut */
         UserOut: {
             /**
@@ -1400,6 +1520,57 @@ export interface components {
             counted_qty: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** WebhookCreated */
+        WebhookCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Secret
+             * @description Shown only now. Verify `X-CareE-Signature: sha256=<hex HMAC-SHA256 of the raw body>` with it.
+             */
+            secret: string;
+        };
+        /** WebhookIn */
+        WebhookIn: {
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** WebhookOut */
+        WebhookOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
     };
     responses: never;
@@ -2281,6 +2452,159 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SourceRequestOut"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_stream_ticket_api_v1_events_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTicketOut"];
+                };
+            };
+        };
+    };
+    event_stream_api_v1_events_stream_get: {
+        parameters: {
+            query?: {
+                last_event_id?: number | null;
+                /** @description A stream ticket from POST /events/ticket. */
+                ticket?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_webhooks_api_v1_webhooks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WebhookOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_webhook_api_v1_webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_webhook_api_v1_webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

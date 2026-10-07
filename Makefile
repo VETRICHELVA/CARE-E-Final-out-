@@ -26,7 +26,7 @@ hub:
 ingest:
 	cd services/iot-ingest && uv run python -m app
 
-# arq worker for the hub's timers (source request and hold deadlines).
+# arq worker: deadline timers, the event publisher (SSE live updates) and webhook deliveries.
 worker:
 	cd services/hub-api && uv run arq app.worker.WorkerSettings
 

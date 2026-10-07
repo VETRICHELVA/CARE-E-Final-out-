@@ -22,6 +22,10 @@ REFRESH_TTL = timedelta(days=7)
 LOGIN_LIMIT = 5  # attempts per IP per window
 LOGIN_WINDOW_S = 60
 JWT_ALG = "HS256"
+# A stream ticket opens GET /events/stream (EventSource cannot send an Authorization header).
+# Its audience makes it useless as an access token, and an access token useless as a ticket.
+STREAM_TICKET_TTL = timedelta(seconds=60)
+STREAM_AUDIENCE = "events.stream"
 
 _hasher = PasswordHasher()
 redis_client = Redis.from_url(settings.redis_url)
@@ -64,6 +68,36 @@ def decode_access_token(token: str) -> dict[str, Any]:
         raise unauthenticated("Access token expired.") from e
     except jwt.InvalidTokenError as e:
         raise unauthenticated("Invalid access token.") from e
+    return claims
+
+
+def issue_stream_ticket(access_claims: dict[str, Any]) -> tuple[str, datetime]:
+    """A short-lived ticket for the same user and session as the access token."""
+    now = datetime.now(UTC)
+    expires_at = now + STREAM_TICKET_TTL
+    claims = {
+        "sub": access_claims["sub"],
+        "sid": access_claims["sid"],
+        "aud": STREAM_AUDIENCE,
+        "iat": now,
+        "exp": expires_at,
+    }
+    return jwt.encode(claims, settings.jwt_secret, algorithm=JWT_ALG), expires_at
+
+
+def decode_stream_ticket(ticket: str) -> dict[str, Any]:
+    try:
+        claims: dict[str, Any] = jwt.decode(
+            ticket,
+            settings.jwt_secret,
+            algorithms=[JWT_ALG],
+            audience=STREAM_AUDIENCE,
+            options={"require": ["exp", "sub", "aud"]},
+        )
+    except jwt.ExpiredSignatureError as e:
+        raise unauthenticated("Stream ticket expired.") from e
+    except jwt.InvalidTokenError as e:
+        raise unauthenticated("Invalid stream ticket.") from e
     return claims
 
 

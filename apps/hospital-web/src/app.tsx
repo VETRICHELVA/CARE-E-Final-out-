@@ -25,6 +25,7 @@ export const config: AppConfig = {
     { to: "/forecasts", label: "Forecasts" },
   ],
   routes: [{ path: "/shortages/:id", element: <ShortageDetailPage /> }],
+  liveUpdates: true,
 };
 
 export const App = () => <CareApp {...config} />;

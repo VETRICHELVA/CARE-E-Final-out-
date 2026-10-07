@@ -36,6 +36,8 @@ class Trigger(StrEnum):
     EXPIRY = "EXPIRY"
     MANUAL = "MANUAL"
     RECOMMENDATION_EXPIRED = "RECOMMENDATION_EXPIRED"
+    # §5: a "No eligible source" shortage re-runs when inventory or supplier offers change.
+    STOCK_CHANGE = "STOCK_CHANGE"
 
 
 class SourceType(StrEnum):

@@ -9,7 +9,9 @@ from app.auth.models import User
 from app.catalog.models import Product, SupplierOffer
 from app.catalog.schemas import OfferIn
 from app.db import flush_or_conflict
+from app.domain.events import EventType
 from app.errors import AppError
+from app.events import service as events
 
 CATALOG_FILE = Path(__file__).resolve().parents[4] / "scripts" / "seed" / "catalog.py"
 OFFER_FIELDS = ("unit_price_paise", "lead_time_hours", "available_qty")
@@ -65,5 +67,11 @@ async def put_offer(session: AsyncSession, user: User, body: OfferIn) -> Supplie
     after = {"product_id": offer.product_id, **{f: getattr(offer, f) for f in OFFER_FIELDS}}
     await audit.record(
         session, user, "supplier_offer", offer.id, action, before, after, body.reason
+    )
+    await events.emit(
+        session,
+        EventType.SUPPLIER_OFFER_CHANGED,
+        [user.org_id],
+        {"offer_id": offer.id, "product_id": offer.product_id},
     )
     return offer

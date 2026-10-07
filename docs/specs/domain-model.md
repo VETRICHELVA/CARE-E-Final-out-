@@ -27,7 +27,7 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **ConsumptionRecord**: org_id, product_id, date, qty (synthetic history for forecasting)
 
 ## Matching
-- **MatchRun**: shortage_id, run_no, triggered_by (CREATE | DECLINE | EXPIRY | MANUAL | RECOMMENDATION_EXPIRED), ts
+- **MatchRun**: shortage_id, run_no, triggered_by (CREATE | DECLINE | EXPIRY | MANUAL | RECOMMENDATION_EXPIRED | STOCK_CHANGE), ts
 - **Candidate**: match_run_id, source_org_id, source_type (HOSPITAL | SUPPLIER), batch_ids, transferable_qty, offered_qty, gate_results (JSON: gate → pass/fail + reason), eligible, landed_cost_paise, eta_hours, reliability, rank
 - **SourceRequest**: shortage_id, candidate_id, source_org_id, qty, status, sla_deadline, responded_by, responded_at, decline_reason, reason_source
 - **Hold**: source_request_id, batch_id, qty, status (TENTATIVE | FIRM | RELEASED), expires_at
@@ -55,9 +55,9 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 ## Records
 - **AuditLog** (append-only): actor_id (nullable for system), org_id, entity, entity_id, action (e.g. `shortage.created`), before (JSON), after (JSON), reason, reason_source (USER | SYSTEM), ts
 - **Notification**: user_id, type, payload, read_at
-- **EventOutbox**: event_type, payload, created_at, published_at
+- **EventOutbox**: event_type, org_ids, payload (the envelope), created_at, published_at, seq (publish order; the SSE event id)
 - **WebhookSubscription**: org_id, url, secret, event_types
-- **WebhookDelivery**: subscription_id, event_id, attempt, status, next_attempt_at, response_code
+- **WebhookDelivery**: subscription_id, event_id, attempt, status (PENDING | DELIVERED | RETRY_SCHEDULED | FAILED), next_attempt_at, response_code — one row per attempt; a failed attempt is RETRY_SCHEDULED (a PENDING row for the next attempt follows) or FAILED (no more attempts)
 
 ## Key relationships
 - Shortage 1–N MatchRun 1–N Candidate; a MatchRun has at most one current Recommendation.

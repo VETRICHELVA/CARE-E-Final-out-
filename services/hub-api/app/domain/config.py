@@ -45,6 +45,11 @@ class Tunables(BaseSettings):
     # §6 Timers: how often the worker looks for overdue deadlines
     timer_interval_seconds: Annotated[int, Field(gt=0, le=60)] = 30
 
+    # api-and-events.md, Webhooks: 1 min doubling, capped at 1 h, for 24 h
+    webhook_first_retry_seconds: PosInt = 60
+    webhook_max_retry_seconds: PosInt = 60 * 60
+    webhook_retry_window_hours: PosInt = 24
+
 
 _t = Tunables()
 
@@ -79,3 +84,8 @@ RECOMMENDATION_VALIDITY = {
     "ROUTINE": timedelta(minutes=_t.sla_routine_recommendation_minutes),
 }
 TIMER_INTERVAL_SECONDS = _t.timer_interval_seconds
+
+# api-and-events.md, Webhooks
+WEBHOOK_FIRST_RETRY = timedelta(seconds=_t.webhook_first_retry_seconds)
+WEBHOOK_MAX_RETRY = timedelta(seconds=_t.webhook_max_retry_seconds)
+WEBHOOK_RETRY_WINDOW = timedelta(hours=_t.webhook_retry_window_hours)
