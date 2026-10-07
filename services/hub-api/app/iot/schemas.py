@@ -4,6 +4,8 @@ from typing import Annotated
 
 from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
+from app.db import NulFreeStr
+
 # What a device may call itself; it is also an MQTT topic level, so no '/', '+' or '#'.
 DeviceName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 MAX_BATCH = 1000
@@ -52,3 +54,13 @@ class DeviceOut(BaseModel):
     type: str
     battery_level: int | None
     last_seen: datetime | None
+    assigned_shipment_id: uuid.UUID | None
+
+
+class DeviceAssignIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shipment_id: uuid.UUID | None = Field(
+        description="The shipment the device rides with; null takes it off its shipment."
+    )
+    reason: NulFreeStr | None = None

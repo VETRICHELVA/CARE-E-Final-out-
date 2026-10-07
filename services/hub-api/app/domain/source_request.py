@@ -23,6 +23,7 @@ class HoldStatus(StrEnum):
     TENTATIVE = "TENTATIVE"
     FIRM = "FIRM"
     RELEASED = "RELEASED"
+    CONSUMED = "CONSUMED"  # S11: drawn down at pickup with the batch's on_hand (§9)
 
 
 R, H = RequestStatus, HoldStatus
@@ -31,11 +32,12 @@ REQUEST_TRANSITIONS: dict[str, set[str]] = {
     R.REQUESTED: {R.TENTATIVE_HOLD, R.DECLINED, R.EXPIRED, R.SUPERSEDED},
     R.TENTATIVE_HOLD: {R.CONFIRMED, R.EXPIRED, R.SUPERSEDED},
 }
-# A tentative hold becomes FIRM on approval (S09) or is released; a FIRM hold is drawn
-# down at pickup (S11).
+# A tentative hold becomes FIRM on approval (S09) or is released; a FIRM hold is CONSUMED
+# at pickup (S11), when the batch's on_hand drops by the same qty (§9). Consuming is not a
+# release: the stock left with the shipment, so no waiting shortage re-runs for it.
 HOLD_TRANSITIONS: dict[str, set[str]] = {
     H.TENTATIVE: {H.FIRM, H.RELEASED},
-    H.FIRM: {H.RELEASED},
+    H.FIRM: {H.RELEASED, H.CONSUMED},
 }
 OPEN_REQUEST = frozenset({R.REQUESTED, R.TENTATIVE_HOLD})
 ACTIVE_HOLD = frozenset({H.TENTATIVE, H.FIRM})  # counted as `reserved` (§2)

@@ -23,11 +23,13 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app import routing
 from app.auth import service as auth_service
 from app.auth.models import Role, User
 from app.catalog.models import Product
 from app.catalog.service import seed_catalog
 from app.db import get_session
+from app.domain.costing import HaversineProvider
 from app.domain.state_machine import transition
 from app.main import create_app
 from app.orgs.models import Facility, Organization, OrgType
@@ -48,6 +50,13 @@ def password_hash() -> str:
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture(autouse=True)
+def haversine_routing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests measure distances by haversine x ROAD_FACTOR (business-rules.md §4) even when a
+    developer's .env points OSRM_URL at a running OSRM; OSRM tests use a fake OSRM."""
+    monkeypatch.setattr(routing, "ROUTING", HaversineProvider())
 
 
 @pytest.fixture(scope="session")

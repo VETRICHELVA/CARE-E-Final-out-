@@ -23,8 +23,10 @@ e2e/playwright-report/
 .env.*
 !.env.example
 
-# Local data (OSRM map files are prepared in S11)
-infra/osrm/
+# Local data: OSRM map files made by infra/osrm/prepare.sh (the script and README are kept)
+infra/osrm/*
+!infra/osrm/prepare.sh
+!infra/osrm/README.md
 
 # OS / editors
 .DS_Store

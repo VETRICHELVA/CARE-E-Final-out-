@@ -29,7 +29,12 @@ class Device(Entity):
     type: Mapped[str] = mapped_column(String(16), default=DeviceType.COLD_BOX)
     battery_level: Mapped[int | None]
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # S14 part 3 adds `assigned_shipment_id` (FK to shipment) once S11's Shipment exists.
+    # The shipment this box rides with (POST /devices/{id}/assign). Its new readings are
+    # linked to it only while it is ASSIGNED, PICKED_UP or IN_TRANSIT. `use_alter`: shipment
+    # also points here (`shipment.device_id`), so the two tables reference each other.
+    assigned_shipment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("shipment.id", use_alter=True), index=True
+    )
 
 
 class SensorReading(Entity):
@@ -45,4 +50,6 @@ class SensorReading(Entity):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     temp_c: Mapped[float]
     battery: Mapped[int | None]
-    # S14 part 3 adds `shipment_id`: the device's assigned shipment while it is active.
+    # The device's assigned shipment when the reading was stored, if that shipment was
+    # ASSIGNED, PICKED_UP or IN_TRANSIT; otherwise null.
+    shipment_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("shipment.id"), index=True)

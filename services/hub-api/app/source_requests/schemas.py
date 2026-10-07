@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.domain.source_request import HoldStatus, RequestStatus
+from app.domain.source_request import ACTIVE_HOLD, HoldStatus, RequestStatus
 from app.shortages.models import Priority, Shortage
 from app.source_requests.models import Hold, SourceRequest
 
@@ -67,7 +67,7 @@ class SourceRequestOut(BaseModel):
         holds: list[Hold],
         viewer_org_id: uuid.UUID,
     ) -> "SourceRequestOut":
-        active = [h for h in holds if h.status != HoldStatus.RELEASED]
+        active = [h for h in holds if h.status in ACTIVE_HOLD]
         tentative = [h.expires_at for h in active if h.status == HoldStatus.TENTATIVE]
         source_view = viewer_org_id == sr.source_org_id
         return cls(

@@ -10,6 +10,7 @@ from app.iot.router import router as iot_router
 from app.orgs.router import router as orgs_router
 from app.purchase_orders.router import router as purchase_orders_router
 from app.recommendations.router import router as recommendations_router
+from app.shipments.router import router as shipments_router
 from app.shortages.router import router as shortages_router
 from app.source_requests.router import router as source_requests_router
 
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
         events_router,
         recommendations_router,
         purchase_orders_router,
+        shipments_router,
     ):
         app.include_router(router, prefix=API)
 
