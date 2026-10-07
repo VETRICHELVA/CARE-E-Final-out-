@@ -1,13 +1,23 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Shortage } from "../api";
-import { auditRows, matchRun, meAs, page, products, shortage } from "../test/fixtures";
+import {
+  auditRows,
+  matchRun,
+  meAs,
+  NOW,
+  page,
+  products,
+  requestToB,
+  shortage,
+} from "../test/fixtures";
 import { fakeHub, hubError, renderAs } from "../test/hub";
 import { ShortageDetailPage } from "./shortage-detail";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const base = `/api/v1/shortages/${shortage.id}`;
@@ -18,6 +28,7 @@ const hub = (extra: Record<string, unknown> = {}, s: Partial<Shortage> = {}) =>
     "GET /api/v1/shortages/{id}/match-runs/latest": matchRun,
     "GET /api/v1/products": products,
     "GET /api/v1/audit": page(auditRows),
+    "GET /api/v1/source-requests": page([]),
     ...extra,
   });
 
@@ -231,5 +242,80 @@ describe("Shortage detail", () => {
       .map((li) => li.querySelector(".font-medium")?.textContent);
     expect(titles).toEqual(["Reported", "Status: Matching", "Match run #1"]);
     expect(fake.to("GET", "/api/v1/audit")).toHaveLength(0);
+  });
+
+  describe("source requests panel", () => {
+    const declined = {
+      ...requestToB,
+      id: "5e000000-0000-4000-8000-0000000000b0",
+      status: "DECLINED" as const,
+      responded_at: "2026-10-07T06:04:00Z",
+      decline_reason: null,
+      reason_source: "SYSTEM" as const,
+    };
+
+    it("lists each request's source, state and live deadline for this shortage", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      const fake = hub({ "GET /api/v1/source-requests": page([requestToB, declined]) });
+      show();
+      const table = await screen.findByRole("table", { name: "Source requests" });
+      const [open, closed] = within(table).getAllByRole("row").slice(1);
+      expect(within(open!).getByText("Hospital B")).toBeTruthy();
+      expect(within(open!).getByText("850 kits")).toBeTruthy();
+      expect(within(open!).getByText("Requested")).toBeTruthy();
+      expect(within(open!).getByTestId("countdown").textContent).toBe("14:31 left");
+      expect(within(closed!).getByText("Declined")).toBeTruthy();
+      expect(within(closed!).getByTestId("decline-reason").textContent).toBe(
+        "No reason was entered.",
+      );
+      const query = fake.to("GET", "/api/v1/source-requests")[0]!.url.searchParams;
+      expect(query.get("direction")).toBe("outgoing");
+      expect(query.get("shortage_id")).toBe(shortage.id);
+    });
+
+    it("shows the hold and its expiry once the source accepts", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(NOW);
+      hub({
+        "GET /api/v1/source-requests": page([
+          {
+            ...requestToB,
+            status: "TENTATIVE_HOLD",
+            held_qty: 850,
+            hold_expires_at: "2026-10-07T06:30:30Z",
+          },
+        ]),
+      });
+      show();
+      const table = await screen.findByRole("table", { name: "Source requests" });
+      expect(within(table).getByText("Tentative hold")).toBeTruthy();
+      expect(within(table).getByText("850 kits on hold")).toBeTruthy();
+      expect(within(table).getByTestId("countdown").textContent).toBe("30:00 left");
+    });
+
+    it("has an empty state and shows the hub's error", async () => {
+      hub();
+      show();
+      expect(await screen.findByText("No source requests yet")).toBeTruthy();
+      cleanup();
+
+      hub({ "GET /api/v1/source-requests": hubError(500, "internal_error", "Hub is down.") });
+      show();
+      expect((await screen.findByRole("alert")).textContent).toContain("Hub is down.");
+    });
+
+    it("hides Re-run match while a source request is still open", async () => {
+      hub({ "GET /api/v1/source-requests": page([requestToB]) });
+      show();
+      await screen.findByRole("table", { name: "Source requests" });
+      expect(screen.getByRole("button", { name: "Cancel shortage" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
+      cleanup();
+
+      hub({ "GET /api/v1/source-requests": page([declined]) });
+      show();
+      expect(await screen.findByRole("button", { name: "Re-run match" })).toBeTruthy();
+    });
   });
 });

@@ -19,6 +19,11 @@ export const OPEN_STATES = [
   "RECEIVED",
 ];
 
+/** business-rules.md §8: a SourceRequest the source may still answer. */
+export const ANSWERABLE = "REQUESTED";
+/** SourceRequest states that are still open (the hub refuses a manual re-run while any is). */
+export const OPEN_REQUEST_STATES = new Set(["REQUESTED", "TENTATIVE_HOLD"]);
+
 /** Gate names from business-rules.md §3. */
 export const GATE_LABELS: Record<string, string> = {
   product: "Product",

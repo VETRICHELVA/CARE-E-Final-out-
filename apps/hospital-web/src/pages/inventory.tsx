@@ -22,6 +22,8 @@ import { formatDate, qty } from "../display";
 import { EditBatchDialog, ImportDialog, VerifyBatchDialog } from "./inventory-dialogs";
 
 const TRANSFERABLE_HINT = "Computed by the hub from the batch; it cannot be edited.";
+const HELD_HINT =
+  "Units on hold for accepted source requests, counted as reserved; set by the hub only.";
 
 /** Batch writes need `inventory.edit` in a HOSPITAL org (api-and-events.md, S04). */
 export function useCanEditInventory() {
@@ -69,6 +71,9 @@ export function InventoryPage() {
                   <TableHead className="text-right">Allocated</TableHead>
                   <TableHead className="text-right">Safety</TableHead>
                   <TableHead className="text-right">Quarantined</TableHead>
+                  <TableHead className="text-right" title={HELD_HINT}>
+                    Held
+                  </TableHead>
                   <TableHead
                     className="bg-primary/10 text-right font-semibold text-primary"
                     title={TRANSFERABLE_HINT}
@@ -95,6 +100,14 @@ export function InventoryPage() {
                       <TableCell className="text-right">{qty(b.allocated, product)}</TableCell>
                       <TableCell className="text-right">{qty(b.safety_stock, product)}</TableCell>
                       <TableCell className="text-right">{qty(b.quarantined, product)}</TableCell>
+                      <TableCell
+                        className="text-right"
+                        title={HELD_HINT}
+                        aria-readonly
+                        data-testid="held"
+                      >
+                        {qty(b.held_qty, product)}
+                      </TableCell>
                       <TableCell
                         className="bg-primary/5 text-right font-semibold text-primary"
                         title={TRANSFERABLE_HINT}

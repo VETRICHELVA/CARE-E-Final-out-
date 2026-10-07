@@ -2,6 +2,7 @@ import { type AppConfig, CareApp } from "@care-e/ui";
 import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { InventoryPage } from "./pages/inventory";
+import { RequestsPage } from "./pages/requests";
 import { ShortageDetailPage } from "./pages/shortage-detail";
 import { ShortagesPage } from "./pages/shortages";
 
@@ -20,7 +21,12 @@ export const config: AppConfig = {
       capability: SHORTAGE_READERS,
       element: <ShortagesPage />,
     },
-    { to: "/requests", label: "Requests", capability: "source_request.respond" },
+    {
+      to: "/requests",
+      label: "Requests",
+      capability: "source_request.respond",
+      element: <RequestsPage />,
+    },
     { to: "/deliveries", label: "Deliveries" },
     { to: "/forecasts", label: "Forecasts" },
   ],

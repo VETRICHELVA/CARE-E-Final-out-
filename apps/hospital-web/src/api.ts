@@ -11,6 +11,12 @@ export type Shortage = Schemas["ShortageOut"];
 export type MatchRun = Schemas["MatchRunOut"];
 export type Candidate = Schemas["CandidateOut"];
 export type AuditRow = Schemas["AuditOut"];
+export type SourceRequest = Schemas["SourceRequestOut"];
+type SourceRequestQuery = {
+  direction: Schemas["Direction"];
+  status?: Schemas["RequestStatus"];
+  shortage_id?: string;
+};
 
 /** Until S07's `useEventStream()` lands, screens poll the hub this often. */
 export const POLL_MS = 10_000;
@@ -26,6 +32,9 @@ export const keys = {
   latestRun: (id: string) =>
     ["/api/v1/shortages/{shortage_id}/match-runs/latest", { shortage_id: id }] as const,
   audit: (entity: string, id: string) => ["/api/v1/audit", { entity, entity_id: id }] as const,
+  /** Every source-request list (the prefix of `sourceRequests`). */
+  allSourceRequests: ["/api/v1/source-requests"] as const,
+  sourceRequests: (query: SourceRequestQuery) => ["/api/v1/source-requests", query] as const,
 };
 
 type Cursor = string | undefined;
@@ -135,6 +144,23 @@ export function useLatestRun(id: string) {
   });
 }
 
+/** Source requests to this org (`incoming`) or for its shortages (`outgoing`), newest first. */
+export function useSourceRequests(query: SourceRequestQuery, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: keys.sourceRequests(query),
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        client.GET("/api/v1/source-requests", {
+          params: { query: { ...query, limit: PAGE, cursor: pageParam } },
+        }),
+      ),
+    initialPageParam: undefined as Cursor,
+    getNextPageParam: nextCursor,
+    refetchInterval: POLL_MS,
+    enabled,
+  });
+}
+
 /** A record's audit rows, newest first; only for users with `audit.read`. */
 export function useAudit(entity: string, id: string, enabled: boolean) {
   return useQuery({
@@ -224,14 +250,42 @@ function useRefreshShortage(id: string) {
   const queryClient = useQueryClient();
   return () =>
     Promise.all(
-      [keys.shortage(id), keys.latestRun(id), keys.shortages, keys.audit("shortage", id)].map(
-        (queryKey) => queryClient.invalidateQueries({ queryKey }),
-      ),
+      [
+        keys.shortage(id),
+        keys.latestRun(id),
+        keys.shortages,
+        keys.audit("shortage", id),
+        keys.allSourceRequests,
+      ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
 }
 
 /** No reason typed → no body, and the hub records "No reason was entered." itself. */
 const reasonBody = (reason: string | undefined) => (reason ? { reason } : undefined);
+
+// ---- Source request answers (`source_request.respond`, source org only) ----
+
+/** Accept (places tentative holds) or decline (matching re-runs without this org). Whatever the
+ *  hub answers, the lists are refetched: on a 409 the request has moved on (expired, already
+ *  answered), and the screen should show where it is now. */
+export function useRespondToRequest(answer: "accept" | "decline") {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string | undefined }) =>
+      unwrap(
+        client.POST(`/api/v1/source-requests/{request_id}/${answer}`, {
+          params: { path: { request_id: id } },
+          body: reasonBody(reason),
+        }),
+      ),
+    onSettled: () =>
+      Promise.all(
+        [keys.allSourceRequests, keys.batches].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ),
+  });
+}
 
 export function useCancelShortage(id: string) {
   const refresh = useRefreshShortage(id);

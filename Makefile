@@ -60,5 +60,7 @@ test-web:
 	pnpm test
 
 # Starts the hub and the three apps unless already running; needs `make up migrate seed` first.
+# Adds Scenario 1's batches, offers and authorizations first (the dev seed has none until S20).
 e2e:
+	cd services/hub-api && uv run python ../../e2e/seed/scenario1.py
 	pnpm --filter e2e exec playwright test

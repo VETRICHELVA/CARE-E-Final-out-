@@ -1,5 +1,6 @@
 export { CareApp, type AppConfig, type ExtraRoute, type NavItem } from "./app";
 export { ConfirmDialog } from "./confirm";
+export { Countdown, formatCountdown, isPast, useNow } from "./countdown";
 export { can, LoginPage, ProtectedRoute, useCan, useMe, useSignedIn } from "./auth";
 export { formatDateTime, formatMoney, formatQty } from "./format";
 export { EmptyState, ErrorState, Loading } from "./states";
