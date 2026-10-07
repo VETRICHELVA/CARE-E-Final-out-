@@ -35,6 +35,7 @@ from app.events import service as events
 from app.inventory.models import InventoryBatch
 from app.inventory.service import own_facility
 from app.orgs.models import Facility, Organization, OrgStatus, OrgType
+from app.recommendations import transitions as recommendations
 from app.shortages.models import (
     Candidate,
     MatchRun,
@@ -171,6 +172,9 @@ async def rerun_match(
 async def move_shortage(
     session: AsyncSession, shortage: Shortage, to: Status, actor: User | None, reason: str | None
 ) -> None:
+    """Every shortage transition: one audit row and `shortage.status_changed`. Leaving
+    AWAITING_DECISION other than by approval (a hold expired, or a cancel) also ends the
+    open recommendation, which can no longer be approved (S09)."""
     before = transition(shortage, to, TRANSITIONS)
     await session.flush()
     await session.refresh(shortage)  # updated_at is set by the database
@@ -191,6 +195,8 @@ async def move_shortage(
         [shortage.org_id],
         {"shortage_id": shortage.id, "from": before, "to": shortage.status},
     )
+    if before == Status.AWAITING_DECISION and to != Status.IN_FULFILLMENT:
+        await recommendations.close_open(session, shortage, to, reason, datetime.now(UTC))
 
 
 async def rematch_waiting(
@@ -338,7 +344,7 @@ async def run_match(
     )
     await holds.create_requests(session, shortage, run, now)
     if planned is not None and planned.type == BUY:
-        await on_sources_ready(session, shortage, run)
+        await on_sources_ready(session, shortage, run, now=now)
     return run
 
 

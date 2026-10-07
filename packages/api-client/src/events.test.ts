@@ -145,6 +145,7 @@ describe("useEventStream's connection", () => {
       "source_request.created",
       "source_request.status_changed",
       "recommendation.ready",
+      "recommendation.status_changed",
       "purchase_order.created",
       "purchase_order.status_changed",
       "shipment.created",

@@ -1,6 +1,6 @@
-"""arq worker for the hub's timers (business-rules.md §6), the event publisher and webhook
-deliveries (api-and-events.md, Events and Webhooks). Run it with `make worker`; the apps get
-live updates only while it runs.
+"""arq worker for the hub's timers (business-rules.md §6: response, hold and recommendation
+deadlines), the event publisher and webhook deliveries (api-and-events.md, Events and
+Webhooks). Run it with `make worker`; the apps get live updates only while it runs.
 
 Deadlines, unpublished events and due deliveries are all stored in the database, so a
 restarted worker loses nothing. Every job is idempotent and safe with several workers: the
@@ -20,6 +20,7 @@ from app.db import SessionLocal
 from app.domain import config
 from app.events import service as events
 from app.events import webhooks
+from app.recommendations import service as recommendations
 from app.source_requests import service as source_requests
 
 WEBHOOK_INTERVAL_SECONDS = 5
@@ -40,6 +41,13 @@ async def expire_source_requests(ctx: dict[str, Any]) -> int:
     sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
     async with sessionmaker() as session:
         return await source_requests.expire_overdue(session)
+
+
+async def expire_recommendations(ctx: dict[str, Any]) -> int:
+    """Expire PENDING and ESCALATED recommendations past their validity; returns how many."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    async with sessionmaker() as session:
+        return await recommendations.expire_overdue(session)
 
 
 async def publish_events(ctx: dict[str, Any]) -> int:
@@ -64,6 +72,12 @@ class WorkerSettings:
             second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
             run_at_startup=True,
             unique=True,  # one run per tick, however many workers are up
+        ),
+        cron(
+            expire_recommendations,
+            second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
+            run_at_startup=True,
+            unique=True,
         ),
         cron(publish_events, second=set(range(60)), run_at_startup=True, unique=True),
         cron(
