@@ -46,6 +46,7 @@ from app.shipments import service as shipments
 from app.shipments.models import Shipment
 from app.shortages import service as shortages
 from app.shortages.models import Shortage, Trigger
+from app.trust import service as trust
 
 RECEIPT = "receipt"
 RECONCILIATION = "reconciliation"
@@ -261,6 +262,9 @@ async def _reconcile(session: AsyncSession, shortage: Shortage, now: datetime) -
     ]
     session.add_all(rows)
     await session.flush()
+    # §12 (S19): credits for what the receiver accepted on each transfer, and every source's
+    # score recomputed, before the residual (if any) is matched with the new scores.
+    await trust.on_reconciled(session, shortage, now)
     cause = rules.reconciled_reason(shortage.shortfall, accepted, result.residual_qty)
     for row in rows:
         await audit.record(
@@ -288,13 +292,18 @@ async def _reconcile(session: AsyncSession, shortage: Shortage, now: datetime) -
     if residual is not None:
         # §9: the residual inherits the parent's exclusions (sources that declined, had a
         # recommendation rejected or rejected a purchase order for it).
+        # A CRITICAL run's parallel request that declined (S19) is excluded too.
         parent_run = await shortages.latest_run(session, shortage.id)
+        excluded = {
+            *(parent_run.excluded_org_ids if parent_run else ()),
+            *await shortages.declined_org_ids(session, shortage.id),
+        }
         await shortages.run_match(
             session,
             residual,
             Trigger.CREATE,
             reason=rules.RESIDUAL_CREATED,
-            exclude=parent_run.excluded_org_ids if parent_run else (),
+            exclude=sorted(excluded),
             now=now,
         )
 

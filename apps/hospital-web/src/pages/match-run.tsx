@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@care-e/ui";
 import type { Candidate, MatchRun, Product } from "../api";
+import { ReliabilityBadge } from "../components/reliability";
 import {
   candidateQty,
   formatHours,
@@ -51,6 +52,7 @@ function Eligible({ rows, product }: { rows: Candidate[]; product: Product | und
           <TableHead>Source</TableHead>
           <TableHead className="text-right">Quantity</TableHead>
           <TableHead className="text-right">ETA</TableHead>
+          <TableHead className="text-right">Reliability</TableHead>
           <TableHead className="text-right">Landed cost</TableHead>
         </TableRow>
       </TableHeader>
@@ -64,6 +66,10 @@ function Eligible({ rows, product }: { rows: Candidate[]; product: Product | und
             </TableCell>
             <TableCell className="text-right">{candidateQty(c, product)}</TableCell>
             <TableCell className="text-right">{formatHours(c.eta_hours)}</TableCell>
+            <TableCell className="text-right">
+              {/* The score this run ranked by; the tooltip shows the org's components. */}
+              <ReliabilityBadge orgId={c.source_org_id} score={c.reliability} />
+            </TableCell>
             <TableCell className="text-right">
               <LandedCost paise={c.landed_cost_paise} />
             </TableCell>

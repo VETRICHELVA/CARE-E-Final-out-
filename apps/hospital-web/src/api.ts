@@ -35,6 +35,7 @@ export type Receipt = Schemas["ReceiptOut"];
 export type ReceiptIn = Schemas["ReceiptIn"];
 export type Reconciliation = Schemas["ReconciliationOut"];
 export type Notification = Schemas["NotificationOut"];
+export type Reliability = Schemas["ReliabilityOut"];
 type SourceRequestQuery = {
   direction: Schemas["Direction"];
   status?: Schemas["RequestStatus"];
@@ -70,6 +71,7 @@ export const keys = {
   notifications: ["/api/v1/notifications"] as const,
   allNotifications: ["/api/v1/notifications", { unread: false }] as const,
   unreadNotifications: ["/api/v1/notifications", { unread: true }] as const,
+  reliability: (orgId: string) => ["/api/v1/orgs/{org_id}/reliability", { org_id: orgId }] as const,
 };
 
 type Cursor = string | undefined;
@@ -166,6 +168,19 @@ export function useSourceRequests(query: SourceRequestQuery, enabled = true) {
     initialPageParam: undefined as Cursor,
     getNextPageParam: nextCursor,
     enabled,
+  });
+}
+
+/** An org's stored reliability score and its four components (business-rules.md §12, S19);
+ *  `credits` only for the caller's own org. Fetched only while `enabled`. */
+export function useReliability(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.reliability(orgId),
+    queryFn: () =>
+      unwrap(
+        client.GET("/api/v1/orgs/{org_id}/reliability", { params: { path: { org_id: orgId } } }),
+      ),
+    enabled: enabled && orgId !== "",
   });
 }
 

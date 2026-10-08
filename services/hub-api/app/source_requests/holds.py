@@ -14,7 +14,7 @@ from collections.abc import Iterable, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
@@ -81,13 +81,14 @@ async def create_requests(
     session: AsyncSession, shortage: Shortage, run: MatchRun, now: datetime
 ) -> list[SourceRequest]:
     """One REQUESTED SourceRequest per planned source of a TRANSFER or TRANSFER_SPLIT run,
-    due back by the response deadline (§6, §7 step 2). Other plans ask no one."""
+    due back by the response deadline (§6, §7 step 2). A CRITICAL TRANSFER asks each of its
+    `parallel` single-source candidates at once (S19). Other plans ask no one."""
     planned = run.planned_resolution
     if planned is None or planned["type"] not in (TRANSFER, TRANSFER_SPLIT):
         return []
     deadline = response_deadline(shortage.priority, now)
     created = []
-    for line in planned["lines"]:
+    for line in planned.get("parallel") or planned["lines"]:
         sr = SourceRequest(
             id=uuid.uuid4(),
             shortage_id=shortage.id,
@@ -244,11 +245,14 @@ async def release(
     hold_reason: str,
     actor: User | None,
     reason: str | None,
+    keep: uuid.UUID | None = None,
 ) -> tuple[list[Hold], list[SourceRequest]]:
     """Release every TENTATIVE hold of the shortage's requests and supersede every request
-    still open. The one release path for every non-CONFIRMED exit: a decline or expiry
-    (via `release_and_rematch`, after the caller has ended the request that caused it) and
-    a shortage cancel. FIRM holds belong to CONFIRMED requests and are left alone.
+    still open, except the request `keep` and its holds (S19: a CRITICAL parallel request
+    that was accepted first keeps its holds while its siblings are superseded). The one
+    release path for every non-CONFIRMED exit: a decline or expiry (via
+    `release_and_rematch`, after the caller has ended the request that caused it), a shortage
+    cancel and a CRITICAL win. FIRM holds belong to CONFIRMED requests and are left alone.
 
     The holds are released as SYSTEM with the factual `hold_reason` (their rows go to the
     source org); the requests are superseded by `actor` with `reason` (their rows go to the
@@ -259,6 +263,7 @@ async def release(
             .join(SourceRequest, SourceRequest.id == Hold.source_request_id)
             .where(
                 SourceRequest.shortage_id == shortage.id,
+                (SourceRequest.id != keep) if keep else true(),
                 Hold.status == HoldStatus.TENTATIVE,
             )
             .order_by(Hold.batch_id, Hold.id)
@@ -268,7 +273,9 @@ async def release(
     ).all()
     for hold, source_org_id in rows:
         await move_hold(session, hold, source_org_id, HoldStatus.RELEASED, None, hold_reason)
-    superseded = await open_requests(session, shortage.id, lock=True)
+    superseded = [
+        sr for sr in await open_requests(session, shortage.id, lock=True) if sr.id != keep
+    ]
     for sr in superseded:
         await move_request(session, shortage, sr, RequestStatus.SUPERSEDED, actor, reason)
     return [h for h, _ in rows], superseded

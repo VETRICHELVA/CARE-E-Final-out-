@@ -3502,6 +3502,55 @@
           }
         }
       }
+    },
+    "/api/v1/orgs/{org_id}/reliability": {
+      "get": {
+        "tags": [
+          "trust"
+        ],
+        "summary": "Get Reliability",
+        "description": "Any signed-in user may read any org's stored score and its four components (they rank\nand explain candidates). The credit balance is shown to the org's own users only.",
+        "operationId": "get_reliability_api_v1_orgs__org_id__reliability_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReliabilityOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5488,6 +5537,14 @@
             "type": "array",
             "title": "Alternatives",
             "description": "The best BUY, or for a BUY the next one."
+          },
+          "parallel": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLine"
+            },
+            "type": "array",
+            "title": "Parallel",
+            "description": "CRITICAL TRANSFER only (S19): the single-source candidates asked at once, the planned line first; the first to accept wins. Empty for every other plan."
           }
         },
         "type": "object",
@@ -6294,6 +6351,126 @@
           "refresh_token"
         ],
         "title": "RefreshIn"
+      },
+      "ReliabilityOut": {
+        "properties": {
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "score": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "0-100; what matching ranks by."
+          },
+          "has_history": {
+            "type": "boolean",
+            "title": "Has History",
+            "description": "False while the score is the no-history default (some component has no history yet)."
+          },
+          "acceptance_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acceptance Rate",
+            "description": "Share of answered requests accepted."
+          },
+          "response_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Speed",
+            "description": "max(0, 1 - median response time \u00f7 the response limit)."
+          },
+          "median_response_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Response Minutes"
+          },
+          "on_time_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Time Rate",
+            "description": "Share of delivered shipments delivered by the shortage's deadline."
+          },
+          "discrepancy_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discrepancy Rate",
+            "description": "Units not accepted \u00f7 units expected, over reconciled shipments."
+          },
+          "computed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed At",
+            "description": "Null until first computed."
+          },
+          "credits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credits",
+            "description": "The org's credit balance (\u00a712, not spendable yet); the caller's own org only, null for any other org."
+          }
+        },
+        "type": "object",
+        "required": [
+          "org_id",
+          "score",
+          "has_history",
+          "acceptance_rate",
+          "response_speed",
+          "median_response_minutes",
+          "on_time_rate",
+          "discrepancy_rate",
+          "computed_at",
+          "credits"
+        ],
+        "title": "ReliabilityOut",
+        "description": "An org's stored reliability (business-rules.md \u00a712). Components are null while the\norg has no history for them; the score is then the no-history default (70)."
       },
       "RequestStatus": {
         "type": "string",

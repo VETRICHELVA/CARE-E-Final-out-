@@ -184,6 +184,10 @@ function Outcome({
     );
   if (request.status === "DECLINED")
     return <DeclineReason reason={request.decline_reason} source={request.reason_source} />;
+  // S19: another source accepted first (CRITICAL), a split partner dropped out, or the
+  // requester cancelled; the hub released anything this hospital held for it.
+  if (request.status === "SUPERSEDED")
+    return <span className="text-muted-foreground">No longer needed</span>;
   return null;
 }
 

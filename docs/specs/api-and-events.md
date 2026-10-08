@@ -54,7 +54,7 @@
 | S16 | POST /routes/apply | `shipment.assign` | Body `{driver_id, vehicle_id, shipment_ids, timezone?, reason?}`. Plans again as `/routes/optimize` (the shipments locked meanwhile) and assigns the driver and vehicle to every feasible shipment through `POST /shipments/{id}/assign`'s rules (same 403/400/409 checks, one audit row each in the carrier's org mirrored into the receiver's, `shipment.status_changed`), with each leg's `planned_at` and the shipment's `eta` from the plan (`planned_pickup_at` added to the audit row). Infeasible shipments stay CREATED. All or nothing: a refused assignment keeps none. → the plan plus `assigned_shipment_ids` (pickup order). 409 `conflict` if no shipment fits (`details.infeasible`) |
 | S18 | GET /forecasts?product_id= | own org | |
 | S18 | GET/POST /surplus, POST /surplus/{id}/withdraw | `inventory.edit` | |
-| S19 | GET /orgs/{id}/reliability | any | |
+| S19 | GET /orgs/{id}/reliability | any | The org's stored score (business-rules §12; 70 with `has_history: false` until every component has history) and its four components, `computed_at`; `credits` (CreditLedger balance) for the caller's own org only, null for any other org. 404 for an unknown org |
 | S20 | GET /metrics/network | `audit.read` | Dashboard metrics |
 
 The AI service has its own API (S13, S17): `POST /copilot/ask`, `POST /chat/draft`.

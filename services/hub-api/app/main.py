@@ -17,6 +17,7 @@ from app.routing.router import router as routing_router
 from app.shipments.router import router as shipments_router
 from app.shortages.router import router as shortages_router
 from app.source_requests.router import router as source_requests_router
+from app.trust.router import router as trust_router
 
 API = "/api/v1"
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
         routing_router,
         receiving_router,
         notifications_router,
+        trust_router,
     ):
         app.include_router(router, prefix=API)
 
