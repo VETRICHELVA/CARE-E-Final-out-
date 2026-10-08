@@ -49,6 +49,13 @@ describe("can()", () => {
     expect(can(undefined, "recommendation.approve")).toBe(false);
   });
 
+  it("accepts any one of a list of capabilities", () => {
+    const readers = ["shortage.create", "recommendation.approve"];
+    expect(can(me(["recommendation.approve"]), readers)).toBe(true);
+    expect(can(me(["receipt.record"]), readers)).toBe(false);
+    expect(can(undefined, readers)).toBe(false);
+  });
+
   it("hides the action from a user without the capability", () => {
     renderAs(me(["shortage.create"]));
     expect(screen.queryByRole("button", { name: "Approve transfer" })).toBeNull();

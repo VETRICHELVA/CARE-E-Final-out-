@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog
@@ -96,16 +96,19 @@ async def test_create_computes_the_shortfall_and_ignores_a_client_value(
     assert stored is not None and stored.shortfall == 850
 
 
-async def test_shortfall_is_never_negative(
+@pytest.mark.parametrize("local", [100, 150])
+async def test_no_shortfall_is_400_and_stores_nothing(
     requester_a: httpx.AsyncClient,
     session: AsyncSession,
     world: World,
     products: dict[str, Product],
+    local: int,
 ) -> None:
     facility = await facility_of(session, world.hospital_a)
-    payload = body(facility, products["SURG-KIT-A"], qty_required=100, qty_local_usable=150)
+    payload = body(facility, products["SURG-KIT-A"], qty_required=100, qty_local_usable=local)
     r = await requester_a.post("/shortages", json=payload)
-    assert (r.status_code, r.json()["shortfall"]) == (201, 0)
+    assert (r.status_code, r.json()["code"]) == (400, "validation")
+    assert await session.scalar(select(func.count()).select_from(Shortage)) == 0
 
 
 async def test_min_shelf_life_defaults_to_the_product(
@@ -215,6 +218,46 @@ async def test_hospital_b_cannot_read_hospital_as_shortage(
         await manager_b.get(f"/shortages/{sid}"),
         await manager_b.get(f"/shortages/{sid}/match-runs/latest"),
     ):
+        assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+
+
+async def test_an_approver_reads_their_orgs_shortages_but_cannot_change_them(
+    client_for: ClientFor,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+    shortage_a: dict[str, Any],
+) -> None:
+    approver = await client_for(world.users["a.APPROVER"])  # no shortage.create
+    sid = shortage_a["id"]
+    r = await approver.get(f"/shortages/{sid}")
+    assert (r.status_code, r.json()["id"]) == (200, sid)
+    r = await approver.get("/shortages")
+    assert [s["id"] for s in r.json()["items"]] == [sid]
+    facility = await facility_of(session, world.hospital_a)
+    for r in (
+        await approver.post("/shortages", json=body(facility, products["SURG-KIT-A"])),
+        await approver.post(f"/shortages/{sid}/cancel"),
+        await approver.post(f"/shortages/{sid}/match"),
+    ):
+        assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+
+
+async def test_another_orgs_approver_cannot_read_the_shortage(
+    client_for: ClientFor, world: World, shortage_a: dict[str, Any]
+) -> None:
+    approver_b = await client_for(world.users["b.APPROVER"])
+    r = await approver_b.get(f"/shortages/{shortage_a['id']}")
+    assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+    assert (await approver_b.get("/shortages")).json()["items"] == []
+
+
+async def test_reading_needs_shortage_create_or_recommendation_approve(
+    client_for: ClientFor, world: World, shortage_a: dict[str, Any]
+) -> None:
+    receiver = await client_for(world.users["a.RECEIVER"])
+    for path in ("/shortages", f"/shortages/{shortage_a['id']}"):
+        r = await receiver.get(path)
         assert (r.status_code, r.json()["code"]) == (403, "forbidden")
 
 

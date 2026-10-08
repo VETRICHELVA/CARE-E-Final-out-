@@ -1,16 +1,19 @@
 """Request-time authentication and authorization helpers."""
 
+import hmac
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import Select, exists, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.capabilities import Capability, RoleName, capabilities_for
+from app.auth.capabilities import Capability, RoleName, ServiceScope, capabilities_for
 from app.auth.models import RefreshToken, User
-from app.auth.service import decode_access_token, unauthenticated
+from app.auth.service import decode_access_token, decode_stream_ticket, unauthenticated
+from app.config import settings
 from app.db import SessionDep
 from app.errors import AppError
 from app.orgs.models import OrgType
@@ -24,7 +27,36 @@ async def current_user(
 ) -> User:
     if creds is None:
         raise unauthenticated("Sign in first.")
-    claims = decode_access_token(creds.credentials)
+    return await user_from_claims(session, decode_access_token(creds.credentials))
+
+
+async def access_claims(
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+) -> dict[str, Any]:
+    """The verified claims of the caller's access token (use with CurrentUser)."""
+    if creds is None:
+        raise unauthenticated("Sign in first.")
+    return decode_access_token(creds.credentials)
+
+
+async def stream_user(
+    session: SessionDep,
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ticket: Annotated[
+        str | None, Query(description="A stream ticket from POST /events/ticket.")
+    ] = None,
+) -> User:
+    """GET /events/stream: a stream ticket (`?ticket=`, for EventSource) or an access token."""
+    if ticket is not None:
+        claims = decode_stream_ticket(ticket)
+    elif creds is not None:
+        claims = decode_access_token(creds.credentials)
+    else:
+        raise unauthenticated("Sign in first.")
+    return await user_from_claims(session, claims)
+
+
+async def user_from_claims(session: AsyncSession, claims: dict[str, Any]) -> User:
     try:
         user_id, family_id = uuid.UUID(claims["sub"]), uuid.UUID(claims["sid"])
     except (KeyError, ValueError) as e:
@@ -42,6 +74,18 @@ async def current_user(
 
 
 CurrentUser = Annotated[User, Depends(current_user)]
+StreamUser = Annotated[User, Depends(stream_user)]
+
+
+def require_role(role: RoleName) -> Callable[..., Awaitable[User]]:
+    """403 unless the user has `role` (e.g. ADMIN: "org admin" in api-and-events.md)."""
+
+    async def dependency(user: CurrentUser) -> User:
+        if all(r.name != role for r in user.roles):
+            raise AppError(403, "forbidden", f"Only an organization {role} can do this.")
+        return user
+
+    return dependency
 
 
 def user_capabilities(user: User) -> set[Capability]:
@@ -71,6 +115,45 @@ def require(
                 {"org_type": org_type},
             )
         return user
+
+    return dependency
+
+
+def require_any(*capabilities: Capability) -> Callable[..., Awaitable[User]]:
+    """403 unless the user has at least one of `capabilities`."""
+
+    async def dependency(user: CurrentUser) -> User:
+        if user_capabilities(user).isdisjoint(capabilities):
+            names = ", ".join(capabilities)
+            raise AppError(
+                403,
+                "forbidden",
+                f"Needs one of these capabilities: {names}.",
+                {"capabilities": list(capabilities)},
+            )
+        return user
+
+    return dependency
+
+
+def service_token_scopes(token: str) -> frozenset[ServiceScope]:
+    """Scopes granted to a service bearer token; empty for anything else (user JWTs too)."""
+    ingest = settings.ingest_token.encode()
+    if ingest and hmac.compare_digest(token.encode(), ingest):
+        return frozenset({ServiceScope.TELEMETRY_WRITE})
+    return frozenset()
+
+
+def require_scope(scope: ServiceScope) -> Callable[..., Awaitable[ServiceScope]]:
+    """401 unless the bearer is a service token with `scope`. User access tokens are refused
+    here, and service tokens are refused by `current_user` (they are not JWTs)."""
+
+    async def dependency(
+        creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> ServiceScope:
+        if creds is None or scope not in service_token_scopes(creds.credentials):
+            raise unauthenticated(f"This endpoint needs a service token with scope {scope}.")
+        return scope
 
     return dependency
 

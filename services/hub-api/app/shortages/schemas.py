@@ -71,7 +71,8 @@ class GateOut(BaseModel):
 
 
 class CandidateOut(BaseModel):
-    """What the requester's org sees of a source: no batch ids or raw stock figures."""
+    """What the requester's org sees of a source: no batch ids, raw stock figures or, for a
+    hospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."""
 
     id: uuid.UUID
     source_org_id: uuid.UUID
@@ -81,7 +82,9 @@ class CandidateOut(BaseModel):
     offered_qty: int | None = Field(description="Supplier sources: the offer's available qty.")
     gate_results: list[GateOut]
     eligible: bool
-    landed_cost_paise: int | None = Field(description="Eligible candidates only.")
+    landed_cost_paise: int | None = Field(
+        description="Eligible supplier candidates only; never shown for a hospital source."
+    )
     eta_hours: float
     reliability: int
     rank: int | None = Field(description="1 = best; eligible candidates only.")
@@ -89,6 +92,8 @@ class CandidateOut(BaseModel):
     @classmethod
     def of(cls, c: Candidate, org_name: str) -> "CandidateOut":
         fields = {f: getattr(c, f) for f in cls.model_fields if f != "source_org_name"}
+        if c.source_type == SourceType.HOSPITAL:
+            fields["landed_cost_paise"] = None
         return cls(**fields, source_org_name=org_name)
 
 
@@ -97,7 +102,7 @@ class PlanLine(BaseModel):
     source_org_id: uuid.UUID
     source_type: SourceType
     qty: int
-    landed_cost_paise: int
+    landed_cost_paise: int | None = Field(description="Supplier lines only, as for candidates.")
     eta_hours: float
 
 
@@ -118,6 +123,15 @@ class MatchRunOut(BaseModel):
     reason: str | None = Field(description='"No eligible source" when nothing is eligible.')
     candidates: list[CandidateOut] = Field(description="Eligible by rank, then rejected.")
 
+    @staticmethod
+    def _shown(plan: dict[str, Any]) -> PlannedResolution:
+        """The stored plan keeps every cost; the requester sees supplier costs only."""
+        out = PlannedResolution.model_validate(plan)
+        for line in (*out.lines, *out.alternatives):
+            if line.source_type == SourceType.HOSPITAL:
+                line.landed_cost_paise = None
+        return out
+
     @classmethod
     def of(cls, run: MatchRun, candidates: Iterable[tuple[Candidate, str]]) -> "MatchRunOut":
         plan = run.planned_resolution
@@ -128,7 +142,7 @@ class MatchRunOut(BaseModel):
             triggered_by=Trigger(run.triggered_by),
             ts=run.ts,
             excluded_org_ids=run.excluded_org_ids,
-            planned_resolution=PlannedResolution.model_validate(plan) if plan else None,
+            planned_resolution=cls._shown(plan) if plan else None,
             reason=None if plan else NO_ELIGIBLE_SOURCE,
             candidates=[CandidateOut.of(c, name) for c, name in candidates],
         )

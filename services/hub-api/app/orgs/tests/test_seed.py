@@ -29,7 +29,8 @@ async def test_seed_adds_missing_orgs_to_an_older_seed(
     assert await seed.seed(session) == []
 
     users = {u.email: u for u in await session.scalars(select(User))}
-    assert len(users) == 1 + 5 + 5 + 2 + 3
+    # + 1: SwiftMed's second driver, Priya (S11, demo-scenarios.md: 2 drivers)
+    assert len(users) == 1 + 5 + 5 + 2 + 3 + 1
     for email, (org, org_type, role) in NEW_USERS.items():
         u = users[email]
         assert (u.org.name, u.org.type, [r.name for r in u.roles]) == (org, org_type, [role])

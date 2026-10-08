@@ -34,6 +34,8 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 - `make install` — install Python (uv) and JS (pnpm) dependencies and pre-commit hooks
 - `make up` / `make down` — start/stop infra
 - `make hub` — run hub API with reload
+- `make ingest` — run the IoT ingest: MQTT `careE/devices/+/telemetry` → hub `POST /internal/telemetry` every 2 s (needs `make up` and the hub)
+- `make worker` — run the hub's arq worker: deadline timers every 30 s (source request responses, tentative holds, recommendation validity), the event publisher every second (live updates in the apps need it) and webhook deliveries every 5 s; tunables in `app/domain/config.py` are overridable by env vars, e.g. `SLA_CRITICAL_RESPONSE_MINUTES=1`
 - `make test` — all tests; `make test-hub`, `make test-web`
 - `make lint` — ruff, mypy, eslint, prettier, tsc
 - `make migrate` / `make migration m="msg"` — Alembic

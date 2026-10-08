@@ -76,6 +76,16 @@ def test_landed_cost_counts_only_what_the_source_would_supply() -> None:
     assert order([exact, big], critical=False) == ["big", "exact"]
 
 
+def test_cost_is_compared_per_unit_so_small_sources_do_not_rank_first() -> None:
+    # The small source costs less in total only because it supplies less.
+    small = Option("small", True, 10, 2.0, 70, False, ((10, 1000),), transport_paise=50_000)
+    large = Option("large", True, 500, 2.0, 70, False, ((500, 1000),), transport_paise=50_000)
+    assert small.cost(NEED) < large.cost(NEED)
+    assert large.unit_cost(NEED) < small.unit_cost(NEED)
+    for critical in (True, False):
+        assert order([small, large], critical) == ["large", "small"]
+
+
 def test_hospital_landed_cost_includes_the_handling_fee() -> None:
     # Same unit price: the hospital's 2% handling fee makes the supplier cheaper.
     hospital, supplier = opt("hospital", hospital=True), opt("supplier")

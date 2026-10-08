@@ -1,15 +1,26 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
-import { createQueryClient, logout, useAuth } from "@care-e/api-client";
-import { LoginPage, ProtectedRoute, useMe } from "./auth";
+import { createQueryClient, logout, useAuth, useEventStream } from "@care-e/api-client";
+import { can, LoginPage, ProtectedRoute, useMe } from "./auth";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { cn } from "./lib/utils";
 import { EmptyState } from "./states";
 
-export type NavItem = { to: string; label: string };
+export type NavItem = {
+  to: string;
+  label: string;
+  /** Hide the entry from users without this capability, or without any one of a list of them
+   *  (display only; the hub still checks). */
+  capability?: string | readonly string[];
+  /** The screen; a placeholder until its section lands. */
+  element?: ReactNode;
+};
+
+/** A screen that has no nav entry, e.g. `/shortages/:id`. */
+export type ExtraRoute = { path: string; element: ReactNode };
 
 export type AppConfig = {
   /** Shown in the header and on the sign-in page, e.g. "CARE-E Hospital". */
@@ -19,22 +30,31 @@ export type AppConfig = {
   /** Shown to a signed-in user of any other org type. */
   refusal: string;
   nav: NavItem[];
+  routes?: ExtraRoute[];
+  /** Refresh screens from the hub's event stream (`useEventStream`) instead of polling. */
+  liveUpdates?: boolean;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
-function AppShell({ name, nav }: Pick<AppConfig, "name" | "nav">) {
+function AppShell({
+  name,
+  nav,
+  liveUpdates = false,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates">) {
+  useEventStream(liveUpdates);
   const me = useMe().data;
+  const visible = nav.filter((item) => !item.capability || can(me, item.capability));
   return (
     <div className="min-h-svh">
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold text-primary">{name}</span>
           <nav className="flex flex-wrap gap-1 text-sm">
-            {nav.map((item) => (
+            {visible.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
-                end
+                end={item.to === "/"}
                 className={({ isActive }) =>
                   cn(
                     "rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-accent",
@@ -69,8 +89,12 @@ function AppShell({ name, nav }: Pick<AppConfig, "name" | "nav">) {
   );
 }
 
-/** One app: sign-in, the org-type gate, the header and nav, and placeholder pages. */
-export function CareApp({ name, allow, refusal, nav }: AppConfig) {
+const placeholder = (label: string) => (
+  <EmptyState title={label}>This screen arrives in a later section.</EmptyState>
+);
+
+/** One app: sign-in, the org-type gate, the header and nav, and its screens. */
+export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
   useEffect(
@@ -83,17 +107,16 @@ export function CareApp({ name, allow, refusal, nav }: AppConfig) {
         <Routes>
           <Route path="/login" element={<LoginPage appName={name} />} />
           <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
-            <Route element={<AppShell name={name} nav={nav} />}>
+            <Route element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} />}>
               {nav.map((item) => (
                 <Route
                   key={item.to}
                   path={item.to}
-                  element={
-                    <EmptyState title={item.label}>
-                      This screen arrives in a later section.
-                    </EmptyState>
-                  }
+                  element={item.element ?? placeholder(item.label)}
                 />
+              ))}
+              {routes.map((route) => (
+                <Route key={route.path} path={route.path} element={route.element} />
               ))}
               <Route path="*" element={<EmptyState title="Page not found" />} />
             </Route>

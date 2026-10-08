@@ -575,7 +575,7 @@
           "catalog"
         ],
         "summary": "Put Offer",
-        "description": "Create or update one offer of the caller's supplier org (SUPPLIER orgs only).",
+        "description": "Create or update one offer of the caller's supplier org (SUPPLIER orgs only). Then\nre-runs other orgs' \"No eligible source\" shortages for the product (\u00a75).",
         "operationId": "put_offer_api_v1_supplier_offers_put",
         "security": [
           {
@@ -919,10 +919,2573 @@
           }
         }
       }
+    },
+    "/api/v1/shortages": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Create Shortage",
+        "description": "Create a shortage in the caller's org. The hub computes the shortfall and runs the\nfirst match, so the shortage comes back MATCHING.",
+        "operationId": "create_shortage_api_v1_shortages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShortageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "List Shortages",
+        "description": "The caller's own org's shortages, newest first.",
+        "operationId": "list_shortages_api_v1_shortages_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ShortageOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Get Shortage",
+        "operationId": "get_shortage_api_v1_shortages__shortage_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/cancel": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Cancel Shortage",
+        "description": "Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.",
+        "operationId": "cancel_shortage_api_v1_shortages__shortage_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/match": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Rerun Match",
+        "description": "Manual re-run while the shortage is OPEN or MATCHING; otherwise 409.",
+        "operationId": "rerun_match_api_v1_shortages__shortage_id__match_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/match-runs/latest": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Latest Match Run",
+        "description": "Any user of the requester's org: eligible candidates by rank, then rejected ones with\nevery failed gate's reason.",
+        "operationId": "latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchRunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/recommendations/latest": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Latest Recommendation",
+        "description": "Any user of the requester's org: the shortage's newest recommendation, which is the\none waiting for a decision (PENDING or ESCALATED) while there is one, else the last one\ndecided or expired. 404 if none has been made yet. Same redaction as\nGET /recommendations/{id}: a hospital source's cost is never shown.",
+        "operationId": "latest_recommendation_api_v1_shortages__shortage_id__recommendations_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/audit": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Shortage Audit",
+        "description": "The shortage's trail in the caller's own org, oldest first: the shortage, its match\nruns, source requests, recommendations, purchase orders, shipments, receipts,\nreconciliations and received batches. `reason_source` says whether a user typed the\nreason (USER) or the hub recorded it (SYSTEM). 403 for another org's shortage.",
+        "operationId": "shortage_audit_api_v1_shortages__shortage_id__audit_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/internal/telemetry": {
+      "post": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "Post Telemetry",
+        "description": "For services/iot-ingest only (ingest token, scope `telemetry.write`). Idempotent:\na reading whose (device_id, ts) is already stored counts as a duplicate.",
+        "operationId": "post_telemetry_api_v1_internal_telemetry_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "List Devices",
+        "description": "The caller's own org's devices, with last_seen and battery.",
+        "operationId": "list_devices_api_v1_devices_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DeviceOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/assign": {
+      "post": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "Assign Device",
+        "description": "Put one of the caller's org's devices (403 for another org's) on a shipment the org\nmay see, or take it off with `shipment_id: null`. Its new readings are linked to the\nshipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or\nIN_TRANSIT. 409 if the shipment has arrived or already carries another device.",
+        "operationId": "assign_device_api_v1_devices__device_id__assign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceAssignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/source-requests": {
+      "get": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "List Source Requests",
+        "description": "`incoming`: requests the caller's org is asked to supply. `outgoing`: requests sent\nfor the caller's org's shortages. Newest first; optional `status` and `shortage_id`.",
+        "operationId": "list_source_requests_api_v1_source_requests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "direction",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Direction"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RequestStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "shortage_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Shortage Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SourceRequestOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/source-requests/{request_id}/accept": {
+      "post": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "Accept Source Request",
+        "description": "Source org only. Places TENTATIVE holds on the source's batches (earliest expiry\nfirst) and moves the request to TENTATIVE_HOLD. 409 `conflict` if the stock no longer\ncovers it: the request is then EXPIRED (\"Stock changed before acceptance.\") and matching\nre-runs. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.",
+        "operationId": "accept_source_request_api_v1_source_requests__request_id__accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/source-requests/{request_id}/decline": {
+      "post": {
+        "tags": [
+          "source-requests"
+        ],
+        "summary": "Decline Source Request",
+        "description": "Source org only; the reason is optional. Matching re-runs without this org for the\nshortage. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.",
+        "operationId": "decline_source_request_api_v1_source_requests__request_id__decline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRequestOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/ticket": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Stream Ticket",
+        "description": "A 60-second ticket that opens GET /events/stream as the caller (`?ticket=`), because\na browser EventSource cannot send an Authorization header.",
+        "operationId": "create_stream_ticket_api_v1_events_ticket_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamTicketOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/events/stream": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Event Stream",
+        "description": "Server-sent events for the caller's org: only events whose `org_ids` include it.\n\nEach message is `id: <seq>` and `data: <envelope>`, where the envelope is\n`{id, type, occurred_at, org_ids, data}` (api-and-events.md, Events). A comment line\n(`: heartbeat`) is sent after 15 seconds without events. Reconnect with the last `id` as the\n`Last-Event-ID` header or `last_event_id` query parameter to replay what was missed; if too\nmuch was missed, the stream sends `event: reset` instead, and the client should refetch.\nThe stream closes after 15 minutes; reconnect with a new ticket.",
+        "operationId": "event_stream_api_v1_events_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Event Id"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A stream ticket from POST /events/ticket.",
+              "title": "Ticket"
+            },
+            "description": "A stream ticket from POST /events/ticket."
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List Webhooks",
+        "description": "The caller's org's subscriptions, oldest first. Secrets are never listed.",
+        "operationId": "list_webhooks_api_v1_webhooks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WebhookOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Create Webhook",
+        "description": "Subscribe the caller's org: events of `event_types` addressed to it are POSTed to\n`url`, signed in `X-CareE-Signature`. The secret is in this response only.",
+        "operationId": "create_webhook_api_v1_webhooks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{webhook_id}": {
+      "delete": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Delete Webhook",
+        "description": "Own org's subscription only (403 otherwise). Its pending deliveries stop.",
+        "operationId": "delete_webhook_api_v1_webhooks__webhook_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Webhook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}": {
+      "get": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Get Recommendation",
+        "description": "Any user of the requester's org (403 otherwise). A hospital source's cost is never\nshown, only supplier costs.",
+        "operationId": "get_recommendation_api_v1_recommendations__recommendation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/approve": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Approve Recommendation",
+        "description": "PENDING or ESCALATED -> APPROVED. Transfer: holds become FIRM, requests CONFIRMED,\none shipment per source. Buy: a purchase order is sent. The shortage -> IN_FULFILLMENT.\n409 if already decided, or if it (or a hold) has expired: it is then expired and\nmatching re-runs.",
+        "operationId": "approve_recommendation_api_v1_recommendations__recommendation_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/reject": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Reject Recommendation",
+        "description": "PENDING or ESCALATED -> REJECTED (reason optional). Releases every hold and re-runs\nmatching. 409 if already decided or expired.",
+        "operationId": "reject_recommendation_api_v1_recommendations__recommendation_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/recommendations/{recommendation_id}/escalate": {
+      "post": {
+        "tags": [
+          "recommendations"
+        ],
+        "summary": "Escalate Recommendation",
+        "description": "PENDING -> ESCALATED, notifying every APPROVER of the org. 409 otherwise.",
+        "operationId": "escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders": {
+      "get": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "List Purchase Orders",
+        "description": "Purchase orders sent to the caller's supplier org, newest first; optional `status`.",
+        "operationId": "list_purchase_orders_api_v1_purchase_orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_PurchaseOrderOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/acknowledge": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Acknowledge Purchase Order",
+        "description": "SENT -> ACKNOWLEDGED. Only the supplier the order went to (403 otherwise); 409 from\nany other status.",
+        "operationId": "acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/reject": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Reject Purchase Order",
+        "description": "SENT or ACKNOWLEDGED -> REJECTED (reason optional). The shortage goes back to\nMATCHING and matching re-runs without this supplier; 409 from any other status.",
+        "operationId": "reject_purchase_order_api_v1_purchase_orders__po_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-orders/{po_id}/dispatch": {
+      "post": {
+        "tags": [
+          "purchase-orders"
+        ],
+        "summary": "Dispatch Purchase Order",
+        "description": "ACKNOWLEDGED -> DISPATCHED, creating the shipment from the supplier to the hospital\n(`shipment_id`). 409 unless the order has been acknowledged.",
+        "operationId": "dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "po_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Po Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurchaseOrderOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/network/demand": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Demand",
+        "description": "Open shortfall totals for each product the caller's supplier org offers (one row per\noffer, oldest offer first; 0 when nothing is open). Totals only: no hospital, facility,\nshortage or count of them.",
+        "operationId": "network_demand_api_v1_network_demand_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DemandOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Shipments",
+        "description": "Shipments the caller's org is involved in (from, to or carrier), newest first; a\nLOGISTICS org also sees every unassigned (CREATED) shipment: the dispatch board.",
+        "operationId": "list_shipments_api_v1_shipments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ShipmentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "assigned_to_me",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the shipments assigned to the caller as driver.",
+              "default": false,
+              "title": "Assigned To Me"
+            },
+            "description": "Only the shipments assigned to the caller as driver."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "inbound",
+                    "outbound"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inbound: shipments to the caller's org (its deliveries); outbound: shipments from it.",
+              "title": "Direction"
+            },
+            "description": "inbound: shipments to the caller's org (its deliveries); outbound: shipments from it."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ShipmentOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Get Shipment",
+        "description": "One shipment with its route geometry, status history and last driver location.\n403 unless the caller's org is involved (or it is unassigned and the caller is a\nlogistics org).",
+        "operationId": "get_shipment_api_v1_shipments__shipment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/assign": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Assign Shipment",
+        "description": "CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for\nanother org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason\notherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).\n409 unless CREATED.",
+        "operationId": "assign_shipment_api_v1_shipments__shipment_id__assign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/unassign": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Unassign Shipment",
+        "description": "ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.",
+        "operationId": "unassign_shipment_api_v1_shipments__shipment_id__unassign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/status": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Update Shipment Status",
+        "description": "The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->\nDELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's\non_hand and consumes its FIRM hold.",
+        "operationId": "update_shipment_status_api_v1_shipments__shipment_id__status_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/location": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Post Shipment Location",
+        "description": "A GPS ping from the assigned driver's phone (403 otherwise), while ASSIGNED,\nPICKED_UP or IN_TRANSIT (409 otherwise). Sent to the shipment's orgs as\n`shipment.location`.",
+        "operationId": "post_shipment_location_api_v1_shipments__shipment_id__location_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/drivers": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Drivers",
+        "description": "The caller's own org's drivers.",
+        "operationId": "list_drivers_api_v1_drivers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DriverOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vehicles": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Vehicles",
+        "description": "The caller's own org's vehicles.",
+        "operationId": "list_vehicles_api_v1_vehicles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_VehicleOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/receipt": {
+      "post": {
+        "tags": [
+          "receiving"
+        ],
+        "summary": "Record Receipt",
+        "description": "The receiving org records what arrived (business-rules.md \u00a79): DELIVERED ->\nRECONCILED, the accepted stock becomes a new batch in its inventory, and once every\nshipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or\nPARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other\norg; 409 unless DELIVERED; 400 if received > expected, accepted + rejected \u2260 received,\nan open cold-chain excursion has no inspection note, or accepted stock has no expiry.",
+        "operationId": "record_receipt_api_v1_shipments__shipment_id__receipt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Notifications",
+        "description": "The caller's own notifications, newest first. Nobody reads another user's.",
+        "operationId": "list_notifications_api_v1_notifications_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the ones not yet marked read.",
+              "default": false,
+              "title": "Unread"
+            },
+            "description": "Only the ones not yet marked read."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_NotificationOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark Notification Read",
+        "description": "Marks one of the caller's notifications read; one already read keeps its first\n`read_at`. 403 for another user's notification.",
+        "operationId": "mark_notification_read_api_v1_notifications__notification_id__read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Notification Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ApprovalOut": {
+        "properties": {
+          "recommendation": {
+            "$ref": "#/components/schemas/RecommendationOut"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "business-rules.md \u00a713 wording for the approved type."
+          },
+          "shipment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Shipment Ids",
+            "description": "Transfers: one per source."
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id",
+            "description": "BUY: the order sent."
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendation",
+          "message",
+          "shipment_ids",
+          "purchase_order_id"
+        ],
+        "title": "ApprovalOut"
+      },
+      "AssignIn": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "vehicle_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Vehicle Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "driver_id",
+          "vehicle_id"
+        ],
+        "title": "AssignIn"
+      },
       "AuditOut": {
         "properties": {
           "id": {
@@ -1183,6 +3746,12 @@
             "title": "Transferable",
             "description": "Hub-computed (business-rules.md \u00a72); never accepted as input.",
             "readOnly": true
+          },
+          "held_qty": {
+            "type": "integer",
+            "title": "Held Qty",
+            "description": "Units under active source-request holds; counted as reserved.",
+            "readOnly": true
           }
         },
         "type": "object",
@@ -1202,7 +3771,8 @@
           "last_verified_at",
           "created_at",
           "updated_at",
-          "transferable"
+          "transferable",
+          "held_qty"
         ],
         "title": "BatchOut"
       },
@@ -1328,6 +3898,330 @@
         "title": "BatchUpdate",
         "description": "Partial update. Product and facility are fixed; omitted or null fields are unchanged."
       },
+      "CandidateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "transferable_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transferable Qty",
+            "description": "Hospital sources: hub-computed."
+          },
+          "offered_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offered Qty",
+            "description": "Supplier sources: the offer's available qty."
+          },
+          "gate_results": {
+            "items": {
+              "$ref": "#/components/schemas/GateOut"
+            },
+            "type": "array",
+            "title": "Gate Results"
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          },
+          "landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Eligible supplier candidates only; never shown for a hospital source."
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          },
+          "reliability": {
+            "type": "integer",
+            "title": "Reliability"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank",
+            "description": "1 = best; eligible candidates only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_org_id",
+          "source_org_name",
+          "source_type",
+          "transferable_qty",
+          "offered_qty",
+          "gate_results",
+          "eligible",
+          "landed_cost_paise",
+          "eta_hours",
+          "reliability",
+          "rank"
+        ],
+        "title": "CandidateOut",
+        "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
+      },
+      "Condition": {
+        "type": "string",
+        "enum": [
+          "GOOD",
+          "DAMAGED",
+          "TEMPERATURE_ISSUE"
+        ],
+        "title": "Condition"
+      },
+      "DemandOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "open_shortfall_qty": {
+            "type": "integer",
+            "title": "Open Shortfall Qty",
+            "description": "Sum of the hub-computed shortfall of every other org's shortage for this product that is OPEN, MATCHING or AWAITING_DECISION; 0 when there is none."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_id",
+          "open_shortfall_qty"
+        ],
+        "title": "DemandOut",
+        "description": "Open network demand for one product the caller's supplier org offers. Aggregated over\nevery hospital: no hospital, facility, shortage or count of either (CLAUDE.md rule 6)."
+      },
+      "DeviceAssignIn": {
+        "properties": {
+          "shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipment Id",
+            "description": "The shipment the device rides with; null takes it off its shipment."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "shipment_id"
+        ],
+        "title": "DeviceAssignIn"
+      },
+      "DeviceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "battery_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Level"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "assigned_shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Shipment Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "device_id",
+          "type",
+          "battery_level",
+          "last_seen",
+          "assigned_shipment_id"
+        ],
+        "title": "DeviceOut"
+      },
+      "Direction": {
+        "type": "string",
+        "enum": [
+          "incoming",
+          "outgoing"
+        ],
+        "title": "Direction"
+      },
+      "DriverOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "phone",
+          "active"
+        ],
+        "title": "DriverOut"
+      },
+      "DriverRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DriverRef"
+      },
+      "EventType": {
+        "type": "string",
+        "enum": [
+          "shortage.status_changed",
+          "source_request.created",
+          "source_request.status_changed",
+          "recommendation.ready",
+          "recommendation.status_changed",
+          "purchase_order.created",
+          "purchase_order.status_changed",
+          "shipment.created",
+          "shipment.status_changed",
+          "shipment.location",
+          "coldchain.reading",
+          "coldchain.excursion",
+          "coldchain.device_silent",
+          "coldchain.recovered",
+          "reconciliation.completed",
+          "surplus.matched",
+          "inventory.changed",
+          "supplier_offer.changed"
+        ],
+        "title": "EventType"
+      },
       "FacilityOut": {
         "properties": {
           "name": {
@@ -1368,6 +4262,36 @@
         ],
         "title": "FacilityOut"
       },
+      "GateOut": {
+        "properties": {
+          "gate": {
+            "type": "string",
+            "title": "Gate"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gate",
+          "passed",
+          "reason"
+        ],
+        "title": "GateOut"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1380,6 +4304,51 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HoldOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HoldStatus"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "batch_id",
+          "qty",
+          "status",
+          "expires_at"
+        ],
+        "title": "HoldOut"
+      },
+      "HoldStatus": {
+        "type": "string",
+        "enum": [
+          "TENTATIVE",
+          "FIRM",
+          "RELEASED",
+          "CONSUMED"
+        ],
+        "title": "HoldStatus"
       },
       "ImportResult": {
         "properties": {
@@ -1420,6 +4389,72 @@
         ],
         "title": "Location"
       },
+      "LocationIn": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts",
+            "description": "When the phone took the fix; the hub's time if left out."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "LocationIn"
+      },
+      "LocationOut": {
+        "properties": {
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shipment_id",
+          "lat",
+          "lng",
+          "ts"
+        ],
+        "title": "LocationOut"
+      },
       "LoginIn": {
         "properties": {
           "email": {
@@ -1437,6 +4472,83 @@
           "password"
         ],
         "title": "LoginIn"
+      },
+      "MatchRunOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "run_no": {
+            "type": "integer",
+            "title": "Run No"
+          },
+          "triggered_by": {
+            "$ref": "#/components/schemas/Trigger"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "excluded_org_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Excluded Org Ids"
+          },
+          "planned_resolution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedResolution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "\"No eligible source\" when nothing is eligible."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOut"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "description": "Eligible by rank, then rejected."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "run_no",
+          "triggered_by",
+          "ts",
+          "excluded_org_ids",
+          "planned_resolution",
+          "reason",
+          "candidates"
+        ],
+        "title": "MatchRunOut"
       },
       "MeOut": {
         "properties": {
@@ -1469,6 +4581,52 @@
           "capabilities"
         ],
         "title": "MeOut"
+      },
+      "NotificationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "e.g. \"recommendation.escalated\"."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "recommendation.escalated: recommendation_id, shortage_id, escalated_by, reason (null if none was typed), expires_at."
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "payload",
+          "read_at",
+          "created_at"
+        ],
+        "title": "NotificationOut"
       },
       "OfferIn": {
         "properties": {
@@ -1605,6 +4763,15 @@
         ],
         "title": "OrgOut"
       },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "CONFIRMED",
+          "PARTIAL"
+        ],
+        "title": "Outcome",
+        "description": "CONFIRMED: the shortage's shortfall was accepted in full. PARTIAL: less was accepted,\nand a residual shortage was opened for the rest."
+      },
       "Page_AuditOut_": {
         "properties": {
           "items": {
@@ -1659,6 +4826,87 @@
         ],
         "title": "Page[BatchOut]"
       },
+      "Page_DemandOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DemandOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DemandOut]"
+      },
+      "Page_DeviceOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DeviceOut]"
+      },
+      "Page_DriverOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DriverOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DriverOut]"
+      },
       "Page_FacilityOut_": {
         "properties": {
           "items": {
@@ -1685,6 +4933,33 @@
           "items"
         ],
         "title": "Page[FacilityOut]"
+      },
+      "Page_NotificationOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[NotificationOut]"
       },
       "Page_OfferOut_": {
         "properties": {
@@ -1766,6 +5041,269 @@
           "items"
         ],
         "title": "Page[PublicFacilityView]"
+      },
+      "Page_PurchaseOrderOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrderOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[PurchaseOrderOut]"
+      },
+      "Page_ShipmentOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[ShipmentOut]"
+      },
+      "Page_ShortageOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShortageOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[ShortageOut]"
+      },
+      "Page_SourceRequestOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRequestOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[SourceRequestOut]"
+      },
+      "Page_VehicleOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[VehicleOut]"
+      },
+      "Page_WebhookOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[WebhookOut]"
+      },
+      "PlanLine": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Supplier lines only, as for candidates."
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "source_org_id",
+          "source_type",
+          "qty",
+          "landed_cost_paise",
+          "eta_hours"
+        ],
+        "title": "PlanLine"
+      },
+      "PlannedResolution": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "TRANSFER",
+              "TRANSFER_SPLIT",
+              "BUY"
+            ],
+            "title": "Type"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/PlanLine"
+            },
+            "type": "array",
+            "title": "Alternatives",
+            "description": "The best BUY, or for a BUY the next one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "lines",
+          "alternatives"
+        ],
+        "title": "PlannedResolution"
+      },
+      "PoStatus": {
+        "type": "string",
+        "enum": [
+          "SENT",
+          "ACKNOWLEDGED",
+          "DISPATCHED",
+          "DELIVERED",
+          "REJECTED"
+        ],
+        "title": "PoStatus"
+      },
+      "Priority": {
+        "type": "string",
+        "enum": [
+          "CRITICAL",
+          "ROUTINE"
+        ],
+        "title": "Priority"
       },
       "ProductOut": {
         "properties": {
@@ -1877,6 +5415,661 @@
         "title": "PublicOrgView",
         "description": "What any org may see of another org: name, type, location only."
       },
+      "PurchaseOrderOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "supplier_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Supplier Org Id"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id",
+            "description": "The buying hospital (the shortage's org)."
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "unit_price_paise": {
+            "type": "integer",
+            "title": "Unit Price Paise"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PoStatus"
+          },
+          "eta": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Eta"
+          },
+          "shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipment Id",
+            "description": "Set once the order is dispatched."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "supplier_org_id",
+          "to_org_id",
+          "to_org_name",
+          "product_id",
+          "qty",
+          "unit_price_paise",
+          "status",
+          "eta",
+          "shipment_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PurchaseOrderOut",
+        "description": "A purchase order as the supplier it was sent to sees it."
+      },
+      "ReadingIn": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "title": "Device Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "temp_c": {
+            "type": "number",
+            "maximum": 125.0,
+            "minimum": -55.0,
+            "title": "Temp C"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_id",
+          "ts",
+          "temp_c"
+        ],
+        "title": "ReadingIn",
+        "description": "One reading as the cold box publishes it (apps-ai-iot.md, Firmware)."
+      },
+      "ReasonIn": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReasonIn"
+      },
+      "RecStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "REJECTED",
+          "ESCALATED",
+          "EXPIRED"
+        ],
+        "title": "RecStatus"
+      },
+      "ReceiptIn": {
+        "properties": {
+          "received": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Received"
+          },
+          "accepted": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Rejected"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/Condition"
+          },
+          "inspection_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection Note",
+            "description": "Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment)."
+          },
+          "expiry_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Date",
+            "description": "The expiry printed on the accepted stock. Required (400) when accepted > 0: the accepted stock becomes a new batch in the receiver's inventory."
+          },
+          "batch_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch No",
+            "description": "The new batch's number; `RCV-` and the shipment id's first 8 characters if left out. A batch number already used for this product at the facility is 409."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "received",
+          "accepted",
+          "rejected",
+          "condition"
+        ],
+        "title": "ReceiptIn",
+        "description": "What the receiver counted. `expected` is the shipment's qty (read-only; sending it is\na 422). Invariants (business-rules.md \u00a79), else 400: received \u2264 expected and accepted +\nrejected = received."
+      },
+      "ReceiptOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "expected": {
+            "type": "integer",
+            "title": "Expected"
+          },
+          "received": {
+            "type": "integer",
+            "title": "Received"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/Condition"
+          },
+          "inspection_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection Note"
+          },
+          "received_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Received By"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id",
+            "description": "The receiver's new inventory batch holding the accepted stock."
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReconciliationOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until every shipment of the shortage has a receipt."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shipment_id",
+          "shortage_id",
+          "expected",
+          "received",
+          "accepted",
+          "rejected",
+          "condition",
+          "inspection_note",
+          "received_by",
+          "ts",
+          "batch_id"
+        ],
+        "title": "ReceiptOut",
+        "description": "Seen by the receiving org only."
+      },
+      "RecommendationLineOut": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Candidate Id"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id",
+            "description": "Hospital sources: the request."
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "eta_hours": {
+            "type": "number",
+            "title": "Eta Hours"
+          },
+          "shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shelf Life Days",
+            "description": "Hospital sources: days of shelf life left at delivery on the held stock."
+          },
+          "unit_price_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Paise",
+            "description": "Supplier sources only."
+          },
+          "landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Landed Cost Paise",
+            "description": "Supplier sources only; always null for a hospital source."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "source_org_id",
+          "source_org_name",
+          "source_type",
+          "source_request_id",
+          "qty",
+          "eta_hours",
+          "shelf_life_days",
+          "unit_price_paise",
+          "landed_cost_paise"
+        ],
+        "title": "RecommendationLineOut",
+        "description": "One source of a recommendation as the requester's org sees it. A hospital source's\nlanded cost is never shown: it is quantity x that hospital's unit cost + transport + a\n2% handling fee, and transport follows from the two public locations, so any cost figure\nfor a hospital line would reveal its unit cost (CLAUDE.md rule 6)."
+      },
+      "RecommendationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "match_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Match Run Id"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "TRANSFER",
+              "TRANSFER_SPLIT",
+              "BUY"
+            ],
+            "title": "Type"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecStatus"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationLineOut"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "alternatives": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationLineOut"
+            },
+            "type": "array",
+            "title": "Alternatives",
+            "description": "The best BUY for a transfer, or for a BUY the next supplier."
+          },
+          "total_landed_cost_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Landed Cost Paise",
+            "description": "BUY only (supplier lines); null whenever a hospital source is involved."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Built by the hub from the stored candidate data."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "What the decider typed, or a timer's cause; null if nothing was typed."
+          },
+          "reason_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "SYSTEM"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Source"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "match_run_id",
+          "type",
+          "status",
+          "lines",
+          "alternatives",
+          "total_landed_cost_paise",
+          "explanation",
+          "expires_at",
+          "decided_by",
+          "decided_at",
+          "reason",
+          "reason_source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecommendationOut"
+      },
+      "ReconciliationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "expected": {
+            "type": "integer",
+            "title": "Expected"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "discrepancy": {
+            "type": "integer",
+            "title": "Discrepancy",
+            "description": "expected - accepted, for this shipment."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome",
+            "description": "The shortage's: CONFIRMED (shortfall accepted in full, RESOLVED) or PARTIAL (PARTIALLY_RESOLVED, residual opened)."
+          },
+          "residual_shortage_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Shortage Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "shipment_id",
+          "expected",
+          "accepted",
+          "discrepancy",
+          "outcome",
+          "residual_shortage_id",
+          "created_at"
+        ],
+        "title": "ReconciliationOut"
+      },
       "RefreshIn": {
         "properties": {
           "refresh_token": {
@@ -1889,6 +6082,27 @@
           "refresh_token"
         ],
         "title": "RefreshIn"
+      },
+      "RequestStatus": {
+        "type": "string",
+        "enum": [
+          "REQUESTED",
+          "TENTATIVE_HOLD",
+          "DECLINED",
+          "EXPIRED",
+          "SUPERSEDED",
+          "CONFIRMED"
+        ],
+        "title": "RequestStatus"
+      },
+      "RouteProvider": {
+        "type": "string",
+        "enum": [
+          "OSRM",
+          "HAVERSINE"
+        ],
+        "title": "RouteProvider",
+        "description": "Which provider gave a stored route: OSRM, or the haversine fallback (\u00a74)."
       },
       "RowError": {
         "properties": {
@@ -1907,6 +6121,1169 @@
           "message"
         ],
         "title": "RowError"
+      },
+      "ShipmentDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id"
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id"
+          },
+          "from_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Org Id"
+          },
+          "from_org_name": {
+            "type": "string",
+            "title": "From Org Name"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id"
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "carrier_org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Id"
+          },
+          "carrier_org_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_code": {
+            "type": "string",
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By",
+            "description": "The shortage's deadline."
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "planned_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Eta"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "route_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Distance Km"
+          },
+          "route_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteProvider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "route_geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Geometry",
+            "description": "GeoJSON LineString ([lng, lat] pairs) of the road route; null until assigned."
+          },
+          "status_history": {
+            "items": {
+              "$ref": "#/components/schemas/StatusChangeOut"
+            },
+            "type": "array",
+            "title": "Status History"
+          },
+          "last_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "inspection_note_required": {
+            "type": "boolean",
+            "title": "Inspection Note Required",
+            "description": "True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md \u00a79). Always false until S15."
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the receiving org recorded (with the reconciliation once every shipment of the shortage has a receipt). Shown to the receiving org only; null for the other orgs and before a receipt."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "source_request_id",
+          "purchase_order_id",
+          "from_org_id",
+          "from_org_name",
+          "to_org_id",
+          "to_org_name",
+          "carrier_org_id",
+          "carrier_org_name",
+          "product_id",
+          "product_code",
+          "product_name",
+          "qty",
+          "requires_cold_chain",
+          "status",
+          "priority",
+          "required_by",
+          "driver",
+          "vehicle",
+          "device_id",
+          "planned_eta",
+          "eta",
+          "route_distance_km",
+          "route_provider",
+          "pickup",
+          "drop",
+          "created_at",
+          "updated_at",
+          "route_geometry",
+          "status_history",
+          "last_location",
+          "inspection_note_required",
+          "receipt"
+        ],
+        "title": "ShipmentDetailOut"
+      },
+      "ShipmentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id"
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id"
+          },
+          "from_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Org Id"
+          },
+          "from_org_name": {
+            "type": "string",
+            "title": "From Org Name"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id"
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "carrier_org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Id"
+          },
+          "carrier_org_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_code": {
+            "type": "string",
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By",
+            "description": "The shortage's deadline."
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "planned_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Eta"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "route_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Distance Km"
+          },
+          "route_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteProvider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "source_request_id",
+          "purchase_order_id",
+          "from_org_id",
+          "from_org_name",
+          "to_org_id",
+          "to_org_name",
+          "carrier_org_id",
+          "carrier_org_name",
+          "product_id",
+          "product_code",
+          "product_name",
+          "qty",
+          "requires_cold_chain",
+          "status",
+          "priority",
+          "required_by",
+          "driver",
+          "vehicle",
+          "device_id",
+          "planned_eta",
+          "eta",
+          "route_distance_km",
+          "route_provider",
+          "pickup",
+          "drop",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ShipmentOut",
+        "description": "What every involved org sees: no costs. `planned_eta` is the plan's estimate at\napproval; `eta` and the route are computed at assignment (null while unassigned)."
+      },
+      "ShipmentStatus": {
+        "type": "string",
+        "enum": [
+          "CREATED",
+          "ASSIGNED",
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "RECONCILED"
+        ],
+        "title": "ShipmentStatus"
+      },
+      "ShortageCreate": {
+        "properties": {
+          "facility_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Facility Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty_required": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Qty Required"
+          },
+          "qty_local_usable": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Qty Local Usable"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "min_shelf_life_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Shelf Life Days",
+            "description": "Defaults to the product's default_min_shelf_life_days."
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "facility_id",
+          "product_id",
+          "qty_required",
+          "qty_local_usable",
+          "required_by",
+          "priority"
+        ],
+        "title": "ShortageCreate",
+        "description": "Any unknown field is a 422, except `shortfall`: the hub computes it\n(business-rules.md \u00a71), so a client value is accepted and ignored."
+      },
+      "ShortageOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "facility_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Facility Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty_required": {
+            "type": "integer",
+            "title": "Qty Required"
+          },
+          "qty_local_usable": {
+            "type": "integer",
+            "title": "Qty Local Usable"
+          },
+          "shortfall": {
+            "type": "integer",
+            "title": "Shortfall",
+            "description": "Hub-computed max(0, qty_required - qty_local_usable); never taken as input.",
+            "readOnly": true
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "min_shelf_life_days": {
+            "type": "integer",
+            "title": "Min Shelf Life Days"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "parent_shortage_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Shortage Id"
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ShortageSource"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "facility_id",
+          "product_id",
+          "qty_required",
+          "qty_local_usable",
+          "shortfall",
+          "required_by",
+          "priority",
+          "min_shelf_life_days",
+          "status",
+          "notes",
+          "parent_shortage_id",
+          "created_by",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ShortageOut"
+      },
+      "ShortageSource": {
+        "type": "string",
+        "enum": [
+          "FORM",
+          "CHAT"
+        ],
+        "title": "ShortageSource"
+      },
+      "SourceRequestOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "requester_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Requester Org Id"
+          },
+          "requester_org_name": {
+            "type": "string",
+            "title": "Requester Org Name"
+          },
+          "source_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Source Org Id"
+          },
+          "source_org_name": {
+            "type": "string",
+            "title": "Source Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "sla_deadline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Sla Deadline",
+            "description": "When the source must accept or decline."
+          },
+          "hold_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Expires At",
+            "description": "When the tentative holds lapse unless the requester decides."
+          },
+          "held_qty": {
+            "type": "integer",
+            "title": "Held Qty",
+            "description": "Units under active (TENTATIVE or FIRM) holds."
+          },
+          "holds": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HoldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holds",
+            "description": "Source org only; null for the requester."
+          },
+          "responded_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded By",
+            "description": "The source org user who answered. Source org only; null for the requester."
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "decline_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decline Reason"
+          },
+          "reason_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "SYSTEM"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Source",
+            "description": "On a decline: USER if the source typed a reason, else SYSTEM."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "requester_org_id",
+          "requester_org_name",
+          "source_org_id",
+          "source_org_name",
+          "product_id",
+          "priority",
+          "required_by",
+          "qty",
+          "status",
+          "sla_deadline",
+          "hold_expires_at",
+          "held_qty",
+          "holds",
+          "responded_by",
+          "responded_at",
+          "decline_reason",
+          "reason_source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceRequestOut",
+        "description": "Both orgs see the request itself. Only the source org sees which of its batches are\nheld (`holds`) and which of its users answered (`responded_by`); the requester sees\nthe total (`held_qty`) and the hold deadline."
+      },
+      "SourceType": {
+        "type": "string",
+        "enum": [
+          "HOSPITAL",
+          "SUPPLIER"
+        ],
+        "title": "SourceType"
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "DRAFT",
+          "OPEN",
+          "MATCHING",
+          "AWAITING_DECISION",
+          "IN_FULFILLMENT",
+          "RECEIVED",
+          "RESOLVED",
+          "PARTIALLY_RESOLVED",
+          "CANCELLED"
+        ],
+        "title": "Status"
+      },
+      "StatusChangeOut": {
+        "properties": {
+          "from_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_status",
+          "to_status",
+          "at"
+        ],
+        "title": "StatusChangeOut"
+      },
+      "StatusIn": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus",
+            "description": "The next state: PICKED_UP, IN_TRANSIT or DELIVERED, one step at a time."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "StatusIn"
+      },
+      "StopOut": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "stop_type": {
+            "$ref": "#/components/schemas/StopType"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "planned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned At"
+          },
+          "actual_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "stop_type",
+          "place",
+          "lat",
+          "lng",
+          "planned_at",
+          "actual_at"
+        ],
+        "title": "StopOut"
+      },
+      "StopType": {
+        "type": "string",
+        "enum": [
+          "PICKUP",
+          "DROP"
+        ],
+        "title": "StopType"
+      },
+      "StreamTicketOut": {
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "title": "Ticket",
+            "description": "Pass as `?ticket=` to GET /events/stream (EventSource cannot send headers)."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Open the stream before this; it lasts 60 seconds."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ticket",
+          "expires_at"
+        ],
+        "title": "StreamTicketOut"
+      },
+      "TelemetryBatch": {
+        "properties": {
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingIn"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "title": "Readings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "readings"
+        ],
+        "title": "TelemetryBatch"
+      },
+      "TelemetryResult": {
+        "properties": {
+          "stored": {
+            "type": "integer",
+            "title": "Stored",
+            "description": "New readings saved."
+          },
+          "duplicates": {
+            "type": "integer",
+            "title": "Duplicates",
+            "description": "Readings already stored (same device_id and ts)."
+          },
+          "unknown_devices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Devices",
+            "description": "device_ids with no Device; not stored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "stored",
+          "duplicates",
+          "unknown_devices"
+        ],
+        "title": "TelemetryResult"
       },
       "TokenPair": {
         "properties": {
@@ -1935,6 +7312,18 @@
           "expires_in"
         ],
         "title": "TokenPair"
+      },
+      "Trigger": {
+        "type": "string",
+        "enum": [
+          "CREATE",
+          "DECLINE",
+          "EXPIRY",
+          "MANUAL",
+          "RECOMMENDATION_EXPIRED",
+          "STOCK_CHANGE"
+        ],
+        "title": "Trigger"
       },
       "UserOut": {
         "properties": {
@@ -2011,6 +7400,30 @@
         ],
         "title": "ValidationError"
       },
+      "VehicleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "reg_no": {
+            "type": "string",
+            "title": "Reg No"
+          },
+          "has_cold_chain": {
+            "type": "boolean",
+            "title": "Has Cold Chain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "reg_no",
+          "has_cold_chain"
+        ],
+        "title": "VehicleOut"
+      },
       "VerificationMethod": {
         "type": "string",
         "enum": [
@@ -2050,6 +7463,114 @@
         ],
         "title": "VerifyIn",
         "description": "`method` is required: the hub records only the count method the user stated."
+      },
+      "WebhookCreated": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "title": "Event Types"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "secret": {
+            "type": "string",
+            "title": "Secret",
+            "description": "Shown only now. Verify `X-CareE-Signature: sha256=<hex HMAC-SHA256 of the raw body>` with it."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "created_at",
+          "secret"
+        ],
+        "title": "WebhookCreated"
+      },
+      "WebhookIn": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "format": "uri",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Event Types"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "event_types"
+        ],
+        "title": "WebhookIn"
+      },
+      "WebhookOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "type": "array",
+            "title": "Event Types"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "created_at"
+        ],
+        "title": "WebhookOut"
       }
     },
     "securitySchemes": {

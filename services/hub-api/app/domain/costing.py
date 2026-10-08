@@ -14,8 +14,23 @@ class Point(NamedTuple):
     lng: float
 
 
+class Route(NamedTuple):
+    """A road route: its distance, the path as points in travel order, and which provider
+    gave it ("OSRM", or "HAVERSINE" for the straight-line fallback)."""
+
+    distance_km: float
+    path: tuple[Point, ...]
+    provider: str
+
+
 class RoutingProvider(Protocol):
     async def distance_km(self, origin: Point, dest: Point) -> float: ...
+
+    async def route(self, origin: Point, dest: Point) -> Route: ...
+
+    async def table(
+        self, origins: Sequence[Point], dests: Sequence[Point]
+    ) -> list[list[float]]: ...
 
 
 def haversine_km(a: Point, b: Point) -> float:
@@ -28,10 +43,24 @@ def haversine_km(a: Point, b: Point) -> float:
 
 
 class HaversineProvider:
-    """Road distance estimated as straight-line distance x ROAD_FACTOR. S11 adds OSRM."""
+    """Road distance estimated as straight-line distance x ROAD_FACTOR (§4): the fallback
+    whenever OSRM is not configured, fails or times out. Its route is the straight line."""
 
     async def distance_km(self, origin: Point, dest: Point) -> float:
         return haversine_km(origin, dest) * config.ROAD_FACTOR
+
+    async def route(self, origin: Point, dest: Point) -> Route:
+        return Route(await self.distance_km(origin, dest), (origin, dest), "HAVERSINE")
+
+    async def table(self, origins: Sequence[Point], dests: Sequence[Point]) -> list[list[float]]:
+        """Distance (km) from each origin (rows) to each destination (columns)."""
+        return [[await self.distance_km(o, d) for d in dests] for o in origins]
+
+
+def geojson_line(path: Sequence[Point]) -> dict[str, object]:
+    """A path as a GeoJSON LineString (coordinates are [lng, lat], as GeoJSON and Leaflet's
+    GeoJSON layer expect)."""
+    return {"type": "LineString", "coordinates": [[p.lng, p.lat] for p in path]}
 
 
 def transport_eta_hours(distance_km: float) -> float:

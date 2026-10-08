@@ -1,18 +1,38 @@
 import { type AppConfig, CareApp } from "@care-e/ui";
+import { SHORTAGE_READERS } from "./display";
+import { DashboardPage } from "./pages/dashboard";
+import { DeliveriesPage } from "./pages/deliveries";
+import { InventoryPage } from "./pages/inventory";
+import { RequestsPage } from "./pages/requests";
+import { ShortageDetailPage } from "./pages/shortage-detail";
+import { ShortagesPage } from "./pages/shortages";
 
-// Routes and screens: apps-ai-iot.md, hospital-web. Pages are placeholders until their sections land.
+// Routes and screens: apps-ai-iot.md, hospital-web. Screens without an element are placeholders
+// until their sections land. A nav `capability` mirrors the hub's check on that screen's list.
 export const config: AppConfig = {
   name: "CARE-E Hospital",
   allow: ["HOSPITAL", "PLATFORM"],
   refusal: "This app is for hospital users",
   nav: [
-    { to: "/", label: "Dashboard" },
-    { to: "/inventory", label: "Inventory" },
-    { to: "/shortages", label: "Shortages" },
-    { to: "/requests", label: "Requests" },
-    { to: "/deliveries", label: "Deliveries" },
+    { to: "/", label: "Dashboard", element: <DashboardPage /> },
+    { to: "/inventory", label: "Inventory", element: <InventoryPage /> },
+    {
+      to: "/shortages",
+      label: "Shortages",
+      capability: SHORTAGE_READERS,
+      element: <ShortagesPage />,
+    },
+    {
+      to: "/requests",
+      label: "Requests",
+      capability: "source_request.respond",
+      element: <RequestsPage />,
+    },
+    { to: "/deliveries", label: "Deliveries", element: <DeliveriesPage /> },
     { to: "/forecasts", label: "Forecasts" },
   ],
+  routes: [{ path: "/shortages/:id", element: <ShortageDetailPage /> }],
+  liveUpdates: true,
 };
 
 export const App = () => <CareApp {...config} />;

@@ -183,7 +183,8 @@ export interface paths {
         get: operations["list_offers_api_v1_supplier_offers_get"];
         /**
          * Put Offer
-         * @description Create or update one offer of the caller's supplier org (SUPPLIER orgs only).
+         * @description Create or update one offer of the caller's supplier org (SUPPLIER orgs only). Then
+         *     re-runs other orgs' "No eligible source" shortages for the product (§5).
          */
         put: operations["put_offer_api_v1_supplier_offers_put"];
         post?: never;
@@ -272,10 +273,841 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shortages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shortages
+         * @description The caller's own org's shortages, newest first.
+         */
+        get: operations["list_shortages_api_v1_shortages_get"];
+        put?: never;
+        /**
+         * Create Shortage
+         * @description Create a shortage in the caller's org. The hub computes the shortfall and runs the
+         *     first match, so the shortage comes back MATCHING.
+         */
+        post: operations["create_shortage_api_v1_shortages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Shortage */
+        get: operations["get_shortage_api_v1_shortages__shortage_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Shortage
+         * @description Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.
+         */
+        post: operations["cancel_shortage_api_v1_shortages__shortage_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun Match
+         * @description Manual re-run while the shortage is OPEN or MATCHING; otherwise 409.
+         */
+        post: operations["rerun_match_api_v1_shortages__shortage_id__match_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/match-runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest Match Run
+         * @description Any user of the requester's org: eligible candidates by rank, then rejected ones with
+         *     every failed gate's reason.
+         */
+        get: operations["latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/recommendations/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Latest Recommendation
+         * @description Any user of the requester's org: the shortage's newest recommendation, which is the
+         *     one waiting for a decision (PENDING or ESCALATED) while there is one, else the last one
+         *     decided or expired. 404 if none has been made yet. Same redaction as
+         *     GET /recommendations/{id}: a hospital source's cost is never shown.
+         */
+        get: operations["latest_recommendation_api_v1_shortages__shortage_id__recommendations_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shortage Audit
+         * @description The shortage's trail in the caller's own org, oldest first: the shortage, its match
+         *     runs, source requests, recommendations, purchase orders, shipments, receipts,
+         *     reconciliations and received batches. `reason_source` says whether a user typed the
+         *     reason (USER) or the hub recorded it (SYSTEM). 403 for another org's shortage.
+         */
+        get: operations["shortage_audit_api_v1_shortages__shortage_id__audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Telemetry
+         * @description For services/iot-ingest only (ingest token, scope `telemetry.write`). Idempotent:
+         *     a reading whose (device_id, ts) is already stored counts as a duplicate.
+         */
+        post: operations["post_telemetry_api_v1_internal_telemetry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description The caller's own org's devices, with last_seen and battery.
+         */
+        get: operations["list_devices_api_v1_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Device
+         * @description Put one of the caller's org's devices (403 for another org's) on a shipment the org
+         *     may see, or take it off with `shipment_id: null`. Its new readings are linked to the
+         *     shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
+         *     IN_TRANSIT. 409 if the shipment has arrived or already carries another device.
+         */
+        post: operations["assign_device_api_v1_devices__device_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Requests
+         * @description `incoming`: requests the caller's org is asked to supply. `outgoing`: requests sent
+         *     for the caller's org's shortages. Newest first; optional `status` and `shortage_id`.
+         */
+        get: operations["list_source_requests_api_v1_source_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-requests/{request_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Source Request
+         * @description Source org only. Places TENTATIVE holds on the source's batches (earliest expiry
+         *     first) and moves the request to TENTATIVE_HOLD. 409 `conflict` if the stock no longer
+         *     covers it: the request is then EXPIRED ("Stock changed before acceptance.") and matching
+         *     re-runs. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.
+         */
+        post: operations["accept_source_request_api_v1_source_requests__request_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/source-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Source Request
+         * @description Source org only; the reason is optional. Matching re-runs without this org for the
+         *     shortage. 409 `invalid_transition` if it is not REQUESTED, or its deadline has passed.
+         */
+        post: operations["decline_source_request_api_v1_source_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/ticket": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Stream Ticket
+         * @description A 60-second ticket that opens GET /events/stream as the caller (`?ticket=`), because
+         *     a browser EventSource cannot send an Authorization header.
+         */
+        post: operations["create_stream_ticket_api_v1_events_ticket_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/events/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Event Stream
+         * @description Server-sent events for the caller's org: only events whose `org_ids` include it.
+         *
+         *     Each message is `id: <seq>` and `data: <envelope>`, where the envelope is
+         *     `{id, type, occurred_at, org_ids, data}` (api-and-events.md, Events). A comment line
+         *     (`: heartbeat`) is sent after 15 seconds without events. Reconnect with the last `id` as the
+         *     `Last-Event-ID` header or `last_event_id` query parameter to replay what was missed; if too
+         *     much was missed, the stream sends `event: reset` instead, and the client should refetch.
+         *     The stream closes after 15 minutes; reconnect with a new ticket.
+         */
+        get: operations["event_stream_api_v1_events_stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Webhooks
+         * @description The caller's org's subscriptions, oldest first. Secrets are never listed.
+         */
+        get: operations["list_webhooks_api_v1_webhooks_get"];
+        put?: never;
+        /**
+         * Create Webhook
+         * @description Subscribe the caller's org: events of `event_types` addressed to it are POSTed to
+         *     `url`, signed in `X-CareE-Signature`. The secret is in this response only.
+         */
+        post: operations["create_webhook_api_v1_webhooks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/{webhook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Webhook
+         * @description Own org's subscription only (403 otherwise). Its pending deliveries stop.
+         */
+        delete: operations["delete_webhook_api_v1_webhooks__webhook_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Recommendation
+         * @description Any user of the requester's org (403 otherwise). A hospital source's cost is never
+         *     shown, only supplier costs.
+         */
+        get: operations["get_recommendation_api_v1_recommendations__recommendation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Recommendation
+         * @description PENDING or ESCALATED -> APPROVED. Transfer: holds become FIRM, requests CONFIRMED,
+         *     one shipment per source. Buy: a purchase order is sent. The shortage -> IN_FULFILLMENT.
+         *     409 if already decided, or if it (or a hold) has expired: it is then expired and
+         *     matching re-runs.
+         */
+        post: operations["approve_recommendation_api_v1_recommendations__recommendation_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Recommendation
+         * @description PENDING or ESCALATED -> REJECTED (reason optional). Releases every hold and re-runs
+         *     matching. 409 if already decided or expired.
+         */
+        post: operations["reject_recommendation_api_v1_recommendations__recommendation_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/{recommendation_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Escalate Recommendation
+         * @description PENDING -> ESCALATED, notifying every APPROVER of the org. 409 otherwise.
+         */
+        post: operations["escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Purchase Orders
+         * @description Purchase orders sent to the caller's supplier org, newest first; optional `status`.
+         */
+        get: operations["list_purchase_orders_api_v1_purchase_orders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Purchase Order
+         * @description SENT -> ACKNOWLEDGED. Only the supplier the order went to (403 otherwise); 409 from
+         *     any other status.
+         */
+        post: operations["acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Purchase Order
+         * @description SENT or ACKNOWLEDGED -> REJECTED (reason optional). The shortage goes back to
+         *     MATCHING and matching re-runs without this supplier; 409 from any other status.
+         */
+        post: operations["reject_purchase_order_api_v1_purchase_orders__po_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/purchase-orders/{po_id}/dispatch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Purchase Order
+         * @description ACKNOWLEDGED -> DISPATCHED, creating the shipment from the supplier to the hospital
+         *     (`shipment_id`). 409 unless the order has been acknowledged.
+         */
+        post: operations["dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/network/demand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Network Demand
+         * @description Open shortfall totals for each product the caller's supplier org offers (one row per
+         *     offer, oldest offer first; 0 when nothing is open). Totals only: no hospital, facility,
+         *     shortage or count of them.
+         */
+        get: operations["network_demand_api_v1_network_demand_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shipments
+         * @description Shipments the caller's org is involved in (from, to or carrier), newest first; a
+         *     LOGISTICS org also sees every unassigned (CREATED) shipment: the dispatch board.
+         */
+        get: operations["list_shipments_api_v1_shipments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shipment
+         * @description One shipment with its route geometry, status history and last driver location.
+         *     403 unless the caller's org is involved (or it is unassigned and the caller is a
+         *     logistics org).
+         */
+        get: operations["get_shipment_api_v1_shipments__shipment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Shipment
+         * @description CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for
+         *     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
+         *     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
+         *     409 unless CREATED.
+         */
+        post: operations["assign_shipment_api_v1_shipments__shipment_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/unassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unassign Shipment
+         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.
+         */
+        post: operations["unassign_shipment_api_v1_shipments__shipment_id__unassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Shipment Status
+         * @description The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->
+         *     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
+         *     on_hand and consumes its FIRM hold.
+         */
+        post: operations["update_shipment_status_api_v1_shipments__shipment_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Shipment Location
+         * @description A GPS ping from the assigned driver's phone (403 otherwise), while ASSIGNED,
+         *     PICKED_UP or IN_TRANSIT (409 otherwise). Sent to the shipment's orgs as
+         *     `shipment.location`.
+         */
+        post: operations["post_shipment_location_api_v1_shipments__shipment_id__location_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Drivers
+         * @description The caller's own org's drivers.
+         */
+        get: operations["list_drivers_api_v1_drivers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicles
+         * @description The caller's own org's vehicles.
+         */
+        get: operations["list_vehicles_api_v1_vehicles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Receipt
+         * @description The receiving org records what arrived (business-rules.md §9): DELIVERED ->
+         *     RECONCILED, the accepted stock becomes a new batch in its inventory, and once every
+         *     shipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or
+         *     PARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other
+         *     org; 409 unless DELIVERED; 400 if received > expected, accepted + rejected ≠ received,
+         *     an open cold-chain excursion has no inspection note, or accepted stock has no expiry.
+         */
+        post: operations["record_receipt_api_v1_shipments__shipment_id__receipt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description The caller's own notifications, newest first. Nobody reads another user's.
+         */
+        get: operations["list_notifications_api_v1_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Notification Read
+         * @description Marks one of the caller's notifications read; one already read keeps its first
+         *     `read_at`. 403 for another user's notification.
+         */
+        post: operations["mark_notification_read_api_v1_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApprovalOut */
+        ApprovalOut: {
+            recommendation: components["schemas"]["RecommendationOut"];
+            /**
+             * Message
+             * @description business-rules.md §13 wording for the approved type.
+             */
+            message: string;
+            /**
+             * Shipment Ids
+             * @description Transfers: one per source.
+             */
+            shipment_ids: string[];
+            /**
+             * Purchase Order Id
+             * @description BUY: the order sent.
+             */
+            purchase_order_id: string | null;
+        };
+        /** AssignIn */
+        AssignIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Vehicle Id
+             * Format: uuid
+             */
+            vehicle_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** AuditOut */
         AuditOut: {
             /**
@@ -421,6 +1253,11 @@ export interface components {
              * @description Hub-computed (business-rules.md §2); never accepted as input.
              */
             readonly transferable: number;
+            /**
+             * Held Qty
+             * @description Units under active source-request holds; counted as reserved.
+             */
+            readonly held_qty: number;
         };
         /**
          * BatchUpdate
@@ -446,6 +1283,148 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /**
+         * CandidateOut
+         * @description What the requester's org sees of a source: no batch ids, raw stock figures or, for a
+         *     hospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6).
+         */
+        CandidateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            source_type: components["schemas"]["SourceType"];
+            /**
+             * Transferable Qty
+             * @description Hospital sources: hub-computed.
+             */
+            transferable_qty: number | null;
+            /**
+             * Offered Qty
+             * @description Supplier sources: the offer's available qty.
+             */
+            offered_qty: number | null;
+            /** Gate Results */
+            gate_results: components["schemas"]["GateOut"][];
+            /** Eligible */
+            eligible: boolean;
+            /**
+             * Landed Cost Paise
+             * @description Eligible supplier candidates only; never shown for a hospital source.
+             */
+            landed_cost_paise: number | null;
+            /** Eta Hours */
+            eta_hours: number;
+            /** Reliability */
+            reliability: number;
+            /**
+             * Rank
+             * @description 1 = best; eligible candidates only.
+             */
+            rank: number | null;
+        };
+        /**
+         * Condition
+         * @enum {string}
+         */
+        Condition: "GOOD" | "DAMAGED" | "TEMPERATURE_ISSUE";
+        /**
+         * DemandOut
+         * @description Open network demand for one product the caller's supplier org offers. Aggregated over
+         *     every hospital: no hospital, facility, shortage or count of either (CLAUDE.md rule 6).
+         */
+        DemandOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Open Shortfall Qty
+             * @description Sum of the hub-computed shortfall of every other org's shortage for this product that is OPEN, MATCHING or AWAITING_DECISION; 0 when there is none.
+             */
+            open_shortfall_qty: number;
+        };
+        /** DeviceAssignIn */
+        DeviceAssignIn: {
+            /**
+             * Shipment Id
+             * @description The shipment the device rides with; null takes it off its shipment.
+             */
+            shipment_id: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** DeviceOut */
+        DeviceOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Device Id */
+            device_id: string;
+            /** Type */
+            type: string;
+            /** Battery Level */
+            battery_level: number | null;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Assigned Shipment Id */
+            assigned_shipment_id: string | null;
+        };
+        /**
+         * Direction
+         * @enum {string}
+         */
+        Direction: "incoming" | "outgoing";
+        /** DriverOut */
+        DriverOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+            /** Active */
+            active: boolean;
+        };
+        /** DriverRef */
+        DriverRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * EventType
+         * @enum {string}
+         */
+        EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "recommendation.status_changed" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
         /** FacilityOut */
         FacilityOut: {
             /** Name */
@@ -466,11 +1445,46 @@ export interface components {
             /** Has Cold Storage */
             has_cold_storage: boolean;
         };
+        /** GateOut */
+        GateOut: {
+            /** Gate */
+            gate: string;
+            /** Passed */
+            passed: boolean;
+            /** Reason */
+            reason: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HoldOut */
+        HoldOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Qty */
+            qty: number;
+            status: components["schemas"]["HoldStatus"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
+         * HoldStatus
+         * @enum {string}
+         */
+        HoldStatus: "TENTATIVE" | "FIRM" | "RELEASED" | "CONSUMED";
         /** ImportResult */
         ImportResult: {
             /** Inserted */
@@ -485,12 +1499,75 @@ export interface components {
             /** Lng */
             lng: number;
         };
+        /** LocationIn */
+        LocationIn: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Ts
+             * @description When the phone took the fix; the hub's time if left out.
+             */
+            ts?: string | null;
+        };
+        /** LocationOut */
+        LocationOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+        };
         /** LoginIn */
         LoginIn: {
             /** Email */
             email: string;
             /** Password */
             password: string;
+        };
+        /** MatchRunOut */
+        MatchRunOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Run No */
+            run_no: number;
+            triggered_by: components["schemas"]["Trigger"];
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Excluded Org Ids */
+            excluded_org_ids: string[];
+            planned_resolution: components["schemas"]["PlannedResolution"] | null;
+            /**
+             * Reason
+             * @description "No eligible source" when nothing is eligible.
+             */
+            reason: string | null;
+            /**
+             * Candidates
+             * @description Eligible by rank, then rejected.
+             */
+            candidates: components["schemas"]["CandidateOut"][];
         };
         /** MeOut */
         MeOut: {
@@ -500,6 +1577,33 @@ export interface components {
             roles: string[];
             /** Capabilities */
             capabilities: string[];
+        };
+        /** NotificationOut */
+        NotificationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Type
+             * @description e.g. "recommendation.escalated".
+             */
+            type: string;
+            /**
+             * Payload
+             * @description recommendation.escalated: recommendation_id, shortage_id, escalated_by, reason (null if none was typed), expires_at.
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Read At */
+            read_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * OfferIn
@@ -569,6 +1673,13 @@ export interface components {
             /** Status */
             status: string;
         };
+        /**
+         * Outcome
+         * @description CONFIRMED: the shortage's shortfall was accepted in full. PARTIAL: less was accepted,
+         *     and a residual shortage was opened for the rest.
+         * @enum {string}
+         */
+        Outcome: "CONFIRMED" | "PARTIAL";
         /** Page[AuditOut] */
         Page_AuditOut_: {
             /** Items */
@@ -583,10 +1694,38 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[DemandOut] */
+        Page_DemandOut_: {
+            /** Items */
+            items: components["schemas"]["DemandOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[DeviceOut] */
+        Page_DeviceOut_: {
+            /** Items */
+            items: components["schemas"]["DeviceOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[DriverOut] */
+        Page_DriverOut_: {
+            /** Items */
+            items: components["schemas"]["DriverOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[FacilityOut] */
         Page_FacilityOut_: {
             /** Items */
             items: components["schemas"]["FacilityOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[NotificationOut] */
+        Page_NotificationOut_: {
+            /** Items */
+            items: components["schemas"]["NotificationOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -611,6 +1750,96 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[PurchaseOrderOut] */
+        Page_PurchaseOrderOut_: {
+            /** Items */
+            items: components["schemas"]["PurchaseOrderOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[ShipmentOut] */
+        Page_ShipmentOut_: {
+            /** Items */
+            items: components["schemas"]["ShipmentOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[ShortageOut] */
+        Page_ShortageOut_: {
+            /** Items */
+            items: components["schemas"]["ShortageOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[SourceRequestOut] */
+        Page_SourceRequestOut_: {
+            /** Items */
+            items: components["schemas"]["SourceRequestOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[VehicleOut] */
+        Page_VehicleOut_: {
+            /** Items */
+            items: components["schemas"]["VehicleOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[WebhookOut] */
+        Page_WebhookOut_: {
+            /** Items */
+            items: components["schemas"]["WebhookOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** PlanLine */
+        PlanLine: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            source_type: components["schemas"]["SourceType"];
+            /** Qty */
+            qty: number;
+            /**
+             * Landed Cost Paise
+             * @description Supplier lines only, as for candidates.
+             */
+            landed_cost_paise: number | null;
+            /** Eta Hours */
+            eta_hours: number;
+        };
+        /** PlannedResolution */
+        PlannedResolution: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "TRANSFER" | "TRANSFER_SPLIT" | "BUY";
+            /** Lines */
+            lines: components["schemas"]["PlanLine"][];
+            /**
+             * Alternatives
+             * @description The best BUY, or for a BUY the next one.
+             */
+            alternatives: components["schemas"]["PlanLine"][];
+        };
+        /**
+         * PoStatus
+         * @enum {string}
+         */
+        PoStatus: "SENT" | "ACKNOWLEDGED" | "DISPATCHED" | "DELIVERED" | "REJECTED";
+        /**
+         * Priority
+         * @enum {string}
+         */
+        Priority: "CRITICAL" | "ROUTINE";
         /** ProductOut */
         ProductOut: {
             /**
@@ -652,17 +1881,806 @@ export interface components {
             type: string;
             location: components["schemas"]["Location"];
         };
+        /**
+         * PurchaseOrderOut
+         * @description A purchase order as the supplier it was sent to sees it.
+         */
+        PurchaseOrderOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Supplier Org Id
+             * Format: uuid
+             */
+            supplier_org_id: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             * @description The buying hospital (the shortage's org).
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty */
+            qty: number;
+            /** Unit Price Paise */
+            unit_price_paise: number;
+            status: components["schemas"]["PoStatus"];
+            /**
+             * Eta
+             * Format: date-time
+             */
+            eta: string;
+            /**
+             * Shipment Id
+             * @description Set once the order is dispatched.
+             */
+            shipment_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ReadingIn
+         * @description One reading as the cold box publishes it (apps-ai-iot.md, Firmware).
+         */
+        ReadingIn: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Temp C */
+            temp_c: number;
+            /** Battery */
+            battery?: number | null;
+        };
+        /** ReasonIn */
+        ReasonIn: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * RecStatus
+         * @enum {string}
+         */
+        RecStatus: "PENDING" | "APPROVED" | "REJECTED" | "ESCALATED" | "EXPIRED";
+        /**
+         * ReceiptIn
+         * @description What the receiver counted. `expected` is the shipment's qty (read-only; sending it is
+         *     a 422). Invariants (business-rules.md §9), else 400: received ≤ expected and accepted +
+         *     rejected = received.
+         */
+        ReceiptIn: {
+            /** Received */
+            received: number;
+            /** Accepted */
+            accepted: number;
+            /** Rejected */
+            rejected: number;
+            condition: components["schemas"]["Condition"];
+            /**
+             * Inspection Note
+             * @description Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment).
+             */
+            inspection_note?: string | null;
+            /**
+             * Expiry Date
+             * @description The expiry printed on the accepted stock. Required (400) when accepted > 0: the accepted stock becomes a new batch in the receiver's inventory.
+             */
+            expiry_date?: string | null;
+            /**
+             * Batch No
+             * @description The new batch's number; `RCV-` and the shipment id's first 8 characters if left out. A batch number already used for this product at the facility is 409.
+             */
+            batch_no?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ReceiptOut
+         * @description Seen by the receiving org only.
+         */
+        ReceiptOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Expected */
+            expected: number;
+            /** Received */
+            received: number;
+            /** Accepted */
+            accepted: number;
+            /** Rejected */
+            rejected: number;
+            condition: components["schemas"]["Condition"];
+            /** Inspection Note */
+            inspection_note: string | null;
+            /**
+             * Received By
+             * Format: uuid
+             */
+            received_by: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /**
+             * Batch Id
+             * @description The receiver's new inventory batch holding the accepted stock.
+             */
+            batch_id: string | null;
+            /** @description Null until every shipment of the shortage has a receipt. */
+            reconciliation?: components["schemas"]["ReconciliationOut"] | null;
+        };
+        /**
+         * RecommendationLineOut
+         * @description One source of a recommendation as the requester's org sees it. A hospital source's
+         *     landed cost is never shown: it is quantity x that hospital's unit cost + transport + a
+         *     2% handling fee, and transport follows from the two public locations, so any cost figure
+         *     for a hospital line would reveal its unit cost (CLAUDE.md rule 6).
+         */
+        RecommendationLineOut: {
+            /**
+             * Candidate Id
+             * Format: uuid
+             */
+            candidate_id: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            source_type: components["schemas"]["SourceType"];
+            /**
+             * Source Request Id
+             * @description Hospital sources: the request.
+             */
+            source_request_id: string | null;
+            /** Qty */
+            qty: number;
+            /** Eta Hours */
+            eta_hours: number;
+            /**
+             * Shelf Life Days
+             * @description Hospital sources: days of shelf life left at delivery on the held stock.
+             */
+            shelf_life_days: number | null;
+            /**
+             * Unit Price Paise
+             * @description Supplier sources only.
+             */
+            unit_price_paise: number | null;
+            /**
+             * Landed Cost Paise
+             * @description Supplier sources only; always null for a hospital source.
+             */
+            landed_cost_paise: number | null;
+        };
+        /** RecommendationOut */
+        RecommendationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Match Run Id
+             * Format: uuid
+             */
+            match_run_id: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "TRANSFER" | "TRANSFER_SPLIT" | "BUY";
+            status: components["schemas"]["RecStatus"];
+            /** Lines */
+            lines: components["schemas"]["RecommendationLineOut"][];
+            /**
+             * Alternatives
+             * @description The best BUY for a transfer, or for a BUY the next supplier.
+             */
+            alternatives: components["schemas"]["RecommendationLineOut"][];
+            /**
+             * Total Landed Cost Paise
+             * @description BUY only (supplier lines); null whenever a hospital source is involved.
+             */
+            total_landed_cost_paise: number | null;
+            /**
+             * Explanation
+             * @description Built by the hub from the stored candidate data.
+             */
+            explanation: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Reason
+             * @description What the decider typed, or a timer's cause; null if nothing was typed.
+             */
+            reason: string | null;
+            /** Reason Source */
+            reason_source: ("USER" | "SYSTEM") | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ReconciliationOut */
+        ReconciliationOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Expected */
+            expected: number;
+            /** Accepted */
+            accepted: number;
+            /**
+             * Discrepancy
+             * @description expected - accepted, for this shipment.
+             */
+            discrepancy: number;
+            /** @description The shortage's: CONFIRMED (shortfall accepted in full, RESOLVED) or PARTIAL (PARTIALLY_RESOLVED, residual opened). */
+            outcome: components["schemas"]["Outcome"];
+            /** Residual Shortage Id */
+            residual_shortage_id: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** RefreshIn */
         RefreshIn: {
             /** Refresh Token */
             refresh_token: string;
         };
+        /**
+         * RequestStatus
+         * @enum {string}
+         */
+        RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
+        /**
+         * RouteProvider
+         * @description Which provider gave a stored route: OSRM, or the haversine fallback (§4).
+         * @enum {string}
+         */
+        RouteProvider: "OSRM" | "HAVERSINE";
         /** RowError */
         RowError: {
             /** Line */
             line: number;
             /** Message */
             message: string;
+        };
+        /** ShipmentDetailOut */
+        ShipmentDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Source Request Id */
+            source_request_id: string | null;
+            /** Purchase Order Id */
+            purchase_order_id: string | null;
+            /**
+             * From Org Id
+             * Format: uuid
+             */
+            from_org_id: string;
+            /** From Org Name */
+            from_org_name: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /** Carrier Org Id */
+            carrier_org_id: string | null;
+            /** Carrier Org Name */
+            carrier_org_name: string | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Qty */
+            qty: number;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            status: components["schemas"]["ShipmentStatus"];
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             * @description The shortage's deadline.
+             */
+            required_by: string;
+            driver: components["schemas"]["DriverRef"] | null;
+            vehicle: components["schemas"]["VehicleOut"] | null;
+            /** Device Id */
+            device_id: string | null;
+            /** Planned Eta */
+            planned_eta: string | null;
+            /** Eta */
+            eta: string | null;
+            /** Route Distance Km */
+            route_distance_km: number | null;
+            route_provider: components["schemas"]["RouteProvider"] | null;
+            pickup: components["schemas"]["StopOut"] | null;
+            drop: components["schemas"]["StopOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Route Geometry
+             * @description GeoJSON LineString ([lng, lat] pairs) of the road route; null until assigned.
+             */
+            route_geometry: {
+                [key: string]: unknown;
+            } | null;
+            /** Status History */
+            status_history: components["schemas"]["StatusChangeOut"][];
+            last_location: components["schemas"]["LocationOut"] | null;
+            /**
+             * Inspection Note Required
+             * @description True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md §9). Always false until S15.
+             */
+            inspection_note_required: boolean;
+            /** @description What the receiving org recorded (with the reconciliation once every shipment of the shortage has a receipt). Shown to the receiving org only; null for the other orgs and before a receipt. */
+            receipt: components["schemas"]["ReceiptOut"] | null;
+        };
+        /**
+         * ShipmentOut
+         * @description What every involved org sees: no costs. `planned_eta` is the plan's estimate at
+         *     approval; `eta` and the route are computed at assignment (null while unassigned).
+         */
+        ShipmentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Source Request Id */
+            source_request_id: string | null;
+            /** Purchase Order Id */
+            purchase_order_id: string | null;
+            /**
+             * From Org Id
+             * Format: uuid
+             */
+            from_org_id: string;
+            /** From Org Name */
+            from_org_name: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /** Carrier Org Id */
+            carrier_org_id: string | null;
+            /** Carrier Org Name */
+            carrier_org_name: string | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Qty */
+            qty: number;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            status: components["schemas"]["ShipmentStatus"];
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             * @description The shortage's deadline.
+             */
+            required_by: string;
+            driver: components["schemas"]["DriverRef"] | null;
+            vehicle: components["schemas"]["VehicleOut"] | null;
+            /** Device Id */
+            device_id: string | null;
+            /** Planned Eta */
+            planned_eta: string | null;
+            /** Eta */
+            eta: string | null;
+            /** Route Distance Km */
+            route_distance_km: number | null;
+            route_provider: components["schemas"]["RouteProvider"] | null;
+            pickup: components["schemas"]["StopOut"] | null;
+            drop: components["schemas"]["StopOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ShipmentStatus
+         * @enum {string}
+         */
+        ShipmentStatus: "CREATED" | "ASSIGNED" | "PICKED_UP" | "IN_TRANSIT" | "DELIVERED" | "RECONCILED";
+        /**
+         * ShortageCreate
+         * @description Any unknown field is a 422, except `shortfall`: the hub computes it
+         *     (business-rules.md §1), so a client value is accepted and ignored.
+         */
+        ShortageCreate: {
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /**
+             * Min Shelf Life Days
+             * @description Defaults to the product's default_min_shelf_life_days.
+             */
+            min_shelf_life_days?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ShortageOut */
+        ShortageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Shortfall
+             * @description Hub-computed max(0, qty_required - qty_local_usable); never taken as input.
+             */
+            readonly shortfall: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /** Min Shelf Life Days */
+            min_shelf_life_days: number;
+            status: components["schemas"]["Status"];
+            /** Notes */
+            notes: string | null;
+            /** Parent Shortage Id */
+            parent_shortage_id: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ShortageSource
+         * @enum {string}
+         */
+        ShortageSource: "FORM" | "CHAT";
+        /**
+         * SourceRequestOut
+         * @description Both orgs see the request itself. Only the source org sees which of its batches are
+         *     held (`holds`) and which of its users answered (`responded_by`); the requester sees
+         *     the total (`held_qty`) and the hold deadline.
+         */
+        SourceRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /**
+             * Requester Org Id
+             * Format: uuid
+             */
+            requester_org_id: string;
+            /** Requester Org Name */
+            requester_org_name: string;
+            /**
+             * Source Org Id
+             * Format: uuid
+             */
+            source_org_id: string;
+            /** Source Org Name */
+            source_org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            /** Qty */
+            qty: number;
+            status: components["schemas"]["RequestStatus"];
+            /**
+             * Sla Deadline
+             * Format: date-time
+             * @description When the source must accept or decline.
+             */
+            sla_deadline: string;
+            /**
+             * Hold Expires At
+             * @description When the tentative holds lapse unless the requester decides.
+             */
+            hold_expires_at: string | null;
+            /**
+             * Held Qty
+             * @description Units under active (TENTATIVE or FIRM) holds.
+             */
+            held_qty: number;
+            /**
+             * Holds
+             * @description Source org only; null for the requester.
+             */
+            holds: components["schemas"]["HoldOut"][] | null;
+            /**
+             * Responded By
+             * @description The source org user who answered. Source org only; null for the requester.
+             */
+            responded_by: string | null;
+            /** Responded At */
+            responded_at: string | null;
+            /** Decline Reason */
+            decline_reason: string | null;
+            /**
+             * Reason Source
+             * @description On a decline: USER if the source typed a reason, else SYSTEM.
+             */
+            reason_source: ("USER" | "SYSTEM") | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * SourceType
+         * @enum {string}
+         */
+        SourceType: "HOSPITAL" | "SUPPLIER";
+        /**
+         * Status
+         * @enum {string}
+         */
+        Status: "DRAFT" | "OPEN" | "MATCHING" | "AWAITING_DECISION" | "IN_FULFILLMENT" | "RECEIVED" | "RESOLVED" | "PARTIALLY_RESOLVED" | "CANCELLED";
+        /** StatusChangeOut */
+        StatusChangeOut: {
+            from_status: components["schemas"]["ShipmentStatus"] | null;
+            to_status: components["schemas"]["ShipmentStatus"];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** StatusIn */
+        StatusIn: {
+            /** @description The next state: PICKED_UP, IN_TRANSIT or DELIVERED, one step at a time. */
+            status: components["schemas"]["ShipmentStatus"];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** StopOut */
+        StopOut: {
+            /** Seq */
+            seq: number;
+            stop_type: components["schemas"]["StopType"];
+            /** Place */
+            place: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Planned At */
+            planned_at: string | null;
+            /** Actual At */
+            actual_at: string | null;
+        };
+        /**
+         * StopType
+         * @enum {string}
+         */
+        StopType: "PICKUP" | "DROP";
+        /** StreamTicketOut */
+        StreamTicketOut: {
+            /**
+             * Ticket
+             * @description Pass as `?ticket=` to GET /events/stream (EventSource cannot send headers).
+             */
+            ticket: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Open the stream before this; it lasts 60 seconds.
+             */
+            expires_at: string;
+        };
+        /** TelemetryBatch */
+        TelemetryBatch: {
+            /** Readings */
+            readings: components["schemas"]["ReadingIn"][];
+        };
+        /** TelemetryResult */
+        TelemetryResult: {
+            /**
+             * Stored
+             * @description New readings saved.
+             */
+            stored: number;
+            /**
+             * Duplicates
+             * @description Readings already stored (same device_id and ts).
+             */
+            duplicates: number;
+            /**
+             * Unknown Devices
+             * @description device_ids with no Device; not stored.
+             */
+            unknown_devices: string[];
         };
         /** TokenPair */
         TokenPair: {
@@ -678,6 +2696,11 @@ export interface components {
             /** Expires In */
             expires_in: number;
         };
+        /**
+         * Trigger
+         * @enum {string}
+         */
+        Trigger: "CREATE" | "DECLINE" | "EXPIRY" | "MANUAL" | "RECOMMENDATION_EXPIRED" | "STOCK_CHANGE";
         /** UserOut */
         UserOut: {
             /**
@@ -710,6 +2733,18 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** VehicleOut */
+        VehicleOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reg No */
+            reg_no: string;
+            /** Has Cold Chain */
+            has_cold_chain: boolean;
+        };
         /**
          * VerificationMethod
          * @enum {string}
@@ -725,6 +2760,57 @@ export interface components {
             counted_qty: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** WebhookCreated */
+        WebhookCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Secret
+             * @description Shown only now. Verify `X-CareE-Signature: sha256=<hex HMAC-SHA256 of the raw body>` with it.
+             */
+            secret: string;
+        };
+        /** WebhookIn */
+        WebhookIn: {
+            /**
+             * Url
+             * Format: uri
+             */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** WebhookOut */
+        WebhookOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Url */
+            url: string;
+            /** Event Types */
+            event_types: components["schemas"]["EventType"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
     };
     responses: never;
@@ -1238,6 +3324,1304 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shortages_api_v1_shortages_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ShortageOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_shortage_api_v1_shortages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShortageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shortage_api_v1_shortages__shortage_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_shortage_api_v1_shortages__shortage_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rerun_match_api_v1_shortages__shortage_id__match_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_match_run_api_v1_shortages__shortage_id__match_runs_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_recommendation_api_v1_shortages__shortage_id__recommendations_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shortage_audit_api_v1_shortages__shortage_id__audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_telemetry_api_v1_internal_telemetry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelemetryBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_devices_api_v1_devices_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DeviceOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_device_api_v1_devices__device_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceAssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_requests_api_v1_source_requests_get: {
+        parameters: {
+            query: {
+                direction: components["schemas"]["Direction"];
+                status?: components["schemas"]["RequestStatus"] | null;
+                shortage_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SourceRequestOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_source_request_api_v1_source_requests__request_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_source_request_api_v1_source_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_stream_ticket_api_v1_events_ticket_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamTicketOut"];
+                };
+            };
+        };
+    };
+    event_stream_api_v1_events_stream_get: {
+        parameters: {
+            query?: {
+                last_event_id?: number | null;
+                /** @description A stream ticket from POST /events/ticket. */
+                ticket?: string | null;
+            };
+            header?: {
+                "Last-Event-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_webhooks_api_v1_webhooks_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WebhookOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_webhook_api_v1_webhooks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_webhook_api_v1_webhooks__webhook_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recommendation_api_v1_recommendations__recommendation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_recommendation_api_v1_recommendations__recommendation_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_recommendation_api_v1_recommendations__recommendation_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    escalate_recommendation_api_v1_recommendations__recommendation_id__escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_purchase_orders_api_v1_purchase_orders_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["PoStatus"] | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PurchaseOrderOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_purchase_order_api_v1_purchase_orders__po_id__acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_purchase_order_api_v1_purchase_orders__po_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dispatch_purchase_order_api_v1_purchase_orders__po_id__dispatch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                po_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseOrderOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_demand_api_v1_network_demand_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DemandOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shipments_api_v1_shipments_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ShipmentStatus"] | null;
+                /** @description Only the shipments assigned to the caller as driver. */
+                assigned_to_me?: boolean;
+                /** @description inbound: shipments to the caller's org (its deliveries); outbound: shipments from it. */
+                direction?: ("inbound" | "outbound") | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ShipmentOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shipment_api_v1_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_shipment_api_v1_shipments__shipment_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unassign_shipment_api_v1_shipments__shipment_id__unassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_shipment_status_api_v1_shipments__shipment_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_shipment_location_api_v1_shipments__shipment_id__location_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drivers_api_v1_drivers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DriverOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicles_api_v1_vehicles_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_VehicleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_receipt_api_v1_shipments__shipment_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReceiptOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_api_v1_notifications_get: {
+        parameters: {
+            query?: {
+                /** @description Only the ones not yet marked read. */
+                unread?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_NotificationOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_notification_read_api_v1_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationOut"];
                 };
             };
             /** @description Validation Error */

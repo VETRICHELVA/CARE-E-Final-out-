@@ -5,6 +5,7 @@ from http import HTTPStatus
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, DBAPIError
@@ -46,8 +47,10 @@ class AppError(Exception):
 
 
 def error(status: int, code: str, message: str, details: dict[str, Any] | None = None) -> Any:
+    # jsonable_encoder: details may hold UUIDs and datetimes.
     return JSONResponse(
-        {"code": code, "message": message, "details": details or {}}, status_code=status
+        {"code": code, "message": message, "details": jsonable_encoder(details or {})},
+        status_code=status,
     )
 
 

@@ -124,3 +124,14 @@ export const createQueryClient = () =>
       },
     },
   });
+
+export {
+  backoffMs,
+  connectEventStream,
+  EVENT_QUERIES,
+  type EventEnvelope,
+  invalidateFor,
+  isStale,
+  type StreamOptions,
+  useEventStream,
+} from "./events";

@@ -13,9 +13,13 @@ from app.catalog.models import Product, ProductAuthorization, SupplierOffer
 from app.conftest import World
 from app.inventory.models import InventoryBatch
 from app.orgs.models import Facility, Organization, OrgType
+from app.recommendations import service as rec_service
+from app.recommendations import transitions as recommendations
 from app.shortages import service
 from app.shortages.models import Candidate, Priority, Shortage, Trigger
 from app.shortages.schemas import CandidateOut, MatchRunOut, ShortageCreate
+from app.source_requests import holds
+from app.source_requests import service as sr_service
 
 pytestmark = pytest.mark.anyio
 
@@ -207,6 +211,13 @@ async def test_scenario_1_critical(
     assert y.landed_cost_paise == pytest.approx(2_400_000, rel=0.05)  # "about Rs 24,000"
     b, sy = scenario1["Hospital B"], scenario1["Supplier Y"]
     assert plan_of(out) == ("TRANSFER", [(b.id, 850)], [sy.id])
+    # A hospital's cost would reveal its unit cost: hidden from the requester, kept in storage.
+    assert c["Hospital B"].landed_cost_paise is None
+    assert out.planned_resolution is not None
+    assert [x.landed_cost_paise for x in out.planned_resolution.lines] == [None]
+    assert out.planned_resolution.alternatives[0].landed_cost_paise == y.landed_cost_paise
+    stored = await session.get_one(Candidate, c["Hospital B"].id)
+    assert stored.landed_cost_paise is not None and stored.landed_cost_paise > 0
     assert (out.run_no, out.triggered_by, out.reason) == (1, Trigger.CREATE, None)
 
 
@@ -226,9 +237,13 @@ async def test_scenario_1_rerun_without_b_buys_from_y_with_x_as_alternative(
 ) -> None:
     shortage = await create(session, world, products["SURG-KIT-A"])
     b = scenario1["Hospital B"]
-    run = await service.run_match(
-        session, shortage, Trigger.DECLINE, exclude=[b.id], reason="Hospital B declined.", now=NOW
+    # B declines its source request (S06), which re-runs matching without B.
+    (request,) = await holds.open_requests(session, shortage.id)
+    await sr_service.decline(
+        session, world.users["b.STORE_MANAGER"], request.id, "Hospital B declined.", now=NOW
     )
+    run = await service.latest_run(session, shortage.id)
+    assert run is not None
     out = await latest(session, shortage)
     c = by_name(out)
     assert "Hospital B" not in c
@@ -238,10 +253,13 @@ async def test_scenario_1_rerun_without_b_buys_from_y_with_x_as_alternative(
     x, y = scenario1["Supplier X"], scenario1["Supplier Y"]
     assert plan_of(out) == ("BUY", [(y.id, 850)], [x.id])
     assert (run.run_no, run.excluded_org_ids) == (2, [b.id])
-    # The exclusion holds for this shortage's later runs, manual ones included.
-    again = await service.rerun_match(
-        session, world.users["a.REQUESTER"], shortage.id, None, now=NOW
-    )
+    # The exclusion holds for this shortage's later runs. The BUY plan is now awaiting a
+    # decision (S09), so the next run comes from rejecting its recommendation.
+    rec = await recommendations.open_for(session, shortage.id)
+    assert rec is not None
+    await rec_service.reject(session, world.users["a.APPROVER"], rec.id, None, now=NOW)
+    again = await service.latest_run(session, shortage.id)
+    assert again is not None
     assert (again.run_no, again.triggered_by, again.excluded_org_ids) == (3, "MANUAL", [b.id])
 
 
@@ -374,9 +392,48 @@ async def test_no_eligible_source_keeps_the_shortage_matching(
 async def test_cold_chain_products_need_a_cold_chain_vehicle_on_record(
     session: AsyncSession, world: World, products: dict[str, Product]
 ) -> None:
-    rdk = products["DIAG-RDK"]  # 2-8 C; no Vehicle table until S11, so none is on record
+    # 2-8 C; this test adds no Vehicle, so no cold-chain vehicle exists (S11 adds the query;
+    # app/shipments/tests/test_cold_chain_flow.py covers the passing case).
+    rdk = products["DIAG-RDK"]
     await add_batch(session, world.hospital_b, rdk, on_hand=500, expiry_days=240)
     authorize(session, rdk, world.hospital_b)
     shortage = await create(session, world, rdk, qty_required=200, qty_local_usable=0)
     c = by_name(await latest(session, shortage))["Hospital B"]
     assert failed(c) == ["No cold-chain transport available"]
+
+
+# --- freshness is per batch (business-rules.md §3) ----------------------------------------------
+
+
+async def test_an_unverified_batch_does_not_hide_a_sources_verified_stock(
+    session: AsyncSession, world: World, products: dict[str, Product]
+) -> None:
+    """A hospital that just received stock has a new, never-verified batch. Its verified
+    stock of the same product is still offered; the unverified batch adds nothing."""
+    iv = products["IV-CAN-20G"]
+    h = await add_org(session, "Hospital H", OrgType.HOSPITAL, 12.95, 77.60)
+    await add_batch(session, h, iv, on_hand=2000, expiry_days=200, verified_hours_ago=2)
+    received = await add_batch(session, h, iv, on_hand=790, expiry_days=300, batch_no="RCV-1")
+    received.last_verified_at = None
+    authorize(session, iv, h)
+    await session.flush()
+    shortage = await create(session, world, iv, qty_required=650)  # 500 short
+    out = await latest(session, shortage)
+    c = by_name(out)["Hospital H"]
+    assert (c.eligible, c.transferable_qty, failed(c)) == (True, 2000, [])
+    assert plan_of(out) == ("TRANSFER", [(h.id, 500)], [])
+
+
+async def test_freshness_fails_only_when_no_counted_batch_is_fresh(
+    session: AsyncSession, world: World, products: dict[str, Product]
+) -> None:
+    iv = products["IV-CAN-20G"]
+    h = await add_org(session, "Hospital H", OrgType.HOSPITAL, 12.95, 77.60)
+    await add_batch(session, h, iv, on_hand=900, expiry_days=200, verified_hours_ago=30)
+    never = await add_batch(session, h, iv, on_hand=900, expiry_days=200, batch_no="B-2")
+    never.last_verified_at = None
+    authorize(session, iv, h)
+    await session.flush()
+    shortage = await create(session, world, iv, qty_required=650)  # CRITICAL: 24 h
+    c = by_name(await latest(session, shortage))["Hospital H"]
+    assert failed(c) == ["Stock last verified 30 h ago"]  # the freshest count is named

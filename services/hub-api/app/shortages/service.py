@@ -1,5 +1,6 @@
 """Shortages and the matching engine (business-rules.md §1, §3-§5, §7-§8). Every shortage
-transition and match run writes an audit row in the caller's transaction; routers commit."""
+transition and match run writes an audit row in the caller's transaction; routers commit.
+A run with a TRANSFER or TRANSFER_SPLIT plan sends its source requests (S06)."""
 
 import uuid
 from collections.abc import Iterable
@@ -8,30 +9,33 @@ from datetime import UTC, datetime, timedelta
 from itertools import groupby
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import routing
 from app.audit import service as audit
 from app.auth.models import User
 from app.catalog.models import Product, ProductAuthorization, SupplierOffer
 from app.domain import config, gates
-from app.domain.costing import (
-    HaversineProvider,
-    Point,
-    RoutingProvider,
-    transport_cost_paise,
-    transport_eta_hours,
-)
+from app.domain.costing import Point, transport_cost_paise, transport_eta_hours
+from app.domain.events import EventType
 from app.domain.gates import PASS, GateResult
 from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.ranking import Option, is_near_expiry, rank
-from app.domain.resolution import TRANSFER_SPLIT, Line, Plan, plan
+from app.domain.resolution import BUY, TRANSFER_SPLIT, Line, Plan, plan
 from app.domain.shortage import TRANSITIONS, Status, shortfall
+from app.domain.source_request import OPEN_REQUEST, HoldStatus
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
+from app.events import service as events
 from app.inventory.models import InventoryBatch
 from app.inventory.service import own_facility
 from app.orgs.models import Facility, Organization, OrgStatus, OrgType
+from app.purchase_orders.models import PurchaseOrder
+from app.receiving.models import Receipt, Reconciliation
+from app.recommendations import transitions as recommendations
+from app.recommendations.models import Recommendation
+from app.shipments.models import Shipment, Vehicle
 from app.shortages.models import (
     Candidate,
     MatchRun,
@@ -42,6 +46,9 @@ from app.shortages.models import (
     Trigger,
 )
 from app.shortages.schemas import NO_ELIGIBLE_SOURCE, MatchRunOut, PlannedResolution, ShortageCreate
+from app.source_requests import holds
+from app.source_requests.hooks import on_sources_ready
+from app.source_requests.models import Hold, SourceRequest
 
 ENTITY = "shortage"
 SNAPSHOT = (
@@ -66,10 +73,8 @@ GATE_ORDER = (
     "deadline",
     "cold_chain",
 )
-ROUTING: RoutingProvider = HaversineProvider()  # S11 adds OSRM, falling back to haversine
-# ponytail: there is no Vehicle table until S11, so no cold-chain vehicle is on record and
-# every cold-chain product fails the cold_chain gate; S11 replaces this with a Vehicle query.
-COLD_CHAIN_VEHICLE_ON_RECORD = False
+STOCK_CHANGED = "Inventory or supplier offers for this product changed."
+HOLDS_RELEASED = "Held stock for this product was released."
 
 
 async def get_shortage(
@@ -92,6 +97,14 @@ async def create_shortage(
     product = await session.get(Product, body.product_id)
     if product is None:
         raise AppError(400, "validation", "Unknown product.", {"product_id": str(body.product_id)})
+    gap = shortfall(body.qty_required, body.qty_local_usable)
+    if gap == 0:  # §1: nothing to source, so no shortage and no match
+        raise AppError(
+            400,
+            "validation",
+            "Nothing to source: local usable stock covers the requirement.",
+            {"qty_required": body.qty_required, "qty_local_usable": body.qty_local_usable},
+        )
     min_days = body.min_shelf_life_days
     shortage = Shortage(
         org_id=user.org_id,
@@ -99,7 +112,7 @@ async def create_shortage(
         product_id=product.id,
         qty_required=body.qty_required,
         qty_local_usable=body.qty_local_usable,
-        shortfall=shortfall(body.qty_required, body.qty_local_usable),
+        shortfall=gap,
         required_by=body.required_by,
         priority=body.priority,
         min_shelf_life_days=product.default_min_shelf_life_days if min_days is None else min_days,
@@ -122,9 +135,14 @@ async def cancel_shortage(
     session: AsyncSession, user: User, shortage_id: uuid.UUID, reason: str | None
 ) -> Shortage:
     """From OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
-    Releasing holds arrives with them (S06)."""
+    Releases every tentative hold and supersedes every open source request (§8). The
+    supersedes are the requester's (their org, their reason); the hold releases sit in the
+    source orgs as SYSTEM with the factual cause, never the requester's id or text (§10)."""
     shortage = await get_shortage(session, user, shortage_id, lock=True)
-    await _move(session, shortage, Status.CANCELLED, user, reason)
+    await move_shortage(session, shortage, Status.CANCELLED, user, reason)
+    await holds.release(
+        session, shortage, hold_reason=holds.REQUESTER_CANCELLED, actor=user, reason=reason
+    )
     return shortage
 
 
@@ -136,16 +154,29 @@ async def rerun_match(
     *,
     now: datetime | None = None,
 ) -> MatchRun:
-    """A manual re-run, while the shortage is OPEN or MATCHING (§8 lists no other way in)."""
+    """A manual re-run, while the shortage is OPEN or MATCHING (§8 lists no other way in)
+    and no source request is still open: a re-run would ask the same sources twice, and
+    only a decline, an expiry or a cancel ends a request (§8). 409 `conflict` otherwise."""
     shortage = await get_shortage(session, user, shortage_id, lock=True)
     if shortage.status not in (Status.OPEN, Status.MATCHING):
         raise InvalidTransition(shortage.status, Status.MATCHING)
+    if pending := await holds.open_requests(session, shortage.id):
+        raise AppError(
+            409,
+            "conflict",
+            "Source requests for this shortage are still open; matching re-runs on its own "
+            "when they are declined or expire.",
+            {"open_source_request_ids": [str(sr.id) for sr in pending]},
+        )
     return await run_match(session, shortage, Trigger.MANUAL, actor=user, reason=reason, now=now)
 
 
-async def _move(
+async def move_shortage(
     session: AsyncSession, shortage: Shortage, to: Status, actor: User | None, reason: str | None
 ) -> None:
+    """Every shortage transition: one audit row and `shortage.status_changed`. Leaving
+    AWAITING_DECISION other than by approval (a hold expired, or a cancel) also ends the
+    open recommendation, which can no longer be approved (S09)."""
     before = transition(shortage, to, TRANSITIONS)
     await session.flush()
     await session.refresh(shortage)  # updated_at is set by the database
@@ -160,6 +191,143 @@ async def _move(
         reason,
         org_id=shortage.org_id,
     )
+    await events.emit(
+        session,
+        EventType.SHORTAGE_STATUS_CHANGED,
+        [shortage.org_id],
+        {"shortage_id": shortage.id, "from": before, "to": shortage.status},
+    )
+    if before == Status.AWAITING_DECISION and to != Status.IN_FULFILLMENT:
+        await recommendations.close_open(session, shortage, to, reason, datetime.now(UTC))
+
+
+async def rematch_waiting(
+    session: AsyncSession,
+    product_ids: Iterable[uuid.UUID],
+    changed_by: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> list[MatchRun]:
+    """§5: a shortage left MATCHING with "No eligible source" is re-run when inventory or
+    supplier offers for its product change. Called in the transaction of that change, by the
+    org `changed_by`, whose own shortages are skipped (matching never uses an org's own stock).
+
+    It waits for each shortage's lock rather than skipping it: a concurrent stock write that
+    holds the lock runs its match before this write commits, so it cannot see this write's
+    stock, and skipping would lose the re-run. Only shortages with no open source request are
+    locked. Accept is the one path that locks a shortage and then batches, and it needs an open
+    request, so this write (holding its own batch locks) never waits on it. Writers lock
+    shortages in id order, so they cannot deadlock each other."""
+    ids = sorted(set(product_ids))
+    if not ids:
+        return []
+    waiting = await session.scalars(
+        select(Shortage)
+        .where(
+            Shortage.status == Status.MATCHING,
+            Shortage.product_id.in_(ids),
+            Shortage.org_id != changed_by,
+            ~exists().where(
+                SourceRequest.shortage_id == Shortage.id,
+                SourceRequest.status.in_(OPEN_REQUEST),
+            ),
+        )
+        .order_by(Shortage.id)
+        .with_for_update(of=Shortage)
+    )
+    runs = []
+    for shortage in list(waiting):
+        last = await latest_run(session, shortage.id)
+        if last is None or last.planned_resolution is not None:
+            continue  # it has a plan: it is waiting on its sources or a decision, not on stock
+        if await holds.open_requests(session, shortage.id):
+            continue
+        runs.append(
+            await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=STOCK_CHANGED, now=now)
+        )
+    return runs
+
+
+async def rematch_after_releases(session: AsyncSession, *, now: datetime | None = None) -> int:
+    """§5: released holds free stock, so re-run each shortage still waiting on "No eligible
+    source" (MATCHING, latest run without a plan, no open request) for whose product a hold
+    was released after that run. Called by the worker after the release has committed, in
+    its own transaction holding no other locks, so it sees the freed stock and cannot
+    deadlock with the release. The new run is newer than the release, so each release
+    re-runs a shortage once. A shortage another transaction holds is skipped this tick and
+    picked up on the next one. The caller commits. Returns how many shortages were re-run."""
+    now = now or datetime.now(UTC)
+    latest = (
+        select(MatchRun.shortage_id, func.max(MatchRun.run_no).label("run_no"))
+        .group_by(MatchRun.shortage_id)
+        .subquery()
+    )
+    other = Shortage.__table__.alias("released_for")
+    released_since_run = (
+        exists()
+        .where(
+            Hold.source_request_id == SourceRequest.id,
+            SourceRequest.shortage_id == other.c.id,
+            other.c.product_id == Shortage.product_id,
+            Hold.status == HoldStatus.RELEASED,
+            Hold.updated_at > MatchRun.ts,
+        )
+        .correlate(Shortage, MatchRun)
+    )
+    no_plan = or_(
+        MatchRun.planned_resolution.is_(None),
+        func.jsonb_typeof(MatchRun.planned_resolution) == "null",
+    )
+    waiting = await session.scalars(
+        select(Shortage)
+        .join(latest, latest.c.shortage_id == Shortage.id)
+        .join(
+            MatchRun,
+            (MatchRun.shortage_id == Shortage.id) & (MatchRun.run_no == latest.c.run_no),
+        )
+        .where(
+            Shortage.status == Status.MATCHING,
+            no_plan,
+            released_since_run,
+            ~exists().where(
+                SourceRequest.shortage_id == Shortage.id,
+                SourceRequest.status.in_(OPEN_REQUEST),
+            ),
+        )
+        .order_by(Shortage.id)
+        .with_for_update(of=Shortage, skip_locked=True)
+    )
+    count = 0
+    for shortage in list(waiting):
+        await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=HOLDS_RELEASED, now=now)
+        count += 1
+    return count
+
+
+async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set[uuid.UUID]:
+    """The records whose audit rows make up a shortage's trail (GET /shortages/{id}/audit):
+    the shortage, its match runs, source requests, recommendations, purchase orders,
+    shipments, receipts, reconciliations and the batches its receipts added. Holds are not
+    listed: their rows belong to the source orgs (business-rules.md §10)."""
+    ids: set[uuid.UUID] = {shortage_id}
+    for model in (
+        MatchRun,
+        SourceRequest,
+        Recommendation,
+        PurchaseOrder,
+        Shipment,
+        Receipt,
+        Reconciliation,
+    ):
+        ids.update(await session.scalars(select(model.id).where(model.shortage_id == shortage_id)))
+    ids.update(
+        await session.scalars(
+            select(Receipt.batch_id).where(
+                Receipt.shortage_id == shortage_id, Receipt.batch_id.is_not(None)
+            )
+        )
+    )
+    return ids
 
 
 async def latest_run(session: AsyncSession, shortage_id: uuid.UUID) -> MatchRun | None:
@@ -206,6 +374,10 @@ class _Lot:
     days_at_delivery: int
 
 
+def _fresh(verified_at: datetime | None, now: datetime, max_age: timedelta) -> bool:
+    return verified_at is not None and now - verified_at <= max_age
+
+
 async def run_match(
     session: AsyncSession,
     shortage: Shortage,
@@ -219,10 +391,12 @@ async def run_match(
     """Check every other hospital holding the product and every supplier offering it against
     every gate (§3), rank the eligible ones (§5) and store the run with its planned resolution.
     `exclude` orgs (e.g. a source that declined) stay out of this shortage's later runs too.
-    A system run (no actor) passes its factual cause as `reason`."""
+    A system run (no actor) passes its factual cause as `reason`.
+    A TRANSFER or TRANSFER_SPLIT plan sends one source request per planned source (§7 step 2;
+    CRITICAL parallel requests arrive in S19); a BUY plan calls `on_sources_ready` at once."""
     now = now or datetime.now(UTC)
     if shortage.status == Status.OPEN:
-        await _move(session, shortage, Status.MATCHING, actor, reason)
+        await move_shortage(session, shortage, Status.MATCHING, actor, reason)
     last = await latest_run(session, shortage.id)
     excluded = sorted({*(last.excluded_org_ids if last else ()), *exclude})
     sources = await _sources(session, shortage, excluded, now)
@@ -265,7 +439,17 @@ async def run_match(
         reason,
         org_id=shortage.org_id,
     )
+    await holds.create_requests(session, shortage, run, now)
+    if planned is not None and planned.type == BUY:
+        await on_sources_ready(session, shortage, run, now=now)
     return run
+
+
+async def cold_chain_vehicle_exists(session: AsyncSession) -> bool:
+    """business-rules.md §3 cold_chain gate, read literally: "a cold-chain vehicle exists".
+    Any Vehicle with has_cold_chain anywhere in the network counts: the gate does not ask
+    which logistics org would carry the shipment, nor whether that vehicle is busy."""
+    return bool(await session.scalar(select(exists().where(Vehicle.has_cold_chain.is_(True)))))
 
 
 async def _sources(
@@ -275,6 +459,7 @@ async def _sources(
     product = await session.get_one(Product, shortage.product_id)
     to = await session.get_one(Facility, shortage.facility_id)
     dest = Point(to.lat, to.lng)
+    vehicle = await cold_chain_vehicle_exists(session) if product.requires_cold_chain else False
     authorized = set(
         await session.scalars(
             select(ProductAuthorization.org_id).where(
@@ -286,52 +471,62 @@ async def _sources(
     critical = shortage.priority == Priority.CRITICAL
     max_age = config.VERIFIED_WITHIN_CRITICAL if critical else config.VERIFIED_WITHIN_ROUTINE
 
-    batches = await session.execute(
-        select(
-            InventoryBatch.id,
-            InventoryBatch.org_id,
-            InventoryBatch.product_id,
-            InventoryBatch.on_hand,
-            InventoryBatch.reserved,
-            InventoryBatch.allocated,
-            InventoryBatch.safety_stock,
-            InventoryBatch.quarantined,
-            InventoryBatch.expiry_date,
-            InventoryBatch.unit_cost_paise,
-            InventoryBatch.last_verified_at,
-            Facility.lat,
-            Facility.lng,
-            Facility.has_cold_storage,
-            Organization.status,
+    batches = (
+        await session.execute(
+            select(
+                InventoryBatch.id,
+                InventoryBatch.org_id,
+                InventoryBatch.product_id,
+                InventoryBatch.on_hand,
+                InventoryBatch.reserved,
+                InventoryBatch.allocated,
+                InventoryBatch.safety_stock,
+                InventoryBatch.quarantined,
+                InventoryBatch.expiry_date,
+                InventoryBatch.unit_cost_paise,
+                InventoryBatch.last_verified_at,
+                Facility.lat,
+                Facility.lng,
+                Facility.has_cold_storage,
+                Organization.status,
+            )
+            .join(Facility, Facility.id == InventoryBatch.facility_id)
+            .join(Organization, Organization.id == InventoryBatch.org_id)
+            .where(
+                InventoryBatch.product_id == shortage.product_id,
+                Organization.type == OrgType.HOSPITAL,
+                Organization.id != shortage.org_id,
+                Organization.id.not_in(excluded),
+            )
+            .order_by(InventoryBatch.org_id)
         )
-        .join(Facility, Facility.id == InventoryBatch.facility_id)
-        .join(Organization, Organization.id == InventoryBatch.org_id)
-        .where(
-            InventoryBatch.product_id == shortage.product_id,
-            Organization.type == OrgType.HOSPITAL,
-            Organization.id != shortage.org_id,
-            Organization.id.not_in(excluded),
-        )
-        .order_by(InventoryBatch.org_id)
+    ).all()
+    # Active holds for other shortages count as reserved (§2).
+    held = await holds.held_by_batch(
+        session, (r.id for r in batches), exclude_shortage_id=shortage.id
     )
     sources: list[_Source] = []
     for org_id, rows in groupby(batches, key=lambda r: r.org_id):
         lots = []
         for r in rows:
-            km = await ROUTING.distance_km(Point(r.lat, r.lng), dest)
+            km = await routing.ROUTING.distance_km(Point(r.lat, r.lng), dest)
             eta = transport_eta_hours(km)
             arrival = (now + timedelta(hours=eta)).date()
-            # ponytail: holds arrive in S06; until then nothing is held (held_qty=0).
-            qty = batch_transferable(r, today)
+            qty = batch_transferable(r, today, held.get(r.id, 0))
             lots.append(_Lot(r, km, eta, qty, days_to_expiry_at(r, arrival)))
         stocked = [x for x in lots if x.transferable > 0]
         qualifying = [x for x in stocked if x.days_at_delivery >= min_days]  # §2
+        # §3 freshness is per batch: an unverified or stale batch adds nothing to what the
+        # source offers, and the gate fails only when none of the batches that would count
+        # are fresh (so one new, unverified receipt batch never hides verified stock).
+        fresh = [x for x in qualifying if _fresh(x.row.last_verified_at, now, max_age)]
         # If nothing qualifies, shelf_life fails and quantity judges the stock as recorded.
-        counted = sorted(qualifying or stocked, key=lambda x: (x.row.expiry_date, x.row.id))
+        pool = qualifying or stocked
+        counted = sorted(fresh or pool, key=lambda x: (x.row.expiry_date, x.row.id))
         basis = counted or lots
         far = max(basis, key=lambda x: x.km)  # one trip per source, from its farthest store
-        verified = [x.row.last_verified_at for x in basis]
-        oldest = None if None in verified else min(verified)
+        verified = [x.row.last_verified_at for x in basis if x.row.last_verified_at is not None]
+        latest = max(verified) if verified else None  # the reason names the freshest count
         first = basis[0].row
         sources.append(
             _Source(
@@ -357,14 +552,14 @@ async def _sources(
                     "authorization": gates.authorization(
                         first.status == OrgStatus.ACTIVE, org_id in authorized
                     ),
-                    "freshness": gates.freshness(oldest, now, max_age),
+                    "freshness": PASS if fresh else gates.freshness(latest, now, max_age),
                     "deadline": gates.deadline(
                         now + timedelta(hours=far.eta_hours), shortage.required_by
                     ),
                     "cold_chain": gates.cold_chain(
                         product.requires_cold_chain,
                         all(x.row.has_cold_storage for x in basis),
-                        COLD_CHAIN_VEHICLE_ON_RECORD,
+                        vehicle,
                     ),
                 },
                 batch_ids=[x.row.id for x in counted],
@@ -391,7 +586,7 @@ async def _sources(
         )
     )
     for o in offers:
-        km = await ROUTING.distance_km(Point(o.lat, o.lng), dest)
+        km = await routing.ROUTING.distance_km(Point(o.lat, o.lng), dest)
         eta = o.lead_time_hours + transport_eta_hours(km)
         sources.append(
             _Source(
@@ -418,9 +613,7 @@ async def _sources(
                         o.updated_at, now, config.OFFER_UPDATED_WITHIN, what="Offer last updated"
                     ),
                     "deadline": gates.deadline(now + timedelta(hours=eta), shortage.required_by),
-                    "cold_chain": gates.cold_chain(
-                        product.requires_cold_chain, True, COLD_CHAIN_VEHICLE_ON_RECORD
-                    ),
+                    "cold_chain": gates.cold_chain(product.requires_cold_chain, True, vehicle),
                 },
             )
         )

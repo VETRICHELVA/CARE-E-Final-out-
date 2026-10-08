@@ -6,7 +6,7 @@ All rules run deterministically in the hub (`services/hub-api/app/domain/`). AI 
 ```
 shortfall = max(0, qty_required − qty_local_usable)
 ```
-Computed by the hub on create. Any value the client sends is ignored.
+Computed by the hub on create. Any value the client sends is ignored. A shortfall of 0 (local usable stock covers the requirement) is rejected with 400 `validation`: no shortage is stored and no match runs.
 
 ## 2. Transferable quantity (per batch)
 ```
@@ -29,7 +29,7 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 | quantity | transferable ≥ shortfall (single); > 0 (split candidate) | available_qty ≥ shortfall | "Only 100 transferable; 850 needed" |
 | shelf_life | §2 shelf-life rule | Assumed to pass (new stock) | "Expires in 12 days; 30 required" |
 | authorization | Org ACTIVE and has ProductAuthorization | Same | "Not authorized to supply this product" |
-| freshness | last_verified_at within 24 h (CRITICAL) or 7 days (ROUTINE) | Offer updated within 7 days | "Stock last verified 9 days ago" |
+| freshness | Per batch: last_verified_at within 24 h (CRITICAL) or 7 days (ROUTINE). An unverified or stale batch adds nothing to the source's quantity; the gate fails only when none of the batches that would count is fresh (the reason names the most recent count) | Offer updated within 7 days | "Stock last verified 9 days ago" |
 | deadline | now + eta ≤ required_by | now + lead time + transport eta ≤ required_by | "Arrives 6 h after the deadline" |
 | cold_chain | If product requires it: facility has_cold_storage AND a cold-chain vehicle exists | Same for vehicle | "No cold-chain transport available" |
 
@@ -44,13 +44,15 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 ## 5. Ranking (eligible candidates only)
 - **CRITICAL:** earliest ETA → highest reliability score → lowest landed cost.
 - **ROUTINE:** lowest landed cost → near-expiry first (batch expiring within `NEAR_EXPIRY_DAYS`, default 90) → highest reliability.
+- "Landed cost" in ranking is **per unit**: the landed cost of what the source would supply, min(qty, shortfall), divided by that qty. Ranking on the total would put small sources first only because they supply less, and the greedy split would miss larger sources that cover the shortfall.
+- A hospital source's landed cost is used for ranking but never shown to the requester's org (it would reveal that hospital's unit cost; org isolation). Match runs show landed cost for supplier sources only.
 - An org with no history has reliability 70.
 - **Resolution choice:**
   1. If a single hospital source covers the shortfall → TRANSFER from the top-ranked one.
   2. Else, if 2–3 hospital sources together cover it → TRANSFER_SPLIT, taking the greedy top-ranked sources until covered (max `MAX_SPLIT_SOURCES` = 3).
   3. Else → BUY from the top-ranked eligible supplier.
 - The best BUY option is always computed and stored as an alternative, so the fallback is ready.
-- If nothing is eligible: no recommendation; the shortage stays MATCHING with reason "No eligible source", and is re-run when inventory or offers change.
+- If nothing is eligible: no recommendation; the shortage stays MATCHING with reason "No eligible source", and is re-run when inventory or offers change, or when tentative holds on that product are released (a cancel, decline or expiry frees held stock). Released holds are picked up by the worker within one timer tick, after the release commits; the run is `triggered_by = STOCK_CHANGE` with the cause "Held stock for this product was released."
 
 ## 6. Time limits
 | Limit | CRITICAL | ROUTINE |
@@ -71,7 +73,7 @@ Timers are stored as deadlines in the database and enforced by arq jobs, so they
 5. The requester **approves**:
    - Transfer: holds become FIRM, requests become CONFIRMED, one Shipment per source (→ IN_FULFILLMENT).
    - Buy: a PurchaseOrder is created (→ IN_FULFILLMENT).
-6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun excluding the declining source for this shortage.
+6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun. Only a source that actively declined is excluded from this shortage's later runs: **declined → excluded; expired → not excluded** (a source that missed its response deadline can be asked again).
 7. Receipt and reconciliation close it (§9).
 
 ## 8. State machines
@@ -91,13 +93,15 @@ Any transition not listed returns 409 `invalid_transition`.
 | RECEIVED | PARTIALLY_RESOLVED | Accepted < shortfall (residual created) |
 | OPEN, MATCHING, AWAITING_DECISION | CANCELLED | Requester cancels (releases holds) |
 
+A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or MATCHING (else 409 `invalid_transition`), and returns 409 `conflict` while any source request for the shortage is still open (REQUESTED or TENTATIVE_HOLD): matching re-runs on its own when those requests are declined or expire.
+
 **SourceRequest**
 | From | To | Trigger |
 |---|---|---|
 | REQUESTED | TENTATIVE_HOLD | Source accepts |
 | REQUESTED | DECLINED | Source declines (reason optional) |
 | REQUESTED | EXPIRED | Response deadline passed |
-| REQUESTED, TENTATIVE_HOLD | SUPERSEDED | Another source won (CRITICAL) or the shortage was cancelled |
+| REQUESTED, TENTATIVE_HOLD | SUPERSEDED | Another source won (CRITICAL), a split partner declined or expired, or the shortage was cancelled |
 | TENTATIVE_HOLD | CONFIRMED | Requester approves |
 | TENTATIVE_HOLD | EXPIRED | Hold deadline passed, or recommendation rejected/expired |
 
@@ -117,6 +121,9 @@ Any transition not listed returns 409 `invalid_transition`.
 - Every state change above writes one AuditLog row in the same database transaction.
 - `reason_source = USER` only when the user typed a reason. Otherwise `reason_source = SYSTEM` and the reason is "No reason was entered." (for user actions) or a factual system cause such as "Response deadline passed." (for timers).
 - The system never writes statements about physical events that no one recorded.
+- Each row belongs to one org. A source request's row goes to the org of the user who acted (the source's accept or decline to the source org, the requester's cancel to the requester's org); a system change of a request (created, expired, superseded after a decline or expiry) to the requester's org. A hold's rows always go to the source org. A hold released because of another org's action is recorded as SYSTEM with a factual cause (e.g. "The requester cancelled the shortage."), never with the other org's user id or typed text.
+- A supplier's purchase-order actions (acknowledge, reject, dispatch, and the shipment created on dispatch) follow the same rule: the row is in the supplier's org with its user, mirrored into the hospital's org without the user's id.
+- A source's accept or decline is also mirrored into the requester's org (so the requester's own trail shows the answer, as in Scenario 1 step 8): the same action, reason and `reason_source`, with `actor_id` null and without `responded_by`.
 
 ## 11. Cold chain (S15)
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].

@@ -5,8 +5,8 @@ from app.domain.resolution import BUY, TRANSFER, TRANSFER_SPLIT, Plan, plan
 NEED = 850
 
 
-def hospital(key: str, qty: int, unit: int = 1000, eta: float = 2.0) -> Option:
-    return Option(key, True, qty, eta, 70, False, ((qty, unit),), transport_paise=0)
+def hospital(key: str, qty: int, unit: int = 1000, eta: float = 2.0, transport: int = 0) -> Option:
+    return Option(key, True, qty, eta, 70, False, ((qty, unit),), transport_paise=transport)
 
 
 def supplier(key: str, unit: int, eta: float = 24.0, qty: int = 5000) -> Option:
@@ -55,6 +55,15 @@ def test_split_never_uses_more_than_three_sources() -> None:
     assert p is not None and p.type == TRANSFER_SPLIT
     assert lines(p) == [("a", 300), ("b", 300), ("c", 250)]
     assert config.MAX_SPLIT_SOURCES == 3
+
+
+def test_small_sources_do_not_crowd_out_a_split_that_covers_it() -> None:
+    # Similar distance, so similar transport: per unit, the large stores are cheaper.
+    small = [hospital(k, q, transport=50_000) for k, q in (("s10", 10), ("s20", 20), ("s30", 30))]
+    large = [hospital(k, 500, transport=50_000) for k in ("L1", "L2")]
+    p = plan([*small, *large], [X], NEED, critical=False)
+    assert p is not None and p.type == TRANSFER_SPLIT
+    assert lines(p) == [("L1", 500), ("L2", 350)]
 
 
 def test_no_split_when_the_top_three_cannot_cover_it() -> None:

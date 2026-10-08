@@ -5,7 +5,7 @@ export
 SERVICES := hub-api ai-service iot-ingest
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install up down hub migrate migration client seed lint test test-hub test-web e2e
+.PHONY: install up down hub worker ingest migrate migration client seed lint test test-hub test-web e2e
 
 install:
 	for s in $(SERVICES); do (cd services/$$s && uv sync) || exit 1; done
@@ -21,6 +21,14 @@ down:
 
 hub:
 	cd services/hub-api && uv run uvicorn --factory app.main:create_app --reload --port 8000
+
+# MQTT telemetry -> hub every 2 s. Its INGEST_TOKEN must match the hub's.
+ingest:
+	cd services/iot-ingest && uv run python -m app
+
+# arq worker: deadline timers, the event publisher (SSE live updates) and webhook deliveries.
+worker:
+	cd services/hub-api && uv run arq app.worker.WorkerSettings
 
 migrate:
 	cd services/hub-api && uv run alembic upgrade head
@@ -52,5 +60,7 @@ test-web:
 	pnpm test
 
 # Starts the hub and the three apps unless already running; needs `make up migrate seed` first.
+# Adds Scenario 1's batches, offers and authorizations first (the dev seed has none until S20).
 e2e:
+	cd services/hub-api && uv run python ../../e2e/seed/scenario1.py
 	pnpm --filter e2e exec playwright test
