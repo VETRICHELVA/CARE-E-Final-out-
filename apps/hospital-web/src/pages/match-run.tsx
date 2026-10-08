@@ -27,12 +27,12 @@ import {
   TRIGGER_LABELS,
 } from "../display";
 
-const SourceType = ({ type }: { type: string }) => (
+export const SourceType = ({ type }: { type: string }) => (
   <Badge variant="outline">{type === "HOSPITAL" ? "Hospital" : "Supplier"}</Badge>
 );
 
 /** Hospital sources carry no cost by design (the requester must not learn their unit cost). */
-function LandedCost({ paise }: { paise: number | null }) {
+export function LandedCost({ paise }: { paise: number | null }) {
   if (paise === null)
     return (
       <span title="Not shown for hospital sources" aria-label="Not shown">

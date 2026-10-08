@@ -1,8 +1,14 @@
 // TanStack Query hooks over the generated client. The hub decides everything; these only
 // fetch, send and refresh. Never compute a hub figure (shortfall, transferable, rank) here.
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ApiError, client, type Schemas, unwrap } from "@care-e/api-client";
-import { nextCursor, PAGE_LIMIT as PAGE, productsKey, reasonBody, useMe } from "@care-e/ui";
+import { nextCursor, PAGE_LIMIT as PAGE, productsKey, reasonBody, useCan, useMe } from "@care-e/ui";
 
 export { useProducts } from "@care-e/ui";
 export type { Product } from "@care-e/ui";
@@ -13,6 +19,11 @@ export type MatchRun = Schemas["MatchRunOut"];
 export type Candidate = Schemas["CandidateOut"];
 export type AuditRow = Schemas["AuditOut"];
 export type SourceRequest = Schemas["SourceRequestOut"];
+export type Recommendation = Schemas["RecommendationOut"];
+export type RecommendationLine = Schemas["RecommendationLineOut"];
+export type Approval = Schemas["ApprovalOut"];
+export type Shipment = Schemas["ShipmentOut"];
+export type ShipmentDetail = Schemas["ShipmentDetailOut"];
 type SourceRequestQuery = {
   direction: Schemas["Direction"];
   status?: Schemas["RequestStatus"];
@@ -30,6 +41,13 @@ export const keys = {
   latestRun: (id: string) =>
     ["/api/v1/shortages/{shortage_id}/match-runs/latest", { shortage_id: id }] as const,
   audit: (entity: string, id: string) => ["/api/v1/audit", { entity, entity_id: id }] as const,
+  /** Every audit row of one entity type (the record lookups below). */
+  auditOf: (entity: string) => ["/api/v1/audit", { entity }] as const,
+  allAudit: ["/api/v1/audit"] as const,
+  recommendation: (id: string) =>
+    ["/api/v1/recommendations/{recommendation_id}", { recommendation_id: id }] as const,
+  shipments: ["/api/v1/shipments"] as const,
+  shipment: (id: string) => ["/api/v1/shipments/{shipment_id}", { shipment_id: id }] as const,
   /** Every source-request list (the prefix of `sourceRequests`). */
   allSourceRequests: ["/api/v1/source-requests"] as const,
   sourceRequests: (query: SourceRequestQuery) => ["/api/v1/source-requests", query] as const,
@@ -279,5 +297,176 @@ export function useRerunMatch(id: string) {
         }),
       ),
     onSuccess: refresh,
+  });
+}
+
+// ---- Record lookups through the audit trail (`audit.read`) ----
+
+/** The `<entity>.created` audit rows of the caller's org, newest first (one page of up to
+ *  200). Only for finding records that no endpoint lists yet; see the S12 HUB HOOK below. */
+function useCreatedRows(entity: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.auditOf(entity),
+    queryFn: () =>
+      unwrap(client.GET("/api/v1/audit", { params: { query: { entity, limit: PAGE } } })),
+    select: (page) => page.items.filter((row) => row.action === `${entity}.created`),
+    enabled,
+  });
+}
+
+/**
+ * S12 HUB HOOK (replace when the S12 hub's "current recommendation for a shortage" read
+ * lands): the id of the recommendation for the shortage's latest match run, or null.
+ *
+ * No endpoint lists a shortage's recommendation yet (PROGRESS.md, S09 → S12). Until one does,
+ * the id comes from the org's own audit trail: the hub's `recommendation.created` row whose
+ * `after.match_run_id` is the latest run (the hub makes at most one recommendation per run; a
+ * reject or an expiry starts a new run). That needs `audit.read`, so for anyone else this
+ * reports `unavailable`. Swap this body for the new endpoint and keep the return shape:
+ * nothing else in the app looks a recommendation up.
+ */
+export function useCurrentRecommendationId(shortageId: string, runId: string | undefined) {
+  void shortageId; // the hub's new endpoint is keyed by shortage
+  const canRead = useCan("audit.read");
+  const enabled = canRead && runId !== undefined;
+  const rows = useCreatedRows("recommendation", enabled);
+  return {
+    id: rows.data?.find((row) => row.after?.match_run_id === runId)?.entity_id ?? null,
+    isPending: enabled && rows.isPending,
+    error: rows.error,
+    /** The caller cannot look it up (no `audit.read`). */
+    unavailable: !canRead,
+  };
+}
+
+/** Purchase orders and shipments made for one shortage, from their `.created` audit rows
+ *  (`after.shortage_id`), so the audit tab can show their trails. */
+export function useShortageRecordRows(shortageId: string) {
+  const forShortage = (rows: AuditRow[] | undefined) =>
+    (rows ?? []).filter((row) => row.after?.shortage_id === shortageId);
+  const orders = useCreatedRows("purchase_order", true);
+  const shipments = useCreatedRows("shipment", true);
+  return {
+    orders: forShortage(orders.data),
+    shipments: forShortage(shipments.data),
+    isPending: orders.isPending || shipments.isPending,
+    error: orders.error ?? shipments.error,
+  };
+}
+
+/** The audit rows of several records, merged newest first (`audit.read`). */
+export function useAuditTrail(records: { entity: string; id: string }[]) {
+  return useQueries({
+    queries: records.map(({ entity, id }) => ({
+      queryKey: keys.audit(entity, id),
+      queryFn: () =>
+        unwrap(
+          client.GET("/api/v1/audit", {
+            params: { query: { entity, entity_id: id, limit: PAGE } },
+          }),
+        ),
+    })),
+    combine: (results) => {
+      const seen = new Set<string>();
+      const rows: AuditRow[] = [];
+      for (const result of results)
+        for (const row of result.data?.items ?? [])
+          if (!seen.has(row.id)) {
+            seen.add(row.id);
+            rows.push(row);
+          }
+      rows.sort((a, b) => b.ts.localeCompare(a.ts));
+      return {
+        rows,
+        isPending: results.some((r) => r.isPending),
+        error: results.find((r) => r.error)?.error ?? null,
+      };
+    },
+  });
+}
+
+// ---- Recommendations (S09): the decision panel ----
+
+/** One recommendation, as the requester's org sees it (hospital costs are null by design). */
+export function useRecommendation(id: string | null) {
+  return useQuery({
+    queryKey: keys.recommendation(id ?? ""),
+    queryFn: () =>
+      unwrap(
+        client.GET("/api/v1/recommendations/{recommendation_id}", {
+          params: { path: { recommendation_id: id ?? "" } },
+        }),
+      ),
+    enabled: id !== null,
+  });
+}
+
+export type Decision = "approve" | "reject" | "escalate";
+
+/** Approve, reject or escalate (`recommendation.approve`). Approve returns the hub's
+ *  business-rules §13 `message`. Whatever the hub answers, everything the decision touches is
+ *  refetched: after a 409 the recommendation has moved on (expired, already decided). */
+export function useDecide(rec: Recommendation) {
+  const queryClient = useQueryClient();
+  const refresh = useRefreshShortage(rec.shortage_id);
+  return useMutation({
+    mutationFn: async ({
+      decision,
+      reason,
+    }: {
+      decision: Decision;
+      reason: string | undefined;
+    }): Promise<{ recommendation: Recommendation; message: string | null }> => {
+      const request = {
+        params: { path: { recommendation_id: rec.id } },
+        body: reasonBody(reason),
+      };
+      if (decision === "approve")
+        return unwrap(client.POST("/api/v1/recommendations/{recommendation_id}/approve", request));
+      const recommendation = await unwrap(
+        client.POST(`/api/v1/recommendations/{recommendation_id}/${decision}`, request),
+      );
+      return { recommendation, message: null };
+    },
+    onSuccess: ({ recommendation }) =>
+      queryClient.setQueryData(keys.recommendation(rec.id), recommendation),
+    onSettled: () =>
+      Promise.all([
+        refresh(),
+        ...[keys.recommendation(rec.id), keys.allAudit, keys.shipments].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      ]),
+  });
+}
+
+// ---- Shipments (S11): deliveries ----
+
+/** Shipments this org is involved in (from, to or carrier), newest first, a page at a time. */
+export function useShipments() {
+  return useInfiniteQuery({
+    queryKey: keys.shipments,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        client.GET("/api/v1/shipments", { params: { query: { limit: PAGE, cursor: pageParam } } }),
+      ),
+    initialPageParam: undefined as Cursor,
+    getNextPageParam: nextCursor,
+  });
+}
+
+/** Several shipments by id (the audit tab names who moved each one). */
+export function useShipmentDetails(ids: string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: keys.shipment(id),
+      queryFn: () =>
+        unwrap(
+          client.GET("/api/v1/shipments/{shipment_id}", {
+            params: { path: { shipment_id: id } },
+          }),
+        ),
+    })),
+    combine: (results) => results.flatMap((r) => (r.data ? [r.data] : [])),
   });
 }
