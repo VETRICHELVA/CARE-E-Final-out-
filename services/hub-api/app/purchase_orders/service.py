@@ -15,6 +15,7 @@ from app.audit import service as audit
 from app.auth.models import User
 from app.domain.events import EventType
 from app.domain.fulfillment import PO_REJECTED, PO_TRANSITIONS, PoStatus
+from app.domain.reconciliation import PO_RECEIVED
 from app.domain.state_machine import transition
 from app.errors import AppError
 from app.events import service as events
@@ -168,5 +169,35 @@ async def dispatch(
         actor=user,
         reason=reason,
         purchase_order_id=po.id,
+    )
+    return po
+
+
+async def deliver(session: AsyncSession, shortage: Shortage, po_id: uuid.UUID) -> PurchaseOrder:
+    """DISPATCHED -> DELIVERED when the buyer records the receipt of the order's shipment
+    (S12). It follows from the buyer's receipt, so the row is SYSTEM with that factual
+    cause, in the buyer's org (the shortage's trail) and mirrored into the supplier's, which
+    must see its order's state (business-rules.md §10). The caller holds the shortage lock."""
+    po = await session.get_one(PurchaseOrder, po_id, with_for_update=True, populate_existing=True)
+    before = transition(po, PoStatus.DELIVERED, PO_TRANSITIONS)
+    await session.flush()
+    await session.refresh(po)
+    row = await audit.record(
+        session,
+        None,
+        ENTITY,
+        po.id,
+        f"{ENTITY}.status_changed",
+        {"status": before},
+        {"status": po.status},
+        PO_RECEIVED,
+        org_id=shortage.org_id,
+    )
+    await audit.mirror(session, row, po.supplier_org_id)
+    await events.emit(
+        session,
+        EventType.PURCHASE_ORDER_STATUS_CHANGED,
+        [shortage.org_id, po.supplier_org_id],
+        {"purchase_order_id": po.id, "from": before, "to": po.status},
     )
     return po

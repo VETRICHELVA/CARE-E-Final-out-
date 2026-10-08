@@ -6,6 +6,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.db import NulFreeStr
 from app.domain.fulfillment import RouteProvider, ShipmentStatus, StopType
+from app.receiving.schemas import ReceiptOut
 from app.shortages.models import Priority
 
 
@@ -125,3 +126,12 @@ class ShipmentDetailOut(ShipmentOut):
     )
     status_history: list[StatusChangeOut]
     last_location: LocationOut | None
+    inspection_note_required: bool = Field(
+        description="True when the shipment has an open cold-chain excursion: its receipt then "
+        "needs an inspection note (business-rules.md §9). Always false until S15."
+    )
+    receipt: ReceiptOut | None = Field(
+        description="What the receiving org recorded (with the reconciliation once every "
+        "shipment of the shortage has a receipt). Shown to the receiving org only; null for "
+        "the other orgs and before a receipt."
+    )

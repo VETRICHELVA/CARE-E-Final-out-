@@ -17,6 +17,9 @@ const API = "/api/v1";
 const SHORTAGES = `${API}/shortages`;
 const SHORTAGE = `${API}/shortages/{shortage_id}`;
 const LATEST_RUN = `${API}/shortages/{shortage_id}/match-runs/latest`;
+const LATEST_RECOMMENDATION = `${API}/shortages/{shortage_id}/recommendations/latest`;
+const SHORTAGE_AUDIT = `${API}/shortages/{shortage_id}/audit`;
+const NOTIFICATIONS = `${API}/notifications`;
 const SOURCE_REQUESTS = `${API}/source-requests`;
 const BATCHES = `${API}/inventory/batches`;
 const OFFERS = `${API}/supplier-offers`;
@@ -29,8 +32,9 @@ const SHIPMENT = `${API}/shipments/{shipment_id}`;
 const COLDCHAIN = `${API}/shipments/{shipment_id}/coldchain`;
 const SURPLUS = `${API}/surplus`;
 
-const SHORTAGE_VIEWS = [SHORTAGES, SHORTAGE, LATEST_RUN, AUDIT] as const;
-const SHIPMENT_VIEWS = [SHIPMENTS, SHIPMENT, AUDIT] as const;
+const SHORTAGE_VIEWS = [SHORTAGES, SHORTAGE, LATEST_RUN, AUDIT, SHORTAGE_AUDIT] as const;
+const RECOMMENDATION_VIEWS = [RECOMMENDATION, LATEST_RECOMMENDATION] as const;
+const SHIPMENT_VIEWS = [SHIPMENTS, SHIPMENT, AUDIT, SHORTAGE_AUDIT] as const;
 const COLDCHAIN_VIEWS = [SHIPMENT, COLDCHAIN] as const;
 
 /**
@@ -46,11 +50,18 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   "inventory.changed": [BATCHES, AUDIT],
   // A new or changed offer can add a product to the supplier's network demand.
   "supplier_offer.changed": [OFFERS, NETWORK_DEMAND, AUDIT],
-  "recommendation.ready": [...SHORTAGE_VIEWS, RECOMMENDATION],
-  "recommendation.status_changed": [...SHORTAGE_VIEWS, RECOMMENDATION],
+  "recommendation.ready": [...SHORTAGE_VIEWS, ...RECOMMENDATION_VIEWS],
+  // An escalation notifies the org's approvers (S12).
+  "recommendation.status_changed": [...SHORTAGE_VIEWS, ...RECOMMENDATION_VIEWS, NOTIFICATIONS],
   // An approved BUY leaves open demand; a supplier's rejection sends it back to matching.
-  "purchase_order.created": [PURCHASE_ORDERS, SHORTAGE, AUDIT, NETWORK_DEMAND],
-  "purchase_order.status_changed": [PURCHASE_ORDERS, SHORTAGE, AUDIT, NETWORK_DEMAND],
+  "purchase_order.created": [PURCHASE_ORDERS, SHORTAGE, AUDIT, SHORTAGE_AUDIT, NETWORK_DEMAND],
+  "purchase_order.status_changed": [
+    PURCHASE_ORDERS,
+    SHORTAGE,
+    AUDIT,
+    SHORTAGE_AUDIT,
+    NETWORK_DEMAND,
+  ],
   "shipment.created": [...SHIPMENT_VIEWS, SHORTAGE],
   "shipment.status_changed": [...SHIPMENT_VIEWS, SHORTAGE],
   "shipment.location": [SHIPMENT],

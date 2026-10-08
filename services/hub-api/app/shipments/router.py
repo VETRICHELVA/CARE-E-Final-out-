@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -14,6 +14,8 @@ from app.db import SessionDep
 from app.domain.fulfillment import RouteProvider, ShipmentStatus, StopType
 from app.orgs.models import Organization
 from app.pagination import Cursor, Limit, Page, paginate
+from app.receiving import router as receiving
+from app.receiving import service as receiving_service
 from app.shipments import service
 from app.shipments.models import Driver, Shipment, ShipmentLeg, Vehicle
 from app.shipments.schemas import (
@@ -120,11 +122,15 @@ async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[Ship
     return out
 
 
-async def _detail(session: AsyncSession, shipment: Shipment) -> ShipmentDetailOut:
+async def _detail(session: AsyncSession, user: User, shipment: Shipment) -> ShipmentDetailOut:
     await session.flush()
     await session.refresh(shipment)  # updated_at is set by the database
     (base,) = await _present(session, [shipment])
     last = await service.last_location(session, shipment.id)
+    receipt = None
+    if user.org_id == shipment.to_org_id:  # the receiver's record (CLAUDE.md rule 6)
+        row = await receiving_service.receipt_for(session, shipment.id)
+        receipt = await receiving.receipt_out(session, row) if row else None
     return ShipmentDetailOut(
         **base.model_dump(),
         route_geometry=shipment.route_geometry,
@@ -133,6 +139,8 @@ async def _detail(session: AsyncSession, shipment: Shipment) -> ShipmentDetailOu
             for h in shipment.status_history or []
         ],
         last_location=LocationOut.model_validate(last) if last else None,
+        inspection_note_required=await service.has_open_excursion(session, shipment),
+        receipt=receipt,
     )
 
 
@@ -144,6 +152,13 @@ async def list_shipments(
     assigned_to_me: Annotated[
         bool, Query(description="Only the shipments assigned to the caller as driver.")
     ] = False,
+    direction: Annotated[
+        Literal["inbound", "outbound"] | None,
+        Query(
+            description="inbound: shipments to the caller's org (its deliveries); "
+            "outbound: shipments from it."
+        ),
+    ] = None,
     limit: Limit = 50,
     cursor: Cursor = None,
 ) -> Page[ShipmentOut]:
@@ -152,6 +167,10 @@ async def list_shipments(
     stmt = service.visible_to(select(Shipment), user)
     if status is not None:
         stmt = stmt.where(Shipment.status == status)
+    if direction == "inbound":
+        stmt = stmt.where(Shipment.to_org_id == user.org_id)
+    elif direction == "outbound":
+        stmt = stmt.where(Shipment.from_org_id == user.org_id)
     if assigned_to_me:
         driver = await service.driver_of(session, user)
         stmt = stmt.where(Shipment.driver_id == (driver.id if driver else None))
@@ -168,7 +187,7 @@ async def get_shipment(
     """One shipment with its route geometry, status history and last driver location.
     403 unless the caller's org is involved (or it is unassigned and the caller is a
     logistics org)."""
-    return await _detail(session, await service.get_visible(session, user, shipment_id))
+    return await _detail(session, user, await service.get_visible(session, user, shipment_id))
 
 
 @router.post("/shipments/{shipment_id}/assign")
@@ -187,7 +206,7 @@ async def assign_shipment(
         vehicle_id=body.vehicle_id,
         reason=body.reason,
     )
-    out = await _detail(session, shipment)
+    out = await _detail(session, user, shipment)
     await session.commit()
     return out
 
@@ -200,7 +219,7 @@ async def unassign_shipment(
     shipment = await service.unassign(
         session, user, shipment_id, reason=body.reason if body else None
     )
-    out = await _detail(session, shipment)
+    out = await _detail(session, user, shipment)
     await session.commit()
     return out
 
@@ -213,7 +232,7 @@ async def update_shipment_status(
     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
     on_hand and consumes its FIRM hold."""
     shipment = await service.move(session, user, shipment_id, body.status, reason=body.reason)
-    out = await _detail(session, shipment)
+    out = await _detail(session, user, shipment)
     await session.commit()
     return out
 

@@ -10,6 +10,7 @@ import app.iot.models
 import app.notifications.models
 import app.orgs.models
 import app.purchase_orders.models
+import app.receiving.models
 import app.recommendations.models
 import app.shipments.models
 import app.shortages.models

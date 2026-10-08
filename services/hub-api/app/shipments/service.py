@@ -504,6 +504,28 @@ async def _draw_down(session: AsyncSession, shipment: Shipment, now: datetime) -
     return [str(h.id) for h, _ in rows]
 
 
+async def mark_reconciled(
+    session: AsyncSession,
+    shipment: Shipment,
+    actor: User,
+    reason: str | None,
+    now: datetime,
+    *,
+    changes: dict[str, Any],
+) -> None:
+    """DELIVERED -> RECONCILED when the receiving org records the receipt (S12, §9); 409
+    from any other state. The caller has checked that `actor` belongs to the receiving org
+    and holds the shipment's lock."""
+    await _move(session, shipment, S.RECONCILED, actor, reason, now, changes=changes)
+
+
+async def has_open_excursion(session: AsyncSession, shipment: Shipment) -> bool:
+    """Whether the shipment has a cold-chain excursion on record that is still open
+    (business-rules.md §9, §11): its receipt then needs an inspection note. Always False
+    until S15 records cold-chain events."""
+    return False
+
+
 # --- location pings ---------------------------------------------------------------------------
 
 
