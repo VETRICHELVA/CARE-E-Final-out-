@@ -6,6 +6,8 @@ import type {
   Candidate,
   Facility,
   MatchRun,
+  Notification,
+  Receipt,
   Product,
   Recommendation,
   RecommendationLine,
@@ -457,3 +459,85 @@ export const auditRow = (fields: Partial<AuditRow> & Pick<AuditRow, "id">): Audi
   ts: "2026-10-07T06:00:00Z",
   ...fields,
 });
+
+// ---- S12 part 2: receipts, reconciliation and notifications ----
+
+export const RECEIPT_ID = "ae000000-0000-4000-8000-000000000101";
+export const RESIDUAL_ID = "5a000000-0000-4000-8000-000000000060";
+
+/** Supplier Y's 850 kits, delivered to Hospital A and waiting for the receipt (step 7). */
+export const deliveredToA: ShipmentDetail = {
+  ...shipmentToA,
+  status: "DELIVERED",
+  eta: null,
+  drop: {
+    seq: 2,
+    stop_type: "DROP",
+    place: "Hospital A Main Store",
+    lat: 0,
+    lng: 0,
+    planned_at: null,
+    actual_at: "2026-10-07T08:00:00Z",
+  },
+};
+
+/** Scenario 1 step 7: 790 of 850 accepted, reconciled PARTIAL with a residual of 60. */
+export const partialReceipt: Receipt = {
+  id: RECEIPT_ID,
+  shipment_id: shipmentToA.id,
+  shortage_id: shortage.id,
+  expected: 850,
+  received: 850,
+  accepted: 790,
+  rejected: 60,
+  condition: "DAMAGED",
+  inspection_note: null,
+  received_by: ME_ID,
+  ts: "2026-10-07T09:00:00Z",
+  batch_id: "ba000000-0000-4000-8000-000000000079",
+  reconciliation: {
+    id: "ae000000-0000-4000-8000-000000000001",
+    shortage_id: shortage.id,
+    shipment_id: shipmentToA.id,
+    expected: 850,
+    accepted: 790,
+    discrepancy: 60,
+    outcome: "PARTIAL",
+    residual_shortage_id: RESIDUAL_ID,
+    created_at: "2026-10-07T09:00:01Z",
+  },
+};
+
+/** The residual shortage the hub opened for the missing 60 (business-rules §9). */
+export const residual: Shortage = {
+  ...shortage,
+  id: RESIDUAL_ID,
+  qty_required: 60,
+  qty_local_usable: 0,
+  shortfall: 60,
+  status: "MATCHING",
+  parent_shortage_id: shortage.id,
+  created_at: "2026-10-07T09:00:01Z",
+  updated_at: "2026-10-07T09:00:02Z",
+};
+
+export const escalation = (
+  id: string,
+  fields: Partial<Notification> & { reason?: string | null } = {},
+): Notification => {
+  const { reason = null, ...rest } = fields;
+  return {
+    id,
+    type: "recommendation.escalated",
+    payload: {
+      recommendation_id: transferRec.id,
+      shortage_id: shortage.id,
+      escalated_by: "00000000-0000-4000-8000-0000000000bb",
+      reason,
+      expires_at: transferRec.expires_at,
+    },
+    read_at: null,
+    created_at: "2026-10-07T06:01:00Z",
+    ...rest,
+  };
+};

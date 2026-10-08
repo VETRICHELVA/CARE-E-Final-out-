@@ -12,6 +12,7 @@ import {
   page,
   PO_ID,
   products,
+  RECEIPT_ID,
   recCreated,
   requestToB,
   shipmentToA,
@@ -71,6 +72,29 @@ const ROWS: Record<string, AuditRow[]> = {
       ts: "2026-10-07T06:01:00Z",
     }),
   ],
+  [RECEIPT_ID]: [
+    auditRow({
+      id: "ad000000-0000-4000-8000-000000000108",
+      actor_id: ME_ID,
+      entity: "receipt",
+      entity_id: RECEIPT_ID,
+      action: "receipt.recorded",
+      after: { shipment_id: shipmentToA.id, received: 850, accepted: 790, rejected: 60 },
+      reason: "60 kits had torn seals",
+      reason_source: "USER",
+      ts: "2026-10-07T09:00:00Z",
+    }),
+    auditRow({
+      id: "ad000000-0000-4000-8000-000000000109",
+      entity: "reconciliation",
+      entity_id: "ae000000-0000-4000-8000-000000000001",
+      action: "reconciliation.completed",
+      after: { outcome: "PARTIAL" },
+      reason: "790 of the 850 needed were accepted; 60 are still needed.",
+      reason_source: "SYSTEM",
+      ts: "2026-10-07T09:00:01Z",
+    }),
+  ],
   [buyRec.id]: [recCreated(buyRec)],
   [PO_ID]: [
     auditRow({
@@ -115,23 +139,21 @@ const ROWS: Record<string, AuditRow[]> = {
   ],
 };
 
-/** `GET /audit`: one record's rows by `entity_id`, or a whole entity type's `.created` rows. */
-function audit(call: Call) {
-  const q = call.url.searchParams;
-  const id = q.get("entity_id");
-  if (id) return page(ROWS[id] ?? []);
-  const created = Object.values(ROWS)
-    .flat()
-    .filter((r) => r.entity === q.get("entity") && r.action.endsWith(".created"));
-  return page(created);
-}
+/** `GET /shortages/{id}/audit`: the whole trail in this org, oldest first, as the hub pages it. */
+const TRAIL = Object.values(ROWS)
+  .flat()
+  .sort((a, b) => a.ts.localeCompare(b.ts));
+const trailPath = `/api/v1/shortages/${shortage.id}/audit`;
 
 const hub = (extra: Record<string, unknown> = {}) =>
   fakeHub({
     "GET /api/v1/shortages/{id}": { ...shortage, status: "IN_FULFILLMENT" },
     "GET /api/v1/shortages/{id}/match-runs/latest": matchRun,
     "GET /api/v1/products": products,
-    "GET /api/v1/audit": audit,
+    "GET /api/v1/shortages/{id}/audit": page(TRAIL),
+    "GET /api/v1/shortages/{id}/recommendations/latest": { ...buyRec, status: "APPROVED" },
+    // The status timeline's own read of the shortage's rows.
+    "GET /api/v1/audit": () => page(ROWS[shortage.id]!),
     "GET /api/v1/source-requests": page([
       { ...requestToB, status: "DECLINED", reason_source: "USER" },
     ]),
@@ -163,12 +185,14 @@ const actor = (row: HTMLElement) => within(row).getByTestId("audit-actor").textC
 const reason = (row: HTMLElement) => within(row).getByTestId("recorded-reason");
 
 describe("Audit tab", () => {
-  it("shows the shortage's and its records' rows, newest first", async () => {
+  it("shows the shortage's and its records' rows from the hub's trail, newest first", async () => {
     const fake = hub();
     show();
     await openAudit();
-    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(10));
     expect(screen.getAllByTestId("audit-action").map((a) => a.textContent)).toEqual([
+      "Reconciliation completed",
+      "Receipt recorded",
       "Shipment: Assigned → Picked up",
       "Shipment created (Created)",
       "Purchase order: Sent → Acknowledged",
@@ -178,19 +202,34 @@ describe("Audit tab", () => {
       "Recommendation created (Pending)",
       "Shortage created (Open)",
     ]);
-    const ids = fake
-      .to("GET", "/api/v1/audit")
-      .map((c) => c.url.searchParams.get("entity_id"))
-      .filter(Boolean);
-    for (const id of [shortage.id, requestToB.id, buyRec.id, PO_ID, shipmentToA.id])
-      expect(ids).toContain(id);
+    expect(fake.to("GET", trailPath)).toHaveLength(1);
+    // No per-record lookups: the hub's trail covers every record of the shortage.
+    expect(
+      fake
+        .to("GET", "/api/v1/audit")
+        .filter((c) => c.url.searchParams.get("entity") !== "shortage"),
+    ).toHaveLength(0);
+  });
+
+  it("reads every page of a long trail", async () => {
+    const fake = hub({
+      "GET /api/v1/shortages/{id}/audit": (call: Call) =>
+        call.url.searchParams.get("cursor") === "p2"
+          ? page(TRAIL.slice(5))
+          : { items: TRAIL.slice(0, 5), next_cursor: "p2" },
+    });
+    show();
+    await openAudit();
+    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(10));
+    expect(fake.to("GET", trailPath)).toHaveLength(2);
+    expect(screen.getAllByTestId("audit-action")[0]!.textContent).toBe("Reconciliation completed");
   });
 
   it("labels USER and SYSTEM reasons differently", async () => {
     hub();
     show();
     await openAudit();
-    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(10));
     const rows = screen.getAllByTestId("audit-row");
 
     const typed = reason(rowFor(rows, "Source request: Requested → Declined"));
@@ -203,6 +242,13 @@ describe("Audit tab", () => {
     expect(within(timer).getByText("System")).toBeTruthy();
     expect(within(timer).getByText("Response deadline passed.")).toBeTruthy();
 
+    const receipt = reason(rowFor(rows, "Receipt recorded"));
+    expect(receipt.dataset.reasonSource).toBe("USER");
+    expect(receipt.textContent).toBe("User reason60 kits had torn seals");
+    const reconciled = reason(rowFor(rows, "Reconciliation completed"));
+    expect(reconciled.dataset.reasonSource).toBe("SYSTEM");
+    expect(within(reconciled).getByText("System")).toBeTruthy();
+
     const untyped = reason(rowFor(rows, "Purchase order created (Sent)"));
     expect(untyped.dataset.reasonSource).toBe("SYSTEM");
     expect(untyped.textContent).toBe("SystemNo reason was entered.");
@@ -213,7 +259,7 @@ describe("Audit tab", () => {
     hub();
     show();
     await openAudit();
-    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(10));
     const rows = screen.getAllByTestId("audit-row");
     // B's decline (typed reason), mirrored into A's trail with actor_id null.
     expect(actor(rowFor(rows, "Source request: Requested → Declined"))).toBe(
@@ -236,12 +282,14 @@ describe("Audit tab", () => {
     hub();
     show();
     await openAudit();
-    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(8));
+    await waitFor(() => expect(screen.getAllByTestId("audit-row")).toHaveLength(10));
     const rows = screen.getAllByTestId("audit-row");
     expect(actor(rowFor(rows, "Source request: Requested → Expired"))).toBe("System");
     expect(actor(rowFor(rows, "Recommendation created (Pending)"))).toBe("System");
     expect(actor(rowFor(rows, "Shortage created (Open)"))).toBe("You");
     expect(actor(rowFor(rows, "Purchase order created (Sent)"))).toBe("You");
+    expect(actor(rowFor(rows, "Receipt recorded"))).toBe("You");
+    expect(actor(rowFor(rows, "Reconciliation completed"))).toBe("System");
   });
 
   it("is not offered without audit.read", async () => {
@@ -253,8 +301,8 @@ describe("Audit tab", () => {
 
   it("shows the hub's error", async () => {
     hub({
-      // A fresh Response per call: several queries read the audit trail.
-      "GET /api/v1/audit": () => hubError(500, "internal_error", "Audit is unavailable."),
+      "GET /api/v1/shortages/{id}/audit": () =>
+        hubError(500, "internal_error", "Audit is unavailable."),
     });
     show();
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "Audit trail" }), { button: 0 });
@@ -262,7 +310,11 @@ describe("Audit tab", () => {
   });
 
   it("has an empty state", async () => {
-    hub({ "GET /api/v1/audit": page([]), "GET /api/v1/source-requests": page([]) });
+    hub({
+      "GET /api/v1/shortages/{id}/audit": page([]),
+      "GET /api/v1/audit": page([]),
+      "GET /api/v1/source-requests": page([]),
+    });
     show();
     fireEvent.mouseDown(await screen.findByRole("tab", { name: "Audit trail" }), { button: 0 });
     expect(await screen.findByText("No audit rows yet")).toBeTruthy();

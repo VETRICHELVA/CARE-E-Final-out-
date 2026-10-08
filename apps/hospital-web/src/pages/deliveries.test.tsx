@@ -2,7 +2,7 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invalidateFor } from "@care-e/api-client";
 import type { Shipment } from "../api";
-import { meAs, NOW, page, products, shipmentFromA, shipmentToA } from "../test/fixtures";
+import { deliveredToA, meAs, NOW, page, products, shipmentToA } from "../test/fixtures";
 import { fakeHub, hubError, renderAs } from "../test/hub";
 import { DeliveriesPage } from "./deliveries";
 
@@ -32,12 +32,11 @@ const rows = async () => {
 };
 
 describe("Deliveries", () => {
-  it("lists only shipments coming to this hospital, with status, carrier and live ETA", async () => {
-    const fake = hub([shipmentToA, shipmentFromA]);
+  it("asks the hub for inbound shipments and shows status, carrier and live ETA", async () => {
+    const fake = hub([shipmentToA]);
     show();
     const [row, ...rest] = await rows();
     expect(rest).toHaveLength(0);
-    expect(screen.queryByText("Outgoing kit")).toBeNull();
     expect(within(row!).getByText("Surgical Kit A")).toBeTruthy();
     expect(within(row!).getByText("850 kits")).toBeTruthy();
     expect(within(row!).getByText("Supplier Y")).toBeTruthy();
@@ -49,6 +48,8 @@ describe("Deliveries", () => {
     expect(within(row!).getByRole("link", { name: "Shortage" }).getAttribute("href")).toBe(
       `/shortages/${shipmentToA.shortage_id}`,
     );
+    const [call] = fake.to("GET", "/api/v1/shipments");
+    expect(call!.url.searchParams.get("direction")).toBe("inbound");
     expect(fake.to("GET", "/api/v1/shipments")).toHaveLength(1);
   });
 
@@ -128,8 +129,36 @@ describe("Deliveries", () => {
     );
   });
 
+  it("links a delivered shipment to the Receive screen for a receiver", async () => {
+    hub([deliveredToA, { ...shipmentToA, id: "5b000000-0000-4000-8000-000000000009" }]);
+    show("RECEIVER");
+    const [delivered, moving] = await rows();
+    expect(within(delivered!).getByRole("link", { name: "Receive" }).getAttribute("href")).toBe(
+      `/deliveries/${deliveredToA.id}/receive`,
+    );
+    expect(within(moving!).queryByRole("link")).toBeNull();
+  });
+
+  it("links a reconciled shipment to its recorded receipt", async () => {
+    hub([{ ...deliveredToA, status: "RECONCILED" }]);
+    show("RECEIVER");
+    const [row] = await rows();
+    expect(within(row!).getByRole("link", { name: "View receipt" }).getAttribute("href")).toBe(
+      `/deliveries/${deliveredToA.id}/receive`,
+    );
+    expect(within(row!).queryByRole("link", { name: "Receive" })).toBeNull();
+  });
+
+  it("offers no Receive link without receipt.record", async () => {
+    hub([deliveredToA]);
+    show("APPROVER");
+    const [row] = await rows();
+    expect(within(row!).queryByRole("link", { name: "Receive" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Receipt" })).toBeNull();
+  });
+
   it("has an empty state", async () => {
-    hub([shipmentFromA]);
+    hub([]);
     show();
     expect(await screen.findByText("No deliveries to your hospital")).toBeTruthy();
   });

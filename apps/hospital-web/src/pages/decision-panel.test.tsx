@@ -9,7 +9,6 @@ import {
   NOW,
   page,
   products,
-  recCreated,
   shortage,
   splitRec,
   transferRec,
@@ -39,12 +38,7 @@ const WORDING = {
   BUY: ["Approve purchase", "The order has gone to the supplier."],
 } as const;
 
-/** The org's audit trail: the `recommendation.created` row the panel finds `rec` by. */
-const audit = (rec: Recommendation) => (call: Call) =>
-  call.url.searchParams.get("entity") === "recommendation" &&
-  !call.url.searchParams.has("entity_id")
-    ? page([recCreated(rec)])
-    : page([]);
+const latestPath = `/api/v1/shortages/${shortage.id}/recommendations/latest`;
 
 /** A fake hub whose recommendation `rec` changes as the decisions arrive. */
 function hub(rec: Recommendation, extra: Record<string, unknown> = {}) {
@@ -65,8 +59,9 @@ function hub(rec: Recommendation, extra: Record<string, unknown> = {}) {
     "GET /api/v1/shortages/{id}": { ...shortage, status: "AWAITING_DECISION" },
     "GET /api/v1/shortages/{id}/match-runs/latest": matchRun,
     "GET /api/v1/products": products,
-    "GET /api/v1/audit": audit(rec),
+    "GET /api/v1/audit": page([]),
     "GET /api/v1/source-requests": page([]),
+    "GET /api/v1/shortages/{id}/recommendations/latest": () => current,
     "GET /api/v1/recommendations/{id}": () => current,
     "POST /api/v1/recommendations/{id}/approve": (call: Call) => ({
       recommendation: decided("APPROVED", call),
@@ -145,23 +140,39 @@ describe("Decision panel", () => {
     expect(within(await panel()).queryByTestId("decision-actions")).toBeNull();
   });
 
-  it("finds the recommendation of the latest match run through the hub's audit rows", async () => {
+  it("reads the shortage's latest recommendation from the hub, not the audit trail", async () => {
     const fake = hub(transferRec);
     show();
     await panel();
-    const lookup = fake
-      .to("GET", "/api/v1/audit")
-      .find((c) => c.url.searchParams.get("entity") === "recommendation");
-    expect(lookup!.url.searchParams.has("entity_id")).toBe(false);
-    expect(fake.to("GET", recPath(transferRec))).toHaveLength(1);
+    expect(fake.to("GET", latestPath)).toHaveLength(1);
+    expect(
+      fake
+        .to("GET", "/api/v1/audit")
+        .filter((c) => c.url.searchParams.get("entity") === "recommendation"),
+    ).toHaveLength(0);
   });
 
-  it("shows nothing from an earlier run's recommendation", async () => {
-    const fake = hub({ ...transferRec, match_run_id: "aa000000-0000-4000-8000-0000000000ff" });
+  it("shows no panel before the hub has made a recommendation", async () => {
+    const fake = hub(transferRec, {
+      "GET /api/v1/shortages/{id}": { ...shortage, status: "MATCHING" },
+      "GET /api/v1/shortages/{id}/recommendations/latest": () =>
+        hubError(404, "not_found", "No recommendation yet."),
+    });
+    show();
+    expect(await screen.findByTestId("shortfall")).toBeTruthy();
+    await waitFor(() => expect(fake.to("GET", latestPath)).toHaveLength(1));
+    expect(screen.queryByTestId("decision-panel")).toBeNull();
+    expect(screen.queryByText("No recommendation yet.")).toBeNull();
+    expect(fake.to("GET", recPath(transferRec))).toHaveLength(0);
+  });
+
+  it("says so if a shortage awaiting a decision has no recommendation", async () => {
+    hub(transferRec, {
+      "GET /api/v1/shortages/{id}/recommendations/latest": () =>
+        hubError(404, "not_found", "No recommendation yet."),
+    });
     show();
     expect(await screen.findByText("The recommendation could not be found")).toBeTruthy();
-    expect(screen.queryByTestId("decision-panel")).toBeNull();
-    expect(fake.to("GET", recPath(transferRec))).toHaveLength(0);
   });
 
   it("shows lines, ETA, explanation and alternatives, with '—' for a hospital's cost", async () => {
@@ -223,24 +234,17 @@ describe("Decision panel", () => {
     expect(within(await panel()).getByTestId("countdown").textContent).toBe("29:31 left");
   });
 
-  it("hides every decision from a user without recommendation.approve", async () => {
-    const me = meAs("REQUESTER");
-    hub(transferRec);
-    show({ ...me, capabilities: [...me.capabilities, "audit.read"] });
+  it("shows a requester without audit.read the recommendation, but no decision", async () => {
+    const fake = hub(transferRec);
+    show(meAs("REQUESTER"));
     const box = await panel();
+    expect(within(box).getByTestId("recommendation-type").textContent).toBe("Transfer");
     expect(within(box).queryByTestId("decision-actions")).toBeNull();
     expect(within(box).queryByRole("button", { name: "Approve transfer" })).toBeNull();
     expect(
       within(box).getByText("Waiting for an approver in your organization to decide."),
     ).toBeTruthy();
-  });
-
-  it("says a decision is awaited when the user cannot look the recommendation up", async () => {
-    const fake = hub(transferRec);
-    show(meAs("REQUESTER"));
-    expect(await screen.findByText("A recommendation is awaiting a decision")).toBeTruthy();
     expect(fake.to("GET", "/api/v1/audit")).toHaveLength(0);
-    expect(fake.to("GET", recPath(transferRec))).toHaveLength(0);
   });
 
   it("offers Approve, Escalate and Reject while PENDING", async () => {

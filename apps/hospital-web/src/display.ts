@@ -78,6 +78,22 @@ export const ENTITY_LABELS: Record<string, string> = {
   recommendation: "Recommendation",
   purchase_order: "Purchase order",
   shipment: "Shipment",
+  match_run: "Match run",
+  receipt: "Receipt",
+  reconciliation: "Reconciliation",
+  batch: "Batch",
+};
+
+/** Receipt conditions (api-and-events.md, S12). */
+export const CONDITION_LABELS: Record<string, string> = {
+  GOOD: "Good",
+  DAMAGED: "Damaged",
+  TEMPERATURE_ISSUE: "Temperature issue",
+};
+
+/** Notification types the hub writes (S12: escalations). */
+export const NOTIFICATION_LABELS: Record<string, string> = {
+  "recommendation.escalated": "Recommendation escalated to you",
 };
 
 /** The hub's wording when a user acted without typing a reason (business-rules.md §10). */

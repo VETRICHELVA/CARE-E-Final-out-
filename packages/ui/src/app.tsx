@@ -33,6 +33,8 @@ export type AppConfig = {
   routes?: ExtraRoute[];
   /** Refresh screens from the hub's event stream (`useEventStream`) instead of polling. */
   liveUpdates?: boolean;
+  /** Extra header content for a signed-in user, before their name (e.g. a notification bell). */
+  headerExtra?: ReactNode;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
@@ -40,7 +42,8 @@ function AppShell({
   name,
   nav,
   liveUpdates = false,
-}: Pick<AppConfig, "name" | "nav" | "liveUpdates">) {
+  headerExtra,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
@@ -68,6 +71,7 @@ function AppShell({
           </nav>
           {me && (
             <div className="ml-auto flex items-center gap-3 text-sm">
+              {headerExtra}
               <div className="text-right leading-tight">
                 <div className="font-medium">{me.user.full_name}</div>
                 <div className="text-muted-foreground" data-testid="org-name">
@@ -94,7 +98,15 @@ const placeholder = (label: string) => (
 );
 
 /** One app: sign-in, the org-type gate, the header and nav, and its screens. */
-export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }: AppConfig) {
+export function CareApp({
+  name,
+  allow,
+  refusal,
+  nav,
+  routes = [],
+  liveUpdates,
+  headerExtra,
+}: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
   useEffect(
@@ -107,7 +119,16 @@ export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }:
         <Routes>
           <Route path="/login" element={<LoginPage appName={name} />} />
           <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
-            <Route element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} />}>
+            <Route
+              element={
+                <AppShell
+                  name={name}
+                  nav={nav}
+                  liveUpdates={liveUpdates}
+                  headerExtra={headerExtra}
+                />
+              }
+            >
               {nav.map((item) => (
                 <Route
                   key={item.to}
