@@ -12,8 +12,11 @@ import {
   ErrorState,
   formatDateTime,
   Loading,
-  STATUS,
   StatusChip,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
   toast,
   useCan,
 } from "@care-e/ui";
@@ -29,14 +32,21 @@ import {
   useShortage,
 } from "../api";
 import { PageHeader } from "../components/page";
-import { CANCEL_FROM, OPEN_REQUEST_STATES, qty, RERUN_FROM, TRIGGER_LABELS } from "../display";
+import {
+  CANCEL_FROM,
+  OPEN_REQUEST_STATES,
+  qty,
+  RERUN_FROM,
+  statusLabel,
+  TRIGGER_LABELS,
+} from "../display";
+import { DecisionPanel } from "./decision-panel";
 import { MatchRunCard } from "./match-run";
+import { ShortageAudit } from "./shortage-audit";
 import { PriorityBadge } from "./shortages";
 import { SourceRequestsPanel, useShortageRequests } from "./source-requests-panel";
 
 type Event = { ts: string; title: ReactNode; detail?: ReactNode };
-
-const statusLabel = (s: unknown) => (typeof s === "string" ? (STATUS[s]?.label ?? s) : "—");
 
 /** Status history from what the user may read: the audit trail with `audit.read`,
  *  otherwise the shortage's own timestamps. Nothing is inferred beyond those records. */
@@ -146,7 +156,8 @@ export function ShortageDetailPage() {
   const shortage = useShortage(id);
   const run = useLatestRun(id);
   const products = useProducts();
-  const audit = useAudit("shortage", id, useCan("audit.read"));
+  const canReadAudit = useCan("audit.read");
+  const audit = useAudit("shortage", id, canReadAudit);
 
   if (shortage.isPending) return <Loading label="Loading shortage…" />;
   if (shortage.isError) return <ErrorState error={shortage.error} />;
@@ -169,50 +180,66 @@ export function ShortageDetailPage() {
         actions={<Actions shortage={s} />}
       />
 
-      <Card>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Fact label="Shortfall (computed by the hub)">
-              <span className="text-primary" data-testid="shortfall">
-                {qty(s.shortfall, product)}
-              </span>
-            </Fact>
-            <Fact label="Required">{qty(s.qty_required, product)}</Fact>
-            <Fact label="Usable on hand">{qty(s.qty_local_usable, product)}</Fact>
-            <Fact label="Required by">{formatDateTime(s.required_by)}</Fact>
-            <Fact label="Minimum shelf life">{s.min_shelf_life_days} days</Fact>
-            <Fact label="Reported">{formatDateTime(s.created_at)}</Fact>
-            {s.notes && <Fact label="Notes">{s.notes}</Fact>}
-          </dl>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-        <Card className="self-start">
-          <CardHeader>
-            <CardTitle>Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {audit.isError ? (
-              <ErrorState error={audit.error} />
-            ) : audit.isLoading || run.isPending ? (
-              <Loading />
-            ) : (
-              <Timeline events={timeline(s, run.data ?? null, audit.data?.items)} />
-            )}
-          </CardContent>
-        </Card>
-        <div className="grid gap-4 self-start">
-          {run.isPending ? (
-            <Loading label="Loading match run…" />
-          ) : run.isError ? (
-            <ErrorState error={run.error} />
-          ) : (
-            <MatchRunCard run={run.data} product={product} />
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {canReadAudit && <TabsTrigger value="audit">Audit trail</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="overview" className="grid gap-4">
+          {!run.isPending && !run.isError && (
+            <DecisionPanel shortage={s} run={run.data} product={product} />
           )}
-          <SourceRequestsPanel shortageId={s.id} product={product} />
-        </div>
-      </div>
+          <Card>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <Fact label="Shortfall (computed by the hub)">
+                  <span className="text-primary" data-testid="shortfall">
+                    {qty(s.shortfall, product)}
+                  </span>
+                </Fact>
+                <Fact label="Required">{qty(s.qty_required, product)}</Fact>
+                <Fact label="Usable on hand">{qty(s.qty_local_usable, product)}</Fact>
+                <Fact label="Required by">{formatDateTime(s.required_by)}</Fact>
+                <Fact label="Minimum shelf life">{s.min_shelf_life_days} days</Fact>
+                <Fact label="Reported">{formatDateTime(s.created_at)}</Fact>
+                {s.notes && <Fact label="Notes">{s.notes}</Fact>}
+              </dl>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
+            <Card className="self-start">
+              <CardHeader>
+                <CardTitle>Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {audit.isError ? (
+                  <ErrorState error={audit.error} />
+                ) : audit.isLoading || run.isPending ? (
+                  <Loading />
+                ) : (
+                  <Timeline events={timeline(s, run.data ?? null, audit.data?.items)} />
+                )}
+              </CardContent>
+            </Card>
+            <div className="grid gap-4 self-start">
+              {run.isPending ? (
+                <Loading label="Loading match run…" />
+              ) : run.isError ? (
+                <ErrorState error={run.error} />
+              ) : (
+                <MatchRunCard run={run.data} product={product} />
+              )}
+              <SourceRequestsPanel shortageId={s.id} product={product} />
+            </div>
+          </div>
+        </TabsContent>
+        {canReadAudit && (
+          <TabsContent value="audit">
+            <ShortageAudit shortage={s} />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

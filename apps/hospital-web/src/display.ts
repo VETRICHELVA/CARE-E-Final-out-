@@ -1,6 +1,9 @@
 // Labels and display gates. Display only: the hub enforces every rule and still checks each call.
-import { formatQty } from "@care-e/ui";
+import { formatQty, STATUS } from "@care-e/ui";
 import type { Candidate, Product } from "./api";
+
+/** A hub state's label ("IN_TRANSIT" → "In transit"); "—" for anything that is not a string. */
+export const statusLabel = (s: unknown) => (typeof s === "string" ? (STATUS[s]?.label ?? s) : "—");
 
 /** business-rules.md §8: the Shortage states the hub accepts each requester action from.
  *  Used to hide buttons that would only earn a 409. */
@@ -51,6 +54,46 @@ export const RESOLUTION_LABELS: Record<string, string> = {
   TRANSFER_SPLIT: "Split transfer",
   BUY: "Buy",
 };
+
+/** business-rules.md §13, word for word: the approve button and what the approver reads once
+ *  the hub has approved (the hub's approve response carries the same `message`). */
+export const DECISION_WORDING: Record<string, { approve: string; approved: string }> = {
+  TRANSFER: { approve: "Approve transfer", approved: "Stock is now held at the source." },
+  TRANSFER_SPLIT: { approve: "Approve transfers", approved: "Stock is now held at each source." },
+  BUY: { approve: "Approve purchase", approved: "The order has gone to the supplier." },
+};
+
+/** business-rules.md §8, Recommendation: the states each decision is accepted from. */
+export const APPROVE_FROM = new Set(["PENDING", "ESCALATED"]);
+export const REJECT_FROM = APPROVE_FROM;
+export const ESCALATE_FROM = new Set(["PENDING"]);
+
+/** Shipment states before the receiving hospital has the goods. */
+export const IN_MOTION = new Set(["CREATED", "ASSIGNED", "PICKED_UP", "IN_TRANSIT"]);
+
+/** Audit entities as the audit tab names them. */
+export const ENTITY_LABELS: Record<string, string> = {
+  shortage: "Shortage",
+  source_request: "Source request",
+  recommendation: "Recommendation",
+  purchase_order: "Purchase order",
+  shipment: "Shipment",
+};
+
+/** The hub's wording when a user acted without typing a reason (business-rules.md §10). */
+export const NO_REASON = "No reason was entered.";
+
+/**
+ * True for a row another org's user wrote, mirrored into this org's trail (business-rules.md
+ * §10): the hub drops the actor's id, but keeps the reason as recorded. A user action's reason
+ * is either typed (USER) or the hub's "No reason was entered."; a system change always carries
+ * a factual cause instead. So an actor-less row with a user's reason is a mirrored one.
+ */
+export const isMirrored = (row: {
+  actor_id: string | null;
+  reason: string;
+  reason_source: string;
+}) => row.actor_id === null && (row.reason_source === "USER" || row.reason === NO_REASON);
 
 const hours = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 /** A hub ETA in hours: 6.24 → "6.2 h". */

@@ -1,6 +1,7 @@
 import { type AppConfig, CareApp } from "@care-e/ui";
 import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
+import { DeliveriesPage } from "./pages/deliveries";
 import { InventoryPage } from "./pages/inventory";
 import { RequestsPage } from "./pages/requests";
 import { ShortageDetailPage } from "./pages/shortage-detail";
@@ -27,7 +28,7 @@ export const config: AppConfig = {
       capability: "source_request.respond",
       element: <RequestsPage />,
     },
-    { to: "/deliveries", label: "Deliveries" },
+    { to: "/deliveries", label: "Deliveries", element: <DeliveriesPage /> },
     { to: "/forecasts", label: "Forecasts" },
   ],
   routes: [{ path: "/shortages/:id", element: <ShortageDetailPage /> }],

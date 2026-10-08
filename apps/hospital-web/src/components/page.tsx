@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Field, FieldError, FieldLabel } from "@care-e/ui";
+import { Badge, Field, FieldError, FieldLabel } from "@care-e/ui";
+import { NO_REASON } from "../display";
 
 // Shared with the other apps since S10.
 export { LoadMore, PageHeader } from "@care-e/ui";
@@ -25,6 +26,32 @@ export function FormField({
       {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
+  );
+}
+
+/** A recorded reason, labelled by who wrote it (business-rules.md §10): a user's own words
+ *  (`USER`), or the hub's wording (`SYSTEM`: "No reason was entered." or a timer's cause). A
+ *  SYSTEM reason the hub returns as null means nothing was typed. */
+export function RecordedReason({
+  reason,
+  source,
+}: {
+  reason: string | null;
+  source: string | null;
+}) {
+  if (source !== "USER" && source !== "SYSTEM") return null;
+  const user = source === "USER";
+  return (
+    <span
+      data-testid="recorded-reason"
+      data-reason-source={source}
+      className="inline-flex flex-wrap items-baseline gap-1.5"
+    >
+      <Badge variant={user ? "secondary" : "outline"}>{user ? "User reason" : "System"}</Badge>
+      <span className={user ? undefined : "text-muted-foreground italic"}>
+        {reason ?? NO_REASON}
+      </span>
+    </span>
   );
 }
 
