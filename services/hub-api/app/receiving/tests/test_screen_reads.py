@@ -49,19 +49,30 @@ async def test_latest_recommendation_is_the_open_one_then_the_last_decided(
     store = await client_for(world.users["a.STORE_MANAGER"])
     assert (await store.get(url)).json()["id"] == str(rec.id)
 
-    # Rejected: matching re-runs (no one declined, so B is asked again) and the rejected
-    # recommendation is still the latest until a new one is made.
+    # Rejected: matching re-runs without B (business-rules §7 step 6), which plans a BUY
+    # and recommends it at once; the new one is now the latest.
     r = await approver.post(f"/recommendations/{rec.id}/reject", json={"reason": "Too far"})
+    assert r.status_code == 200, r.text
+    newer = await open_rec(session, shortage)
+    assert newer.id != rec.id
+    r = await approver.get(url)
+    assert (r.json()["id"], r.json()["type"], r.json()["status"]) == (
+        str(newer.id),
+        "BUY",
+        "PENDING",
+    )
+    # Once that one is decided too, the last decided one is the latest.
+    r = await approver.post(f"/recommendations/{newer.id}/reject", json={"reason": "Too dear"})
+    assert r.status_code == 200, r.text
+    latest = await open_rec(session, shortage)  # the BUY from Supplier X
+    r = await approver.post(f"/recommendations/{latest.id}/reject", json={"reason": "No"})
     assert r.status_code == 200, r.text
     r = await approver.get(url)
     assert (r.json()["id"], r.json()["status"], r.json()["reason"]) == (
-        str(rec.id),
+        str(latest.id),
         "REJECTED",
-        "Too far",
+        "No",
     )
-    await answer_b(session, await client_for(world.users["b.STORE_MANAGER"]), shortage, "accept")
-    newer = await open_rec(session, shortage)
-    assert (await approver.get(url)).json()["id"] == str(newer.id)
 
 
 async def test_latest_recommendation_of_another_orgs_shortage_is_403(

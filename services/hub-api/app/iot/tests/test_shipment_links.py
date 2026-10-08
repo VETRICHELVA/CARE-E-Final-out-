@@ -64,11 +64,12 @@ async def send(session: AsyncSession, n: int, temp: float = 4.2) -> list[SensorR
 
 async def test_the_dispatcher_puts_a_box_on_a_shipment(
     session: AsyncSession,
-    shipment: Shipment,
+    assigned: Shipment,
     dispatcher: httpx.AsyncClient,
     box: Device,
     swiftmed: Fleet,
 ) -> None:
+    shipment = assigned  # SwiftMed carries it
     r = await put_on(dispatcher, box, shipment.id)
     assert r.status_code == 200, r.text
     assert r.json()["assigned_shipment_id"] == str(shipment.id)
@@ -166,12 +167,13 @@ async def test_readings_are_linked_and_sent_only_while_the_shipment_is_on_its_wa
 ) -> None:
     # A box on no shipment: readings are stored, unlinked, and nothing is sent.
     assert [r.shipment_id for r in await send(session, 2)] == [None, None]
-    # On a CREATED shipment: still unlinked.
-    assert (await put_on(dispatcher, box, shipment.id)).status_code == 200
+    # A CREATED shipment has no carrier yet, so no box goes on it.
+    assert (await put_on(dispatcher, box, shipment.id)).status_code == 409
     assert [r.shipment_id for r in await send(session, 1)] == [None]
     assert await outbox(session, EventType.COLDCHAIN_READING) == []
 
     assert (await s11.assign(dispatcher, shipment, swiftmed)).status_code == 200
+    assert (await put_on(dispatcher, box, shipment.id)).status_code == 200
     linked = await send(session, 2, temp=4.5)  # ASSIGNED
     assert [r.shipment_id for r in linked] == [shipment.id, shipment.id]
     assert (await step(ravi, shipment, "PICKED_UP")).status_code == 200
@@ -204,3 +206,105 @@ async def test_a_replayed_reading_is_not_sent_again(
     assert (await iot.ingest(session, batch)).stored == 1
     assert (await iot.ingest(session, batch)).duplicates == 1
     assert len(await outbox(session, EventType.COLDCHAIN_READING)) == 1
+
+
+# --- a box rides only with its own org's shipments (CLAUDE.md rule 6) -------------------------
+
+
+async def test_a_box_goes_only_on_a_shipment_its_own_org_carries(
+    session: AsyncSession,
+    world: World,
+    shipment: Shipment,
+    dispatcher: httpx.AsyncClient,
+    swiftmed: Fleet,
+    box: Device,
+    client_for: ClientFor,
+) -> None:
+    # CREATED: no carrier yet, even for the org that will carry it.
+    r = await put_on(dispatcher, box, shipment.id)
+    assert r.status_code == 409
+    assert r.json()["code"] == "conflict"
+    assert r.json()["details"] == {"status": "CREATED"}
+    assert (await s11.assign(dispatcher, shipment, swiftmed)).status_code == 200
+    # Hospital A (the receiver) sees SwiftMed's shipment, but its own box cannot ride on it.
+    theirs = Device(org_id=world.hospital_a.id, device_id="cb-a1")
+    session.add(theirs)
+    await session.flush()
+    r = await put_on(await client_for(world.users["a.ADMIN"]), theirs, shipment.id)
+    assert r.status_code == 403
+    assert r.json()["code"] == "forbidden"
+    # SwiftMed's own box goes on.
+    assert (await put_on(dispatcher, box, shipment.id)).status_code == 200
+    await session.refresh(shipment)
+    assert shipment.device_id == box.id
+
+
+async def test_unassigning_takes_the_box_off_with_a_system_row_in_the_device_org(
+    session: AsyncSession,
+    assigned: Shipment,
+    dispatcher: httpx.AsyncClient,
+    other_dispatcher: httpx.AsyncClient,
+    box: Device,
+    swiftmed: Fleet,
+) -> None:
+    assert (await put_on(dispatcher, box, assigned.id)).status_code == 200
+    # Another logistics org cannot unassign (and so cannot move the box): 403.
+    assert (await other_dispatcher.post(f"/shipments/{assigned.id}/unassign")).status_code == 403
+    r = await dispatcher.post(f"/shipments/{assigned.id}/unassign", json={"reason": "Van broke"})
+    assert r.status_code == 200, r.text
+    assert r.json()["device_id"] is None
+    await session.refresh(box)
+    await session.refresh(assigned)
+    assert (box.assigned_shipment_id, assigned.device_id) == (None, None)
+    row = (await audit_of(session, box.id))[-1]
+    assert (row.action, row.org_id, row.actor_id, row.reason_source, row.reason) == (
+        "device.unassigned",
+        swiftmed.org.id,
+        None,
+        "SYSTEM",
+        "The shipment's carrier changed, so the device was taken off it.",
+    )
+    assert (row.before, row.after) == (
+        {"assigned_shipment_id": str(assigned.id)},
+        {"assigned_shipment_id": None},
+    )
+    # Unassigning again: 409 (CREATED).
+    assert (await dispatcher.post(f"/shipments/{assigned.id}/unassign")).status_code == 409
+    # The box's readings no longer link to the shipment.
+    assert [r.shipment_id for r in await send(session, 1)] == [None]
+
+
+async def test_assigning_takes_off_a_box_another_org_put_on_before_it_had_a_carrier(
+    session: AsyncSession,
+    shipment: Shipment,
+    dispatcher: httpx.AsyncClient,
+    swiftmed: Fleet,
+    other_fleet: Fleet,
+) -> None:
+    """A box attached to a CREATED shipment before this rule (or by any other path) never
+    rides with the carrier that assigns it."""
+    theirs = Device(org_id=other_fleet.org.id, device_id="cb-77")
+    session.add(theirs)
+    await session.flush()
+    theirs.assigned_shipment_id, shipment.device_id = shipment.id, theirs.id
+    await session.flush()
+
+    r = await s11.assign(dispatcher, shipment, swiftmed)
+    assert r.status_code == 200, r.text
+    assert r.json()["device_id"] is None
+    await session.refresh(theirs)
+    assert theirs.assigned_shipment_id is None
+    (row,) = await audit_of(session, theirs.id)
+    assert (row.org_id, row.actor_id, row.reason_source) == (other_fleet.org.id, None, "SYSTEM")
+    assigned_row = [
+        a
+        for a in await audit_of(session, shipment.id)
+        if a.action == "shipment.status_changed" and a.org_id == swiftmed.org.id
+    ][-1]
+    assert (assigned_row.after or {})["device_id"] is None
+    # Its readings stay off SwiftMed's shipment.
+    batch = TelemetryBatch(readings=[ReadingIn(device_id="cb-77", ts=T0, temp_c=4.0)])
+    assert (await iot.ingest(session, batch)).stored == 1
+    assert await outbox(session, EventType.COLDCHAIN_READING) == []
+    # A second assign is a 409 (already ASSIGNED).
+    assert (await s11.assign(dispatcher, shipment, swiftmed)).status_code == 409

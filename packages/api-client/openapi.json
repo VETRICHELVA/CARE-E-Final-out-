@@ -1507,7 +1507,7 @@
           "iot"
         ],
         "summary": "Assign Device",
-        "description": "Put one of the caller's org's devices (403 for another org's) on a shipment the org\nmay see, or take it off with `shipment_id: null`. Its new readings are linked to the\nshipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or\nIN_TRANSIT. 409 if the shipment has arrived or already carries another device.",
+        "description": "Put one of the caller's org's devices (403 for another org's) on a shipment the org\ncarries (403 if another org carries it; 409 while it is CREATED and has no carrier), or\ntake it off with `shipment_id: null`. Its new readings are linked to the shipment, and\nsent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or IN_TRANSIT.\n409 if the shipment has arrived or already carries another device.",
         "operationId": "assign_device_api_v1_devices__device_id__assign_post",
         "security": [
           {
@@ -2802,7 +2802,7 @@
           "shipments"
         ],
         "summary": "Get Shipment",
-        "description": "One shipment with its route geometry, status history and last driver location.\n403 unless the caller's org is involved (or it is unassigned and the caller is a\nlogistics org).",
+        "description": "One shipment with its route geometry, status history and last driver location (only\na ping recorded since the current assignment; none while CREATED). 403 unless the\ncaller's org is involved (or it is unassigned and the caller is a logistics org).",
         "operationId": "get_shipment_api_v1_shipments__shipment_id__get",
         "security": [
           {
@@ -2851,7 +2851,7 @@
           "shipments"
         ],
         "summary": "Assign Shipment",
-        "description": "CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for\nanother org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason\notherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).\n409 unless CREATED.",
+        "description": "CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for\nanother org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason\notherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).\n409 unless CREATED, and 409 `conflict` when the held stock is at more than one of the\nsource's facilities (plan it with the route planner). Any device on it comes off.",
         "operationId": "assign_shipment_api_v1_shipments__shipment_id__assign_post",
         "security": [
           {
@@ -2910,7 +2910,7 @@
           "shipments"
         ],
         "summary": "Unassign Shipment",
-        "description": "ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.",
+        "description": "ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED. Any\ndevice on it comes off.",
         "operationId": "unassign_shipment_api_v1_shipments__shipment_id__unassign_post",
         "security": [
           {
@@ -2976,7 +2976,7 @@
           "shipments"
         ],
         "summary": "Update Shipment Status",
-        "description": "The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->\nDELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's\non_hand and consumes its FIRM hold.",
+        "description": "The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->\nDELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's\non_hand and consumes its FIRM hold; a batch recording less than its hold is drawn down\nonly by what it records (never below 0).",
         "operationId": "update_shipment_status_api_v1_shipments__shipment_id__status_post",
         "security": [
           {

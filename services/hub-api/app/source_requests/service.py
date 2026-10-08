@@ -112,7 +112,8 @@ async def release_and_rematch(
     """§7 step 6, used by every non-CONFIRMED exit of a request: release every tentative
     hold of the shortage, supersede its other open requests, put the shortage back to
     MATCHING if it had moved on, and start a new match run without `exclude` (for this
-    shortage; only a source that declined is excluded). `reason` is the factual SYSTEM
+    shortage: a source that declined, a rejected recommendation's sources or a supplier
+    that rejected a purchase order; an expiry excludes no one). `reason` is the factual SYSTEM
     cause. The caller has locked the shortage and already ended the request that caused
     this. Returns None if the shortage is closed."""
     await holds.release(
