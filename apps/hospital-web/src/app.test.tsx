@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "@care-e/api-client";
 import { App, config } from "./app";
@@ -35,7 +35,10 @@ function signInAs(orgType: string, capabilities: string[] = []) {
   );
 }
 
-const navLabels = () => screen.getAllByRole("link").map((a) => a.textContent);
+const navLabels = () =>
+  within(screen.getByRole("navigation"))
+    .getAllByRole("link")
+    .map((a) => a.textContent);
 
 afterEach(() => {
   cleanup();
@@ -92,6 +95,27 @@ describe(config.name, () => {
       expect(screen.queryByRole("navigation")).toBeNull();
     },
   );
+
+  it("puts the notification bell in the header, linked to the notifications list", async () => {
+    signInAs("HOSPITAL", ["receipt.record"]);
+    window.history.replaceState(null, "", "/notifications");
+    render(<App />);
+    const bell = await screen.findByRole("link", { name: "Notifications" });
+    expect(bell.getAttribute("href")).toBe("/notifications");
+    expect(navLabels()).not.toContain("Notifications");
+    expect(await screen.findByText("No notifications")).toBeTruthy();
+  });
+
+  it("routes a delivery to its Receive screen", async () => {
+    signInAs("HOSPITAL", ["shortage.create"]);
+    window.history.replaceState(
+      null,
+      "",
+      "/deliveries/5b000000-0000-4000-8000-000000000001/receive",
+    );
+    render(<App />);
+    expect(await screen.findByText("You can't record receipts")).toBeTruthy();
+  });
 
   it("routes a shortage link to its detail screen", async () => {
     signInAs("HOSPITAL", ["shortage.create"]);

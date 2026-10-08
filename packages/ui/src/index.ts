@@ -31,3 +31,4 @@ export * from "./components/ui/table";
 export * from "./components/ui/tabs";
 export * from "./components/ui/textarea";
 export { toast } from "sonner";
+export { BellIcon } from "lucide-react";

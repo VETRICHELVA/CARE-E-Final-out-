@@ -186,9 +186,7 @@ export function ShortageDetailPage() {
           {canReadAudit && <TabsTrigger value="audit">Audit trail</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="grid gap-4">
-          {!run.isPending && !run.isError && (
-            <DecisionPanel shortage={s} run={run.data} product={product} />
-          )}
+          <DecisionPanel shortage={s} product={product} />
           <Card>
             <CardContent>
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -203,6 +201,16 @@ export function ShortageDetailPage() {
                 <Fact label="Minimum shelf life">{s.min_shelf_life_days} days</Fact>
                 <Fact label="Reported">{formatDateTime(s.created_at)}</Fact>
                 {s.notes && <Fact label="Notes">{s.notes}</Fact>}
+                {s.parent_shortage_id && (
+                  <Fact label="Residual of">
+                    <Link
+                      to={`/shortages/${s.parent_shortage_id}`}
+                      className="text-primary hover:underline"
+                    >
+                      An earlier shortage
+                    </Link>
+                  </Fact>
+                )}
               </dl>
             </CardContent>
           </Card>

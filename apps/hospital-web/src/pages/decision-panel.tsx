@@ -1,5 +1,5 @@
-// Decision panel on shortage detail (apps-ai-iot.md, hospital-web; S12): the hub's
-// recommendation for the latest match run, and the approver's decision. Every figure comes
+// Decision panel on shortage detail (apps-ai-iot.md, hospital-web; S12): the hub's latest
+// recommendation for the shortage, and the approver's decision. Every figure comes
 // from the hub as is: a hospital source's cost is null by design (CLAUDE.md rule 6) and shows
 // "—"; nothing is summed or estimated here. Buttons show only for `recommendation.approve`, in
 // the states business-rules §8 allows, while the validity countdown runs; the hub still decides.
@@ -32,7 +32,6 @@ import {
 } from "@care-e/ui";
 import {
   type Decision,
-  type MatchRun,
   type Product,
   type Recommendation,
   type RecommendationLine,
@@ -252,27 +251,19 @@ export function RecommendationCard({
   );
 }
 
-/** Finds the shortage's current recommendation and shows it (nothing when there is none). */
+/** The shortage's current recommendation (`GET /shortages/{id}/recommendations/latest`, any
+ *  user of the org); nothing while the hub has made none. */
 export function DecisionPanel({
   shortage,
-  run,
   product,
 }: {
   shortage: Shortage;
-  run: MatchRun | null | undefined;
   product: Product | undefined;
 }) {
-  const current = useCurrentRecommendationId(shortage.id, run?.id);
+  const current = useCurrentRecommendationId(shortage.id);
   const rec = useRecommendation(current.id);
   const awaiting = shortage.status === "AWAITING_DECISION";
 
-  if (current.unavailable)
-    // Until the hub's "current recommendation" read lands, finding it needs `audit.read`.
-    return awaiting ? (
-      <EmptyState title="A recommendation is awaiting a decision">
-        An approver in your organization decides on it.
-      </EmptyState>
-    ) : null;
   if (current.error) return <ErrorState error={current.error} />;
   if (current.isPending || (current.id !== null && rec.isPending))
     return <Loading label="Loading recommendation…" />;

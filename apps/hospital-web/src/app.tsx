@@ -3,6 +3,8 @@ import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { DeliveriesPage } from "./pages/deliveries";
 import { InventoryPage } from "./pages/inventory";
+import { NotificationBell, NotificationsPage } from "./pages/notifications";
+import { ReceivePage } from "./pages/receive";
 import { RequestsPage } from "./pages/requests";
 import { ShortageDetailPage } from "./pages/shortage-detail";
 import { ShortagesPage } from "./pages/shortages";
@@ -31,8 +33,13 @@ export const config: AppConfig = {
     { to: "/deliveries", label: "Deliveries", element: <DeliveriesPage /> },
     { to: "/forecasts", label: "Forecasts" },
   ],
-  routes: [{ path: "/shortages/:id", element: <ShortageDetailPage /> }],
+  routes: [
+    { path: "/shortages/:id", element: <ShortageDetailPage /> },
+    { path: "/deliveries/:id/receive", element: <ReceivePage /> },
+    { path: "/notifications", element: <NotificationsPage /> },
+  ],
   liveUpdates: true,
+  headerExtra: <NotificationBell />,
 };
 
 export const App = () => <CareApp {...config} />;
