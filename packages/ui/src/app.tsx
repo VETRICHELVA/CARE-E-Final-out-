@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
 import { createQueryClient, logout, useAuth, useEventStream } from "@care-e/api-client";
 import { can, LoginPage, ProtectedRoute, useMe } from "./auth";
+import { ColdChainAlerts, type ColdChainAlertConfig } from "./coldchain";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
@@ -35,6 +36,8 @@ export type AppConfig = {
   liveUpdates?: boolean;
   /** Extra header content for a signed-in user, before their name (e.g. a notification bell). */
   headerExtra?: ReactNode;
+  /** Toasts for the hub's cold-chain events (S15); needs `liveUpdates`. */
+  coldChainAlerts?: ColdChainAlertConfig;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
@@ -43,12 +46,14 @@ function AppShell({
   nav,
   liveUpdates = false,
   headerExtra,
-}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra">) {
+  coldChainAlerts,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra" | "coldChainAlerts">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
   return (
     <div className="min-h-svh">
+      {liveUpdates && coldChainAlerts && <ColdChainAlerts {...coldChainAlerts} />}
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold text-primary">{name}</span>
@@ -106,6 +111,7 @@ export function CareApp({
   routes = [],
   liveUpdates,
   headerExtra,
+  coldChainAlerts,
 }: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
@@ -126,6 +132,7 @@ export function CareApp({
                   nav={nav}
                   liveUpdates={liveUpdates}
                   headerExtra={headerExtra}
+                  coldChainAlerts={coldChainAlerts}
                 />
               }
             >

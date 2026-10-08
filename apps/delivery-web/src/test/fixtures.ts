@@ -138,6 +138,7 @@ export const transfer: Shipment = {
   route_provider: null,
   pickup: pickupB,
   drop: dropA,
+  coldchain: null,
   created_at: "2026-10-08T06:00:00Z",
   updated_at: "2026-10-08T06:00:00Z",
 };

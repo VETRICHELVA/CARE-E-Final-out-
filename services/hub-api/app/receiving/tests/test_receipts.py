@@ -454,9 +454,9 @@ async def test_an_open_excursion_needs_an_inspection_note(
 
 
 async def test_without_an_excursion_no_note_is_needed(
-    delivered: Shipment, receiver: httpx.AsyncClient
+    session: AsyncSession, delivered: Shipment, receiver: httpx.AsyncClient
 ) -> None:
-    assert await shipments.has_open_excursion(None, delivered) is False  # type: ignore[arg-type]
+    assert await shipments.has_open_excursion(session, delivered) is False
     r = await receiver.get(f"/shipments/{delivered.id}")
     assert (r.json()["inspection_note_required"], r.json()["receipt"]) == (False, None)
 

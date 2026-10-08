@@ -16,6 +16,7 @@ from app import routing
 from app.audit import service as audit
 from app.auth.models import User
 from app.catalog.models import Product, ProductAuthorization, SupplierOffer
+from app.coldchain.models import ColdChainEvent
 from app.domain import config, gates
 from app.domain.costing import Point, transport_cost_paise, transport_eta_hours
 from app.domain.events import EventType
@@ -307,7 +308,8 @@ async def rematch_after_releases(session: AsyncSession, *, now: datetime | None 
 async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set[uuid.UUID]:
     """The records whose audit rows make up a shortage's trail (GET /shortages/{id}/audit):
     the shortage, its match runs, source requests, recommendations, purchase orders,
-    shipments, receipts, reconciliations and the batches its receipts added. Holds are not
+    shipments, their cold-chain events, receipts, reconciliations and the batches its
+    receipts added. Holds are not
     listed: their rows belong to the source orgs (business-rules.md §10)."""
     ids: set[uuid.UUID] = {shortage_id}
     for model in (
@@ -325,6 +327,13 @@ async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set
             select(Receipt.batch_id).where(
                 Receipt.shortage_id == shortage_id, Receipt.batch_id.is_not(None)
             )
+        )
+    )
+    ids.update(
+        await session.scalars(
+            select(ColdChainEvent.id)
+            .join(Shipment, Shipment.id == ColdChainEvent.shipment_id)
+            .where(Shipment.shortage_id == shortage_id)
         )
     )
     return ids

@@ -31,6 +31,8 @@ export const config: AppConfig = {
   ],
   routes: [{ path: "/shipments/:id", element: <ShipmentDetailPage /> }],
   liveUpdates: true,
+  // The hub sends cold-chain events to the shipment's carrier (S15); each toast opens it.
+  coldChainAlerts: { link: (id) => `/shipments/${id}` },
 };
 
 export const App = () => <CareApp {...config} />;

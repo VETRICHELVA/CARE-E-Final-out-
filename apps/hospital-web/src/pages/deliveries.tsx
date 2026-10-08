@@ -1,10 +1,12 @@
 // Deliveries (apps-ai-iot.md, hospital-web; S12): shipments to this hospital
 // (`GET /shipments?direction=inbound`), with the hub's live status and ETA. Drivers move
 // shipments; a delivered one links to the Receive screen for `receipt.record` holders.
-// `shipment.*` events refresh the list (no polling).
+// `shipment.*` and `coldchain.*` events refresh the list (no polling). Each row opens the
+// delivery's detail with its cold-chain panel (S15).
 import { Link } from "react-router";
 import {
   Badge,
+  ColdChainStateBadge,
   Countdown,
   EmptyState,
   ErrorState,
@@ -97,7 +99,12 @@ function Row({
   return (
     <TableRow data-testid={`shipment-${shipment.id}`}>
       <TableCell>
-        <div className="font-medium">{shipment.product_name}</div>
+        <Link
+          to={`/deliveries/${shipment.id}`}
+          className="font-medium text-primary hover:underline"
+        >
+          {shipment.product_name}
+        </Link>
         <div className="text-xs text-muted-foreground">{shipment.product_code}</div>
       </TableCell>
       <TableCell className="text-right">{qty(shipment.qty, product)}</TableCell>
@@ -106,6 +113,7 @@ function Row({
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusChip state={shipment.status} />
           {shipment.requires_cold_chain && <Badge variant="outline">Cold chain</Badge>}
+          <ColdChainStateBadge summary={shipment.coldchain} />
         </div>
       </TableCell>
       <TableCell>

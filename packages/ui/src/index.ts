@@ -1,4 +1,25 @@
 export { CareApp, type AppConfig, type ExtraRoute, type NavItem } from "./app";
+export {
+  COLDCHAIN_LABEL,
+  type ColdChain,
+  ColdChainAlerts,
+  type ColdChainAlertConfig,
+  type ColdChainEvent,
+  ColdChainEventList,
+  type ColdChainEventType,
+  ColdChainPanel,
+  ColdChainStateBadge,
+  type ColdChainSummary,
+  coldChainKey,
+  describeColdChainEvent,
+  formatBand,
+  formatSeconds,
+  formatTemp,
+  isColdChainAlert,
+  TemperatureChart,
+  useColdChain,
+  useColdChainAlerts,
+} from "./coldchain";
 export { ConfirmDialog } from "./confirm";
 export { Countdown, formatCountdown, isPast, useNow } from "./countdown";
 export { can, LoginPage, ProtectedRoute, useCan, useMe, useSignedIn } from "./auth";

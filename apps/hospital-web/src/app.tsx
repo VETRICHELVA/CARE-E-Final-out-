@@ -2,6 +2,7 @@ import { type AppConfig, CareApp } from "@care-e/ui";
 import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { DeliveriesPage } from "./pages/deliveries";
+import { DeliveryDetailPage } from "./pages/delivery-detail";
 import { InventoryPage } from "./pages/inventory";
 import { NotificationBell, NotificationsPage } from "./pages/notifications";
 import { ReceivePage } from "./pages/receive";
@@ -35,11 +36,14 @@ export const config: AppConfig = {
   ],
   routes: [
     { path: "/shortages/:id", element: <ShortageDetailPage /> },
+    { path: "/deliveries/:id", element: <DeliveryDetailPage /> },
     { path: "/deliveries/:id/receive", element: <ReceivePage /> },
     { path: "/notifications", element: <NotificationsPage /> },
   ],
   liveUpdates: true,
   headerExtra: <NotificationBell />,
+  // Cold-chain events on shipments to this hospital (S15); each toast opens the delivery.
+  coldChainAlerts: { link: (id) => `/deliveries/${id}`, inboundOnly: true },
 };
 
 export const App = () => <CareApp {...config} />;

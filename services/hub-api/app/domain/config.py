@@ -43,6 +43,10 @@ class Tunables(BaseSettings):
     sla_critical_recommendation_minutes: Pos = 30
     sla_routine_recommendation_minutes: Pos = 24 * 60
 
+    # §11 Cold chain (S15)
+    coldchain_consecutive_readings: PosInt = 2  # excursion / recovery
+    coldchain_silent_minutes: Pos = 2  # device silent while IN_TRANSIT -> DEVICE_SILENT
+
     # §6 Timers: how often the worker looks for overdue deadlines
     timer_interval_seconds: Annotated[int, Field(gt=0, le=60)] = 30
 
@@ -86,6 +90,10 @@ RECOMMENDATION_VALIDITY = {
     "ROUTINE": timedelta(minutes=_t.sla_routine_recommendation_minutes),
 }
 TIMER_INTERVAL_SECONDS = _t.timer_interval_seconds
+
+# §11 Cold chain
+COLDCHAIN_CONSECUTIVE_READINGS = _t.coldchain_consecutive_readings
+COLDCHAIN_SILENT_AFTER = timedelta(minutes=_t.coldchain_silent_minutes)
 
 # api-and-events.md, Webhooks
 WEBHOOK_FIRST_RETRY = timedelta(seconds=_t.webhook_first_retry_seconds)

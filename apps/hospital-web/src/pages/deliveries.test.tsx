@@ -75,6 +75,58 @@ describe("Deliveries", () => {
     expect(within(row!).getByText("Cold chain")).toBeTruthy();
   });
 
+  it("links each delivery to its detail and badges the hub's cold-chain events", async () => {
+    const hot: Shipment = {
+      ...shipmentToA,
+      requires_cold_chain: true,
+      coldchain: {
+        last_event_type: "EXCURSION",
+        last_event_at: "2026-10-07T07:00:30Z",
+        had_excursion: true,
+      },
+    };
+    hub([hot]);
+    show();
+    const [row] = await rows();
+    expect(within(row!).getByRole("link", { name: "Surgical Kit A" }).getAttribute("href")).toBe(
+      `/deliveries/${hot.id}`,
+    );
+    expect(within(row!).getByTestId("coldchain-badge").textContent).toBe("Temperature excursion");
+  });
+
+  it("refreshes the badges when the hub reports a cold-chain event", async () => {
+    let current: Shipment = shipmentToA;
+    fakeHub({
+      "GET /api/v1/products": products,
+      "GET /api/v1/shipments": () => page([current]),
+    });
+    const queryClient = show();
+    const [row] = await rows();
+    expect(within(row!).queryByTestId("coldchain-badge")).toBeNull();
+    current = {
+      ...shipmentToA,
+      coldchain: {
+        last_event_type: "DEVICE_SILENT",
+        last_event_at: "2026-10-07T07:03:00Z",
+        had_excursion: false,
+      },
+    };
+    await act(() =>
+      invalidateFor(queryClient, {
+        id: "1",
+        type: "coldchain.device_silent",
+        occurred_at: "2026-10-07T07:03:00Z",
+        org_ids: [],
+        data: { shipment_id: shipmentToA.id, observed_value: 150, threshold: 120 },
+      }),
+    );
+    await waitFor(async () =>
+      expect(within((await rows())[0]!).getByTestId("coldchain-badge").textContent).toBe(
+        "Device silent",
+      ),
+    );
+  });
+
   it("shows when a delivered shipment arrived", async () => {
     hub([
       {
@@ -102,7 +154,7 @@ describe("Deliveries", () => {
     hub([shipmentToA]);
     show("RECEIVER");
     const [row] = await rows();
-    expect(within(row!).queryByRole("link")).toBeNull();
+    expect(within(row!).queryByRole("link", { name: "Shortage" })).toBeNull();
   });
 
   it("refreshes when the hub reports a shipment change (no polling)", async () => {
@@ -136,7 +188,7 @@ describe("Deliveries", () => {
     expect(within(delivered!).getByRole("link", { name: "Receive" }).getAttribute("href")).toBe(
       `/deliveries/${deliveredToA.id}/receive`,
     );
-    expect(within(moving!).queryByRole("link")).toBeNull();
+    expect(within(moving!).queryByRole("link", { name: "Receive" })).toBeNull();
   });
 
   it("links a reconciled shipment to its recorded receipt", async () => {

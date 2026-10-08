@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Receipt, ShipmentDetail } from "../api";
 import {
   deliveredToA,
+  excursionColdChain,
   meAs,
   NOW,
   partialReceipt,
@@ -130,15 +131,26 @@ describe("Receive", () => {
   });
 
   it("requires the inspection note when the hub says the shipment had an excursion", async () => {
-    const fake = hub({ ...deliveredToA, inspection_note_required: true });
+    const fake = hub({ ...deliveredToA, inspection_note_required: true }, partialReceipt, {
+      "GET /api/v1/shipments/{id}/coldchain": excursionColdChain,
+    });
     show();
     const f = await form();
+    // A red notice, and the excursion itself next to the note (S15).
+    expect(screen.getByTestId("excursion-notice").textContent).toMatch(
+      /^A cold-chain excursion is on record for this shipment\./,
+    );
+    const panel = await screen.findByTestId("coldchain-panel");
+    expect(
+      await within(panel).findByText("Readings out of range: 9.4 °C, above the maximum of 8 °C."),
+    ).toBeTruthy();
+    expect(within(panel).getByText("Back in range")).toBeTruthy();
     const note = within(f).getByLabelText("Inspection note (required)");
     expect(note.getAttribute("aria-required")).toBe("true");
     await fill(SCENARIO_1);
     expect(
       await within(f).findByText(
-        "Enter an inspection note: this shipment had a cold-chain excursion.",
+        "Enter an inspection note: a cold-chain excursion is on record for this shipment.",
       ),
     ).toBeTruthy();
     expect(fake.to("POST", receiptPath)).toHaveLength(0);
@@ -148,6 +160,16 @@ describe("Receive", () => {
     expect(JSON.parse(fake.to("POST", receiptPath)[0]!.body!).inspection_note).toBe(
       "Seals intact; probe read 6 °C on arrival.",
     );
+  });
+
+  it("shows no excursion notice or cold-chain panel without an excursion", async () => {
+    const fake = hub();
+    show();
+    const f = await form();
+    expect(within(f).getByLabelText("Inspection note (optional)")).toBeTruthy();
+    expect(screen.queryByTestId("excursion-notice")).toBeNull();
+    expect(screen.queryByTestId("coldchain-panel")).toBeNull();
+    expect(fake.to("GET", `/api/v1/shipments/${deliveredToA.id}/coldchain`)).toHaveLength(0);
   });
 
   it("shows the hub's 400 under the field it names", async () => {

@@ -3,6 +3,8 @@
 // shape and business-rules §9's invariants before sending, but the hub decides: its 400s are
 // shown as they come, and the reconciliation outcome it returns is shown as is (nothing here is
 // computed from the figures). Needs `receipt.record`; only the receiving org may record one.
+// When the hub reports a cold-chain excursion on record (`inspection_note_required`, S15), a red
+// notice and the cold-chain panel show it, and the inspection note is required.
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
@@ -14,6 +16,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  ColdChainPanel,
   EmptyState,
   ErrorState,
   FieldError,
@@ -44,7 +47,8 @@ const CONDITIONS = ["GOOD", "DAMAGED", "TEMPERATURE_ISSUE"] as const;
 
 /** The receipt form for a shipment of `expected` units. business-rules §9: accepted + rejected
  *  = received, received ≤ expected; the hub needs an expiry date for accepted stock, and an
- *  inspection note while a cold-chain excursion is open (`inspection_note_required`). */
+ *  inspection note once a cold-chain excursion is on record, even a recovered one
+ *  (`inspection_note_required`). */
 export function receiptSchema(expected: number, noteRequired: boolean) {
   return z
     .object({
@@ -83,7 +87,8 @@ export function receiptSchema(expected: number, noteRequired: boolean) {
         ctx.addIssue({
           code: "custom",
           path: ["inspection_note"],
-          message: "Enter an inspection note: this shipment had a cold-chain excursion.",
+          message:
+            "Enter an inspection note: a cold-chain excursion is on record for this shipment.",
         });
     });
 }
@@ -289,7 +294,7 @@ function ReceiptForm({
             error={form.errors.inspection_note}
             hint={
               noteRequired
-                ? "This shipment had a cold-chain excursion: describe what you inspected."
+                ? "A cold-chain excursion is on record for this shipment: describe what you inspected and found."
                 : undefined
             }
           >
@@ -353,7 +358,26 @@ export function ReceivePage() {
         A receipt can be recorded once the driver marks the shipment delivered.
       </EmptyState>
     );
-  else body = <ReceiptForm shipment={s} product={product} onSaved={setSaved} />;
+  else
+    body = (
+      <>
+        {s.inspection_note_required && (
+          <div
+            role="alert"
+            className="grid gap-1 rounded-md border border-status-danger/40 bg-status-danger-bg p-4 text-sm text-status-danger"
+            data-testid="excursion-notice"
+          >
+            <p className="font-semibold">A cold-chain excursion is on record for this shipment.</p>
+            <p>
+              Inspect the stock and record what you found in the inspection note before accepting
+              any of it. The readings and events are below.
+            </p>
+          </div>
+        )}
+        <ReceiptForm shipment={s} product={product} onSaved={setSaved} />
+        {s.inspection_note_required && <ColdChainPanel shipmentId={s.id} />}
+      </>
+    );
 
   return (
     <div className="grid gap-4">

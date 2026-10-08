@@ -1122,6 +1122,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shipments/{shipment_id}/coldchain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Coldchain
+         * @description The shipment's readings and cold-chain events (business-rules.md §11), with the
+         *     product's band and the cold box's battery and last seen. Only the shipment's from, to
+         *     and carrier orgs (403 otherwise); the carrier sees its own devices' data only.
+         */
+        get: operations["get_coldchain_api_v1_shipments__shipment_id__coldchain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1226,6 +1248,13 @@ export interface components {
              * Format: date-time
              */
             ts: string;
+        };
+        /** BandOut */
+        BandOut: {
+            /** Temp Min C */
+            temp_min_c: number | null;
+            /** Temp Max C */
+            temp_max_c: number | null;
         };
         /** BatchCreate */
         BatchCreate: {
@@ -1408,6 +1437,96 @@ export interface components {
              * @description 1 = best; eligible candidates only.
              */
             rank: number | null;
+        };
+        /** ColdChainDeviceOut */
+        ColdChainDeviceOut: {
+            /** Device Id */
+            device_id: string;
+            /** Battery Level */
+            battery_level: number | null;
+            /** Last Seen */
+            last_seen: string | null;
+        };
+        /** ColdChainEventOut */
+        ColdChainEventOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            type: components["schemas"]["ColdChainEventType"];
+            severity: components["schemas"]["Severity"];
+            /** Device Id */
+            device_id: string;
+            /**
+             * Observed Value
+             * @description EXCURSION / RECOVERED: the reading (°C) that completed the run of consecutive readings. DEVICE_SILENT: seconds without a reading when it was noticed.
+             */
+            observed_value: number;
+            /**
+             * Threshold
+             * @description EXCURSION / RECOVERED: the band's bound (°C) the excursion crossed. DEVICE_SILENT: the silence limit in seconds.
+             */
+            threshold: number;
+            /**
+             * Ts
+             * Format: date-time
+             * @description The reading that completed the run, or when the silence was noticed.
+             */
+            ts: string;
+        };
+        /**
+         * ColdChainEventType
+         * @enum {string}
+         */
+        ColdChainEventType: "EXCURSION" | "DEVICE_SILENT" | "RECOVERED";
+        /** ColdChainOut */
+        ColdChainOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** @description The product's allowed range; both null: no rule. */
+            band: components["schemas"]["BandOut"];
+            /** @description The cold box on the shipment, or the one that sent its newest reading. */
+            device: components["schemas"]["ColdChainDeviceOut"] | null;
+            /**
+             * Silent After Seconds
+             * @description A device silent this long while IN_TRANSIT raises DEVICE_SILENT.
+             */
+            silent_after_seconds: number;
+            /**
+             * Readings
+             * @description The newest readings, oldest first.
+             */
+            readings: components["schemas"]["ReadingOut"][];
+            /**
+             * Events
+             * @description Every cold-chain event, oldest first.
+             */
+            events: components["schemas"]["ColdChainEventOut"][];
+            /**
+             * Has Excursion
+             * @description An EXCURSION is on record (it stays after RECOVERED).
+             */
+            has_excursion: boolean;
+        };
+        /**
+         * ColdChainSummary
+         * @description A shipment's cold-chain state for lists (the dispatch board and Deliveries badges).
+         */
+        ColdChainSummary: {
+            last_event_type: components["schemas"]["ColdChainEventType"];
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Had Excursion */
+            had_excursion: boolean;
         };
         /**
          * Condition
@@ -2072,6 +2191,20 @@ export interface components {
             /** Battery */
             battery?: number | null;
         };
+        /** ReadingOut */
+        ReadingOut: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Temp C */
+            temp_c: number;
+            /** Battery */
+            battery: number | null;
+        };
         /** ReasonIn */
         ReasonIn: {
             /** Reason */
@@ -2399,6 +2532,11 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * Severity
+         * @enum {string}
+         */
+        Severity: "ALERT" | "WARNING" | "INFO";
         /** ShipmentDetailOut */
         ShipmentDetailOut: {
             /**
@@ -2467,6 +2605,8 @@ export interface components {
             route_provider: components["schemas"]["RouteProvider"] | null;
             pickup: components["schemas"]["StopOut"] | null;
             drop: components["schemas"]["StopOut"] | null;
+            /** @description The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none. */
+            coldchain: components["schemas"]["ColdChainSummary"] | null;
             /**
              * Created At
              * Format: date-time
@@ -2489,7 +2629,7 @@ export interface components {
             last_location: components["schemas"]["LocationOut"] | null;
             /**
              * Inspection Note Required
-             * @description True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md §9). Always false until S15.
+             * @description True when a cold-chain excursion is on record for the shipment, even one that has since recovered: its receipt then needs an inspection note (business-rules.md §9, §11).
              */
             inspection_note_required: boolean;
             /** @description What the receiving org recorded (with the reconciliation once every shipment of the shortage has a receipt). Shown to the receiving org only; null for the other orgs and before a receipt. */
@@ -2567,6 +2707,8 @@ export interface components {
             route_provider: components["schemas"]["RouteProvider"] | null;
             pickup: components["schemas"]["StopOut"] | null;
             drop: components["schemas"]["StopOut"] | null;
+            /** @description The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none. */
+            coldchain: components["schemas"]["ColdChainSummary"] | null;
             /**
              * Created At
              * Format: date-time
@@ -4867,6 +5009,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_coldchain_api_v1_shipments__shipment_id__coldchain_get: {
+        parameters: {
+            query?: {
+                /** @description How many of the newest readings to return. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColdChainOut"];
                 };
             };
             /** @description Validation Error */
