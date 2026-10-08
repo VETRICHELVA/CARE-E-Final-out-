@@ -159,6 +159,39 @@ describe("useEventStream's connection", () => {
     expect(stale()).not.toContain("products");
   });
 
+  it("refreshes the S12 decision, trail, delivery and notification views", async () => {
+    const extra = {
+      rec1: ["/api/v1/shortages/{shortage_id}/recommendations/latest", { shortage_id: "s1" }],
+      rec2: ["/api/v1/shortages/{shortage_id}/recommendations/latest", { shortage_id: "s2" }],
+      trail1: ["/api/v1/shortages/{shortage_id}/audit", { shortage_id: "s1" }],
+      inbound: ["/api/v1/shipments", { direction: "inbound" }],
+      notifications: ["/api/v1/notifications", { unread: true }],
+    } satisfies Record<string, QueryKey>;
+    for (const key of Object.values(extra)) queryClient.setQueryData(key, {});
+    const staleExtra = () =>
+      (Object.keys(extra) as (keyof typeof extra)[]).filter(
+        (name) => queryClient.getQueryState(extra[name])?.isInvalidated,
+      );
+    start();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    latest().emit({
+      type: "recommendation.status_changed",
+      data: { recommendation_id: "r1", shortage_id: "s1", from: "PENDING", to: "ESCALATED" },
+    });
+    await vi.waitFor(() =>
+      expect(staleExtra().sort()).toEqual(["notifications", "rec1", "trail1"]),
+    );
+    for (const key of Object.values(extra)) queryClient.setQueryData(key, {});
+    latest().emit(
+      {
+        type: "reconciliation.completed",
+        data: { shortage_id: "s1", outcome: "PARTIAL", residual_shortage_id: "s3" },
+      },
+      "2",
+    );
+    await vi.waitFor(() => expect(staleExtra().sort()).toEqual(["inbound", "trail1"]));
+  });
+
   it("maps every event type in the spec", () => {
     const spec = [
       "shortage.status_changed",

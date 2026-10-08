@@ -427,6 +427,8 @@ export const shipmentToA: ShipmentDetail = {
   route_geometry: null,
   status_history: [],
   last_location: null,
+  inspection_note_required: false,
+  receipt: null,
 };
 
 /** Hospital A sending stock to Hospital D: outgoing, so not one of A's deliveries. */

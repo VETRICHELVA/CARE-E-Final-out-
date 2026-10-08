@@ -31,8 +31,11 @@ from app.events import service as events
 from app.inventory.models import InventoryBatch
 from app.inventory.service import own_facility
 from app.orgs.models import Facility, Organization, OrgStatus, OrgType
+from app.purchase_orders.models import PurchaseOrder
+from app.receiving.models import Receipt, Reconciliation
 from app.recommendations import transitions as recommendations
-from app.shipments.models import Vehicle
+from app.recommendations.models import Recommendation
+from app.shipments.models import Shipment, Vehicle
 from app.shortages.models import (
     Candidate,
     MatchRun,
@@ -299,6 +302,32 @@ async def rematch_after_releases(session: AsyncSession, *, now: datetime | None 
         await run_match(session, shortage, Trigger.STOCK_CHANGE, reason=HOLDS_RELEASED, now=now)
         count += 1
     return count
+
+
+async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set[uuid.UUID]:
+    """The records whose audit rows make up a shortage's trail (GET /shortages/{id}/audit):
+    the shortage, its match runs, source requests, recommendations, purchase orders,
+    shipments, receipts, reconciliations and the batches its receipts added. Holds are not
+    listed: their rows belong to the source orgs (business-rules.md §10)."""
+    ids: set[uuid.UUID] = {shortage_id}
+    for model in (
+        MatchRun,
+        SourceRequest,
+        Recommendation,
+        PurchaseOrder,
+        Shipment,
+        Receipt,
+        Reconciliation,
+    ):
+        ids.update(await session.scalars(select(model.id).where(model.shortage_id == shortage_id)))
+    ids.update(
+        await session.scalars(
+            select(Receipt.batch_id).where(
+                Receipt.shortage_id == shortage_id, Receipt.batch_id.is_not(None)
+            )
+        )
+    )
+    return ids
 
 
 async def latest_run(session: AsyncSession, shortage_id: uuid.UUID) -> MatchRun | None:

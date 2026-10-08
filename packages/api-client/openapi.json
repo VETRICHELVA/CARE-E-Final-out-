@@ -1261,6 +1261,132 @@
         }
       }
     },
+    "/api/v1/shortages/{shortage_id}/recommendations/latest": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Latest Recommendation",
+        "description": "Any user of the requester's org: the shortage's newest recommendation, which is the\none waiting for a decision (PENDING or ESCALATED) while there is one, else the last one\ndecided or expired. 404 if none has been made yet. Same redaction as\nGET /recommendations/{id}: a hospital source's cost is never shown.",
+        "operationId": "latest_recommendation_api_v1_shortages__shortage_id__recommendations_latest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/audit": {
+      "get": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Shortage Audit",
+        "description": "The shortage's trail in the caller's own org, oldest first: the shortage, its match\nruns, source requests, recommendations, purchase orders, shipments, receipts,\nreconciliations and received batches. `reason_source` says whether a user typed the\nreason (USER) or the hub recorded it (SYSTEM). 403 for another org's shortage.",
+        "operationId": "shortage_audit_api_v1_shortages__shortage_id__audit_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AuditOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/internal/telemetry": {
       "post": {
         "tags": [
@@ -2596,6 +2722,28 @@
             "description": "Only the shipments assigned to the caller as driver."
           },
           {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "inbound",
+                    "outbound"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "inbound: shipments to the caller's org (its deliveries); outbound: shipments from it.",
+              "title": "Direction"
+            },
+            "description": "inbound: shipments to the caller's org (its deliveries); outbound: shipments from it."
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -3057,6 +3205,193 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Page_VehicleOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/receipt": {
+      "post": {
+        "tags": [
+          "receiving"
+        ],
+        "summary": "Record Receipt",
+        "description": "The receiving org records what arrived (business-rules.md \u00a79): DELIVERED ->\nRECONCILED, the accepted stock becomes a new batch in its inventory, and once every\nshipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or\nPARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other\norg; 409 unless DELIVERED; 400 if received > expected, accepted + rejected \u2260 received,\nan open cold-chain excursion has no inspection note, or accepted stock has no expiry.",
+        "operationId": "record_receipt_api_v1_shipments__shipment_id__receipt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "List Notifications",
+        "description": "The caller's own notifications, newest first. Nobody reads another user's.",
+        "operationId": "list_notifications_api_v1_notifications_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "unread",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the ones not yet marked read.",
+              "default": false,
+              "title": "Unread"
+            },
+            "description": "Only the ones not yet marked read."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_NotificationOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark Notification Read",
+        "description": "Marks one of the caller's notifications read; one already read keeps its first\n`read_at`. 403 for another user's notification.",
+        "operationId": "mark_notification_read_api_v1_notifications__notification_id__read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Notification Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationOut"
                 }
               }
             }
@@ -3668,6 +4003,15 @@
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
       },
+      "Condition": {
+        "type": "string",
+        "enum": [
+          "GOOD",
+          "DAMAGED",
+          "TEMPERATURE_ISSUE"
+        ],
+        "title": "Condition"
+      },
       "DemandOut": {
         "properties": {
           "product_id": {
@@ -4238,6 +4582,52 @@
         ],
         "title": "MeOut"
       },
+      "NotificationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "e.g. \"recommendation.escalated\"."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "recommendation.escalated: recommendation_id, shortage_id, escalated_by, reason (null if none was typed), expires_at."
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "payload",
+          "read_at",
+          "created_at"
+        ],
+        "title": "NotificationOut"
+      },
       "OfferIn": {
         "properties": {
           "product_id": {
@@ -4372,6 +4762,15 @@
           "status"
         ],
         "title": "OrgOut"
+      },
+      "Outcome": {
+        "type": "string",
+        "enum": [
+          "CONFIRMED",
+          "PARTIAL"
+        ],
+        "title": "Outcome",
+        "description": "CONFIRMED: the shortage's shortfall was accepted in full. PARTIAL: less was accepted,\nand a residual shortage was opened for the rest."
       },
       "Page_AuditOut_": {
         "properties": {
@@ -4534,6 +4933,33 @@
           "items"
         ],
         "title": "Page[FacilityOut]"
+      },
+      "Page_NotificationOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[NotificationOut]"
       },
       "Page_OfferOut_": {
         "properties": {
@@ -5151,6 +5577,191 @@
         ],
         "title": "RecStatus"
       },
+      "ReceiptIn": {
+        "properties": {
+          "received": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Received"
+          },
+          "accepted": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Rejected"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/Condition"
+          },
+          "inspection_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection Note",
+            "description": "Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment)."
+          },
+          "expiry_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry Date",
+            "description": "The expiry printed on the accepted stock. Required (400) when accepted > 0: the accepted stock becomes a new batch in the receiver's inventory."
+          },
+          "batch_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch No",
+            "description": "The new batch's number; `RCV-` and the shipment id's first 8 characters if left out. A batch number already used for this product at the facility is 409."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "received",
+          "accepted",
+          "rejected",
+          "condition"
+        ],
+        "title": "ReceiptIn",
+        "description": "What the receiver counted. `expected` is the shipment's qty (read-only; sending it is\na 422). Invariants (business-rules.md \u00a79), else 400: received \u2264 expected and accepted +\nrejected = received."
+      },
+      "ReceiptOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "expected": {
+            "type": "integer",
+            "title": "Expected"
+          },
+          "received": {
+            "type": "integer",
+            "title": "Received"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "rejected": {
+            "type": "integer",
+            "title": "Rejected"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/Condition"
+          },
+          "inspection_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspection Note"
+          },
+          "received_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Received By"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id",
+            "description": "The receiver's new inventory batch holding the accepted stock."
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReconciliationOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until every shipment of the shortage has a receipt."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shipment_id",
+          "shortage_id",
+          "expected",
+          "received",
+          "accepted",
+          "rejected",
+          "condition",
+          "inspection_note",
+          "received_by",
+          "ts",
+          "batch_id"
+        ],
+        "title": "ReceiptOut",
+        "description": "Seen by the receiving org only."
+      },
       "RecommendationLineOut": {
         "properties": {
           "candidate_id": {
@@ -5392,6 +6003,72 @@
           "updated_at"
         ],
         "title": "RecommendationOut"
+      },
+      "ReconciliationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "expected": {
+            "type": "integer",
+            "title": "Expected"
+          },
+          "accepted": {
+            "type": "integer",
+            "title": "Accepted"
+          },
+          "discrepancy": {
+            "type": "integer",
+            "title": "Discrepancy",
+            "description": "expected - accepted, for this shipment."
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/Outcome",
+            "description": "The shortage's: CONFIRMED (shortfall accepted in full, RESOLVED) or PARTIAL (PARTIALLY_RESOLVED, residual opened)."
+          },
+          "residual_shortage_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Shortage Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "shipment_id",
+          "expected",
+          "accepted",
+          "discrepancy",
+          "outcome",
+          "residual_shortage_id",
+          "created_at"
+        ],
+        "title": "ReconciliationOut"
       },
       "RefreshIn": {
         "properties": {
@@ -5691,6 +6368,22 @@
                 "type": "null"
               }
             ]
+          },
+          "inspection_note_required": {
+            "type": "boolean",
+            "title": "Inspection Note Required",
+            "description": "True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md \u00a79). Always false until S15."
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceiptOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the receiving org recorded (with the reconciliation once every shipment of the shortage has a receipt). Shown to the receiving org only; null for the other orgs and before a receipt."
           }
         },
         "type": "object",
@@ -5726,7 +6419,9 @@
           "updated_at",
           "route_geometry",
           "status_history",
-          "last_location"
+          "last_location",
+          "inspection_note_required",
+          "receipt"
         ],
         "title": "ShipmentDetailOut"
       },
