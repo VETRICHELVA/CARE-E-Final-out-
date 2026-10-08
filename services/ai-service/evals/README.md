@@ -1,15 +1,15 @@
 # AI eval sets
 
-Data only. S13 and S17 build the runners and `make eval-ai`.
+S13 built the copilot runner (`make eval-ai`, `app/evals.py`); S17 adds the chat-ordering one.
 
 | File                | Section | Cases | Pass bar                                |
 | ------------------- | ------- | ----- | --------------------------------------- |
 | `copilot.jsonl`     | S13     | 15    | every case, plus the S13 number check   |
 | `chat_orders.jsonl` | S17     | 20    | at least 18 correct drafts or questions |
 
-One JSON object per line. Products are keyed by catalog **name** (`Surgical Kit A`,
-`Rapid Diagnostic Kit`, `IV Cannula 20G`); the runner maps a name to its id with `GET /products`.
-Switch to product codes once S04 defines them.
+One JSON object per line. Products are keyed by catalog **code** (`SURG-KIT-A`, `DIAG-RDK`,
+`IV-CAN-20G`; demo-scenarios.md); the runner maps a code to its id with `GET /products`. The
+user's own words in `message` and `question` keep whatever names they use.
 
 ## Text matching (both files)
 
@@ -29,9 +29,20 @@ Before matching, lowercase the text and remove commas between digits (`1,000` â†
 | `must_not_match` | Regexes that must not match `answer`                                       |
 | `source`         | The spec line the expected facts come from                                 |
 
-- Refs: `$s1.shortage` (Hospital A's Surgical Kit A shortage), `$s1.recommendation` (the BUY
+- Refs: `$s1.shortage` (Hospital A's `SURG-KIT-A` shortage), `$s1.recommendation` (the BUY
   recommendation after step 4), `$s1.shipment` (the Supplier Y shipment).
-- Step 3 is run **without** a decline reason, so B's decline has `reason_source=SYSTEM`.
+- `scenario1_steps.py` drives the hub there through its own services (run in the hub's
+  environment against the hub's database): `--to 2` resets Scenario 1 (`e2e/seed/scenario1.py`)
+  and reports the shortage; `--to 4` declines B's request **without** a reason (so B's decline
+  has `reason_source=SYSTEM` and c08 sees "No reason was entered.") and waits for the BUY;
+  `--to 7` approves it, Supplier Y acknowledges and dispatches, SwiftMed delivers, and Hospital A
+  receives and accepts 790 (residual 60). Each prints `{step, refs, tokens}`, the tokens being
+  access tokens for the `as_user` accounts, which the runner sends as the user's token.
+- Runner: `make eval-ai` (or `cd services/ai-service && uv run python -m app.evals [--only c01]`).
+  With no `AI_API_KEY`/`ANTHROPIC_API_KEY` it prints why it is skipping and exits 0. Otherwise it
+  needs the hub running at `HUB_API_URL` with the same `AI_SERVICE_TOKEN` (after
+  `make migrate seed`); the steps run in `services/hub-api` with the hub's own settings. It prints PASS/FAIL per case and the
+  score, and exits 1 unless every case passes.
 - Expected facts use only exact figures from the spec, never the "about" ETAs or costs.
 - Separately, every answer fails if it contains a number not present in its tool results (S13).
 

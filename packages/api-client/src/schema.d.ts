@@ -1122,10 +1122,326 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/read/shortages/{shortage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Shortage
+         * @description get_shortage: GET /shortages/{id} (needs `shortage.create` or `recommendation.approve`)
+         *     with the product, facility, its source requests (requester's view), recommendations,
+         *     shipments and residual shortages.
+         */
+        get: operations["ai_shortage_api_v1_ai_read_shortages__shortage_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shortages/{shortage_id}/match-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Match Run
+         * @description get_match_run: GET /shortages/{id}/match-runs/latest.
+         */
+        get: operations["ai_match_run_api_v1_ai_read_shortages__shortage_id__match_run_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Candidate
+         * @description get_candidate: one candidate as the match run shows it (no hospital cost).
+         */
+        get: operations["ai_candidate_api_v1_ai_read_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/recommendations/{recommendation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Recommendation
+         * @description get_recommendation: GET /recommendations/{id} (supplier costs only).
+         */
+        get: operations["ai_recommendation_api_v1_ai_read_recommendations__recommendation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Shipment
+         * @description get_shipment: GET /shipments/{id} (the receipt for the receiving org only), without
+         *     the route geometry, which only a map needs.
+         */
+        get: operations["ai_shipment_api_v1_ai_read_shipments__shipment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shipments/{shipment_id}/coldchain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Coldchain
+         * @description get_coldchain_events: whether the shipment needs cold chain, its readings summary and
+         *     excursion events (none until S15). Involved orgs only, as GET /shipments/{id}.
+         */
+        get: operations["ai_coldchain_api_v1_ai_read_shipments__shipment_id__coldchain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Audit
+         * @description get_audit: needs `audit.read`. `entity=shortage` is that shortage's whole trail as
+         *     GET /shortages/{id}/audit; any other entity is GET /audit?entity=&entity_id= (own org's
+         *     rows). Oldest first.
+         */
+        get: operations["ai_audit_api_v1_ai_read_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AiColdChainOut
+         * @description Cold-chain record of a shipment. S15 adds excursion events; until then `events` is
+         *     empty and `has_open_excursion` false (business-rules.md §11).
+         */
+        AiColdChainOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** Device Id */
+            device_id: string | null;
+            /** Reading Count */
+            reading_count: number;
+            /** First Reading At */
+            first_reading_at: string | null;
+            /** Last Reading At */
+            last_reading_at: string | null;
+            /** Min Temp C */
+            min_temp_c: number | null;
+            /** Max Temp C */
+            max_temp_c: number | null;
+            /** Has Open Excursion */
+            has_open_excursion: boolean;
+            /** Events */
+            events: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AiRecommendationRef */
+        AiRecommendationRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AiShipmentRef */
+        AiShipmentRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["ShipmentStatus"];
+            /** Qty */
+            qty: number;
+            /** From Org Name */
+            from_org_name: string;
+        };
+        /**
+         * AiShortageOut
+         * @description GET /shortages/{id} plus what hangs off it, as the requester's org sees it.
+         */
+        AiShortageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Shortfall
+             * @description Hub-computed max(0, qty_required - qty_local_usable); never taken as input.
+             */
+            readonly shortfall: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /** Min Shelf Life Days */
+            min_shelf_life_days: number;
+            status: components["schemas"]["Status"];
+            /** Notes */
+            notes: string | null;
+            /** Parent Shortage Id */
+            parent_shortage_id: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Facility Name */
+            facility_name: string;
+            /**
+             * Source Requests
+             * @description As GET /source-requests?direction=outgoing&shortage_id= (newest first).
+             */
+            source_requests: components["schemas"]["SourceRequestOut"][];
+            /**
+             * Recommendations
+             * @description Newest first.
+             */
+            recommendations: components["schemas"]["AiRecommendationRef"][];
+            /**
+             * Shipments
+             * @description Newest first.
+             */
+            shipments: components["schemas"]["AiShipmentRef"][];
+            /**
+             * Residual Shortages
+             * @description Shortages opened for what a short delivery left (parent_shortage_id).
+             */
+            residual_shortages: components["schemas"]["AiShortageRef"][];
+        };
+        /** AiShortageRef */
+        AiShortageRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["Status"];
+            /** Qty Required */
+            qty_required: number;
+            /** Shortfall */
+            shortfall: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** ApplyIn */
         ApplyIn: {
             /**
@@ -4867,6 +5183,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_shortage_api_v1_ai_read_shortages__shortage_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_match_run_api_v1_ai_read_shortages__shortage_id__match_run_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_candidate_api_v1_ai_read_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_recommendation_api_v1_ai_read_recommendations__recommendation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_shipment_api_v1_ai_read_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_coldchain_api_v1_ai_read_shipments__shipment_id__coldchain_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiColdChainOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_audit_api_v1_ai_read_audit_get: {
+        parameters: {
+            query: {
+                /** @description e.g. shortage, source_request, shipment */
+                entity: string;
+                entity_id: string;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditOut_"];
                 };
             };
             /** @description Validation Error */

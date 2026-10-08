@@ -31,6 +31,7 @@ class ServiceScope(StrEnum):
     """What a service token may do. A service token is not a user and opens no user endpoint."""
 
     TELEMETRY_WRITE = "telemetry.write"
+    AI_READ = "ai.read"
 
 
 C = Capability

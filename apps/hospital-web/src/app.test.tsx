@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useAuth } from "@care-e/api-client";
 import { App, config } from "./app";
@@ -123,5 +123,16 @@ describe(config.name, () => {
     render(<App />);
     expect(await screen.findByRole("link", { name: "← Shortages" })).toBeTruthy();
     expect(await screen.findByText("No match run yet")).toBeTruthy();
+  });
+
+  it("offers the copilot on every screen; without AI the screen still works", async () => {
+    signInAs("HOSPITAL", ["shortage.create"]);
+    window.history.replaceState(null, "", `/shortages/${shortage.id}`);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ask copilot" }));
+    // The fake hub answers /ai/status without `configured`: the service has no key.
+    expect(await screen.findByText("AI is not configured.")).toBeTruthy();
+    expect(await screen.findByText("No match run yet")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

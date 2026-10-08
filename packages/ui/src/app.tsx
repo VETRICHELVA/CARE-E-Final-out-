@@ -35,6 +35,8 @@ export type AppConfig = {
   liveUpdates?: boolean;
   /** Extra header content for a signed-in user, before their name (e.g. a notification bell). */
   headerExtra?: ReactNode;
+  /** Rendered on every signed-in screen after the page, e.g. hospital-web's copilot panel. */
+  aside?: ReactNode;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
@@ -43,7 +45,8 @@ function AppShell({
   nav,
   liveUpdates = false,
   headerExtra,
-}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra">) {
+  aside,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra" | "aside">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
@@ -89,6 +92,7 @@ function AppShell({
       <main className="mx-auto max-w-6xl p-4">
         <Outlet />
       </main>
+      {aside}
     </div>
   );
 }
@@ -106,6 +110,7 @@ export function CareApp({
   routes = [],
   liveUpdates,
   headerExtra,
+  aside,
 }: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
@@ -126,6 +131,7 @@ export function CareApp({
                   nav={nav}
                   liveUpdates={liveUpdates}
                   headerExtra={headerExtra}
+                  aside={aside}
                 />
               }
             >

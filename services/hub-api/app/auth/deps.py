@@ -119,19 +119,24 @@ def require(
     return dependency
 
 
+def ensure_any(user: User, *capabilities: Capability) -> User:
+    """403 unless the user has at least one of `capabilities` (`require_any` as a call)."""
+    if user_capabilities(user).isdisjoint(capabilities):
+        names = ", ".join(capabilities)
+        raise AppError(
+            403,
+            "forbidden",
+            f"Needs one of these capabilities: {names}.",
+            {"capabilities": list(capabilities)},
+        )
+    return user
+
+
 def require_any(*capabilities: Capability) -> Callable[..., Awaitable[User]]:
     """403 unless the user has at least one of `capabilities`."""
 
     async def dependency(user: CurrentUser) -> User:
-        if user_capabilities(user).isdisjoint(capabilities):
-            names = ", ".join(capabilities)
-            raise AppError(
-                403,
-                "forbidden",
-                f"Needs one of these capabilities: {names}.",
-                {"capabilities": list(capabilities)},
-            )
-        return user
+        return ensure_any(user, *capabilities)
 
     return dependency
 
@@ -141,6 +146,9 @@ def service_token_scopes(token: str) -> frozenset[ServiceScope]:
     ingest = settings.ingest_token.encode()
     if ingest and hmac.compare_digest(token.encode(), ingest):
         return frozenset({ServiceScope.TELEMETRY_WRITE})
+    ai = settings.ai_service_token.encode()
+    if ai and hmac.compare_digest(token.encode(), ai):
+        return frozenset({ServiceScope.AI_READ})
     return frozenset()
 
 

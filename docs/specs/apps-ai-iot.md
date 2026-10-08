@@ -43,7 +43,7 @@
 Maps: Leaflet with OpenStreetMap tiles.
 
 ## AI service (`services/ai-service`)
-- Calls the hub only through `/api/v1/ai/read/*` with a **read-only service token**. It has no database access and no write endpoints.
+- Calls the hub only through `/api/v1/ai/read/*` with a **read-only service token**. It has no database access and no write endpoints Each call also carries the signed-in user's access token (`X-On-Behalf-Of`), so the hub answers as that user: their org scope, capabilities and redaction (api-and-events.md, S13).
 - The LLM provider and model are set by environment variables (`AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`). With no key, the service returns a clear "AI is not configured" response, so the rest of the system still works.
 - Every response includes the tool calls it made, so the UI can show "Based on: match run #3, candidate Hospital D".
 
@@ -52,6 +52,7 @@ Maps: Leaflet with OpenStreetMap tiles.
 - The system prompt requires: answer only from tool results; quote numbers exactly; if the data isn't there, say so; never suggest an action has been taken.
 - The context sent with each question = the screen the user is on (e.g. shortage_id), plus the question.
 - Test set: 15 questions with expected facts; a test fails if the answer contains a number not present in the tool results.
+- At most 6 tool calls per question. The service checks every answer itself: a number found in no tool result (nor in the question) gets one correction turn, then the answer is withheld. A screen record the user may not see is answered "That information is not available to you." without asking the model.
 
 ### Chat ordering (S17)
 - Input: free text. Output: a **draft** `{product_id or candidates[], qty_required, required_by, priority, min_shelf_life_days, notes}` plus fields it could not fill.
