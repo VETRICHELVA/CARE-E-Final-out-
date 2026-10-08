@@ -47,9 +47,10 @@ async def assign_device(
     device_id: uuid.UUID, body: DeviceAssignIn, user: Dispatcher, session: SessionDep
 ) -> DeviceOut:
     """Put one of the caller's org's devices (403 for another org's) on a shipment the org
-    may see, or take it off with `shipment_id: null`. Its new readings are linked to the
-    shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
-    IN_TRANSIT. 409 if the shipment has arrived or already carries another device."""
+    carries (403 if another org carries it; 409 while it is CREATED and has no carrier), or
+    take it off with `shipment_id: null`. Its new readings are linked to the shipment, and
+    sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or IN_TRANSIT.
+    409 if the shipment has arrived or already carries another device."""
     device = await service.assign_device(session, user, device_id, body.shipment_id, body.reason)
     out = DeviceOut.model_validate(device)
     await session.commit()

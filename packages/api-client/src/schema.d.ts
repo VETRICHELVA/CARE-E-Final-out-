@@ -475,9 +475,10 @@ export interface paths {
         /**
          * Assign Device
          * @description Put one of the caller's org's devices (403 for another org's) on a shipment the org
-         *     may see, or take it off with `shipment_id: null`. Its new readings are linked to the
-         *     shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
-         *     IN_TRANSIT. 409 if the shipment has arrived or already carries another device.
+         *     carries (403 if another org carries it; 409 while it is CREATED and has no carrier), or
+         *     take it off with `shipment_id: null`. Its new readings are linked to the shipment, and
+         *     sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or IN_TRANSIT.
+         *     409 if the shipment has arrived or already carries another device.
          */
         post: operations["assign_device_api_v1_devices__device_id__assign_post"];
         delete?: never;
@@ -864,9 +865,9 @@ export interface paths {
         };
         /**
          * Get Shipment
-         * @description One shipment with its route geometry, status history and last driver location.
-         *     403 unless the caller's org is involved (or it is unassigned and the caller is a
-         *     logistics org).
+         * @description One shipment with its route geometry, status history and last driver location (only
+         *     a ping recorded since the current assignment; none while CREATED). 403 unless the
+         *     caller's org is involved (or it is unassigned and the caller is a logistics org).
          */
         get: operations["get_shipment_api_v1_shipments__shipment_id__get"];
         put?: never;
@@ -891,7 +892,8 @@ export interface paths {
          * @description CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for
          *     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
          *     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
-         *     409 unless CREATED.
+         *     409 unless CREATED, and 409 `conflict` when the held stock is at more than one of the
+         *     source's facilities (plan it with the route planner). Any device on it comes off.
          */
         post: operations["assign_shipment_api_v1_shipments__shipment_id__assign_post"];
         delete?: never;
@@ -911,7 +913,8 @@ export interface paths {
         put?: never;
         /**
          * Unassign Shipment
-         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.
+         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED. Any
+         *     device on it comes off.
          */
         post: operations["unassign_shipment_api_v1_shipments__shipment_id__unassign_post"];
         delete?: never;
@@ -933,7 +936,8 @@ export interface paths {
          * Update Shipment Status
          * @description The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->
          *     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
-         *     on_hand and consumes its FIRM hold.
+         *     on_hand and consumes its FIRM hold; a batch recording less than its hold is drawn down
+         *     only by what it records (never below 0).
          */
         post: operations["update_shipment_status_api_v1_shipments__shipment_id__status_post"];
         delete?: never;

@@ -137,14 +137,26 @@ async def assign_device(
     shipment_id: uuid.UUID | None,
     reason: str | None,
 ) -> Device:
-    """Put the caller's org's device on a shipment its org may see, or take it off
-    (`shipment_id` null). The shipment must not have arrived (409), and must not carry
-    another device (409: take that one off first). One audit row in the device's org."""
+    """Put the caller's org's device on a shipment its org carries, or take it off
+    (`shipment_id` null). A box rides only with its own org's shipments (CLAUDE.md rule 6):
+    403 when another org carries the shipment, 409 while it is CREATED (no carrier yet;
+    assigning or unassigning it takes any device off). The shipment must not have arrived
+    (409), and must not carry another device (409: take that one off first). One audit row
+    in the device's org."""
     device = await own_device(session, user, device_pk)
     before = device.assigned_shipment_id
     target: Shipment | None = None
     if shipment_id is not None:
         target = await shipments.get_visible(session, user, shipment_id, lock=True)
+        if target.carrier_org_id is None:
+            raise AppError(
+                409,
+                "conflict",
+                "The shipment has no carrier yet; a device goes on once it is assigned.",
+                {"status": target.status},
+            )
+        if target.carrier_org_id != device.org_id:
+            raise AppError(403, "forbidden", "Another organization carries this shipment.")
         if target.status in ARRIVED:
             raise AppError(
                 409,

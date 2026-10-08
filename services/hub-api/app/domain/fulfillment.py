@@ -82,3 +82,23 @@ def cold_chain_vehicle_refusal(
 PO_REJECTED = "The supplier rejected the purchase order."  # the re-run after a PO rejection
 # The source's on_hand and FIRM hold drawn down at pickup (§9), recorded in the source org.
 PICKUP_RECORDED = "The driver recorded the pickup of this shipment."
+# A device taken off a shipment because assign or unassign changed its carrier (CLAUDE.md
+# rule 6: a box rides only with its own org's shipments), recorded in the device's org.
+CARRIER_CHANGED = "The shipment's carrier changed, so the device was taken off it."
+# Assign refuses a shipment whose FIRM holds sit at several facilities of the source
+# (business-rules.md §8: a limitation until S16's route planner plans multi-stop pickups).
+MULTI_FACILITY = "Stock is at more than one facility; plan it with the route planner"
+
+
+def short_pickup(on_hand: int, held: int) -> tuple[int, str]:
+    """§9 at pickup: how much a FIRM hold of `held` draws down from a batch recording
+    `on_hand`, and the factual SYSTEM reason. Normally the held qty; when the batch records
+    less, only what it records (never below 0), and the reason states both recorded figures.
+    The shortfall surfaces at receipt, and reconciliation opens the residual."""
+    drawn = max(0, min(on_hand, held))
+    if drawn == held:
+        return drawn, PICKUP_RECORDED
+    return drawn, (
+        f"{PICKUP_RECORDED} The batch recorded {max(0, on_hand)} on hand, less than the "
+        f"{held} held, so {drawn} was drawn down."
+    )
