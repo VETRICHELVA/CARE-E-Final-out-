@@ -55,8 +55,7 @@ def test_numbers_are_compared_by_value() -> None:
         "12",
         "30",
         "5.5",
-        "9",
-        "5",
+        "09:05",
     ]
     data = {
         "reason": "Expires in 12 days; 30 required",
@@ -66,8 +65,10 @@ def test_numbers_are_compared_by_value() -> None:
         "code": "IV-CAN-20G",
     }
     found = numbers_in_data(data)
-    assert {"12", "30", "1000", "2026", "10", "9", "6", "0", "20"} <= found
+    assert {"12", "30", "1000", "2026-10-09", "10-09", "06:00", "20"} <= found
     assert "1111" not in found and "3" not in found  # UUID digits are no figures
+    # A timestamp allows its date and time as wholes, never its parts as quantities.
+    assert not {"2026", "10", "9", "6", "0"} & found
 
 
 @pytest.mark.parametrize(
@@ -83,3 +84,29 @@ def test_numbers_are_compared_by_value() -> None:
 def test_unsupported_numbers(answer: str, missing: list[str]) -> None:
     results = [{"reason": "Expires in 12 days; 30 required", "transferable_qty": 1000}]
     assert unsupported_numbers(answer, results) == missing
+
+
+@pytest.mark.parametrize(
+    ("answer", "data", "missing"),
+    [
+        # From the S13 review: each of these used to pass.
+        ("It dropped to -3 °C.", {"min_temp_c": 3.0}, ["-3"]),
+        (
+            "Apollo can transfer 12 vials.",
+            {"ts": "2026-10-08T06:12:40Z", "transferable_qty": 120},
+            ["12"],
+        ),
+        ("Apollo can transfer twelve hundred vials.", {"transferable_qty": 120}, ["1200"]),
+        # Dates and times as the tools return them still pass.
+        ("Required by 9 Oct at 06:00 UTC.", {"required_by": "2026-10-09T06:00:00Z"}, []),
+        ("Required by 2026-10-09.", {"required_by": "2026-10-09T06:00:00Z"}, []),
+        ("Required by 10 Oct.", {"required_by": "2026-10-09T06:00:00Z"}, ["10-10"]),
+        ("It reached -3 °C, the limit is 8.", {"min_temp_c": -3, "max": 8}, []),
+        ("One source covers it: one hundred and twenty units.", {"qty": 120}, []),
+        ("IV-CAN-20G, range 3-5.", {"code": "IV-CAN-20G", "range": [3, 5]}, []),
+    ],
+)
+def test_the_number_check_reads_signs_dates_and_words(
+    answer: str, data: dict[str, object], missing: list[str]
+) -> None:
+    assert unsupported_numbers(answer, [data]) == missing
