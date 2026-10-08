@@ -87,8 +87,10 @@ def test_request_state_machine(src: str, dst: str, ok: bool) -> None:
 
 def test_hold_state_machine() -> None:
     assert HOLD_TRANSITIONS[HoldStatus.TENTATIVE] == {HoldStatus.FIRM, HoldStatus.RELEASED}
-    assert HOLD_TRANSITIONS[HoldStatus.FIRM] == {HoldStatus.RELEASED}
+    # S11: a FIRM hold is consumed at pickup (§9); only TENTATIVE holds become FIRM.
+    assert HOLD_TRANSITIONS[HoldStatus.FIRM] == {HoldStatus.RELEASED, HoldStatus.CONSUMED}
     assert HoldStatus.RELEASED not in HOLD_TRANSITIONS
+    assert HoldStatus.CONSUMED not in HOLD_TRANSITIONS
     assert {HoldStatus.TENTATIVE, HoldStatus.FIRM} == sr.ACTIVE_HOLD
 
 

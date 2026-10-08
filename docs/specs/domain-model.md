@@ -30,16 +30,16 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **MatchRun**: shortage_id, run_no, triggered_by (CREATE | DECLINE | EXPIRY | MANUAL | RECOMMENDATION_EXPIRED | STOCK_CHANGE), ts
 - **Candidate**: match_run_id, source_org_id, source_type (HOSPITAL | SUPPLIER), batch_ids, transferable_qty, offered_qty, gate_results (JSON: gate → pass/fail + reason), eligible, landed_cost_paise, eta_hours, reliability, rank
 - **SourceRequest**: shortage_id, candidate_id, source_org_id, qty, status, sla_deadline, responded_by, responded_at, decline_reason, reason_source
-- **Hold**: source_request_id, batch_id, qty, status (TENTATIVE | FIRM | RELEASED), expires_at
+- **Hold**: source_request_id, batch_id, qty, status (TENTATIVE | FIRM | RELEASED | CONSUMED), expires_at. CONSUMED (S11): a FIRM hold drawn down at pickup together with the batch's on_hand (business-rules §9); unlike RELEASED it frees no stock
 - **Recommendation**: shortage_id, match_run_id (unique), type (TRANSFER | TRANSFER_SPLIT | BUY), lines (JSON: source, qty, cost, eta), alternatives (JSON), explanation, status (PENDING | APPROVED | REJECTED | ESCALATED | EXPIRED), expires_at, decided_by, decided_at, reason, reason_source
   - Each line (S09): candidate_id, source_org_id, source_org_name, source_type, qty, eta_hours, landed_cost_paise (stored for every source, shown to the requester for suppliers only), unit_price_paise (suppliers), shelf_life_days at delivery and source_request_id (hospitals). At most one PENDING or ESCALATED recommendation per shortage. `reason` is null when the decider typed none (`reason_source = SYSTEM`)
 
 ## Fulfillment
 - **PurchaseOrder**: shortage_id, supplier_org_id, product_id, qty, unit_price_paise, status, eta
-- **Vehicle**: org_id, reg_no, has_cold_chain
-- **Driver**: org_id, user_id, phone, active
-- **Shipment**: shortage_id, source_request_id or purchase_order_id, from_org_id, to_org_id, product_id, qty, requires_cold_chain, status, driver_id, vehicle_id, device_id, planned_eta, route_geometry (S09 creates it CREATED; driver_id and vehicle_id get their foreign keys when S11 adds those tables)
-- **ShipmentLeg**: shipment_id, seq, stop_type (PICKUP | DROP), location, planned_at, actual_at
+- **Vehicle**: org_id, reg_no (unique per org), has_cold_chain
+- **Driver**: org_id, user_id (unique; the DRIVER user who signs in), phone, active
+- **Shipment**: shortage_id, source_request_id or purchase_order_id, from_org_id, to_org_id, carrier_org_id (S11: the assigning org; null while CREATED), product_id, qty, requires_cold_chain, status, driver_id, vehicle_id, device_id, planned_eta (the plan's estimate at approval), eta (S11: computed from the route at assignment), route_distance_km, route_provider (OSRM | HAVERSINE), route_geometry (GeoJSON LineString), status_history (S11: [{from, to, at}]). S09 creates it CREATED; driver, vehicle and carrier are set together exactly when it is not CREATED
+- **ShipmentLeg**: shipment_id, seq, stop_type (PICKUP | DROP), location (place name, lat, lng), planned_at, actual_at. S11 adds seq 1 PICKUP (the facility holding most of the held stock, or the supplier's location) and seq 2 DROP (the requesting facility) when the shipment is created; actual_at is set when the driver records PICKED_UP / DELIVERED
 - **LocationPing**: shipment_id, lat, lng, ts (from the driver's phone)
 - **Receipt**: shipment_id, expected, received, accepted, rejected, condition (GOOD | DAMAGED | TEMPERATURE_ISSUE), inspection_note, received_by, ts
 - **Reconciliation**: shortage_id, shipment_id, expected, accepted, discrepancy, outcome (CONFIRMED | PARTIAL), residual_shortage_id
@@ -50,7 +50,7 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 
 ## IoT
 - **Device**: org_id (owning org, e.g. the logistics company), device_id (string, unique), type, assigned_shipment_id, battery_level, last_seen
-- **SensorReading**: device_id, ts, temp_c, battery; unique (device_id, ts)
+- **SensorReading**: device_id, ts, temp_c, battery, shipment_id (the device's assigned shipment when stored, only if it was ASSIGNED, PICKED_UP or IN_TRANSIT); unique (device_id, ts)
 - **ColdChainEvent**: shipment_id, device_id, type (EXCURSION | DEVICE_SILENT | RECOVERED), threshold, observed_value, severity, ts
 
 ## Records

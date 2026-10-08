@@ -417,6 +417,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Device
+         * @description Put one of the caller's org's devices (403 for another org's) on a shipment the org
+         *     may see, or take it off with `shipment_id: null`. Its new readings are linked to the
+         *     shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
+         *     IN_TRANSIT. 409 if the shipment has arrived or already carries another device.
+         */
+        post: operations["assign_device_api_v1_devices__device_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/source-requests": {
         parameters: {
             query?: never;
@@ -765,6 +788,176 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/shipments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shipments
+         * @description Shipments the caller's org is involved in (from, to or carrier), newest first; a
+         *     LOGISTICS org also sees every unassigned (CREATED) shipment: the dispatch board.
+         */
+        get: operations["list_shipments_api_v1_shipments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shipment
+         * @description One shipment with its route geometry, status history and last driver location.
+         *     403 unless the caller's org is involved (or it is unassigned and the caller is a
+         *     logistics org).
+         */
+        get: operations["get_shipment_api_v1_shipments__shipment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Shipment
+         * @description CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for
+         *     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
+         *     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
+         *     409 unless CREATED.
+         */
+        post: operations["assign_shipment_api_v1_shipments__shipment_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/unassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unassign Shipment
+         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.
+         */
+        post: operations["unassign_shipment_api_v1_shipments__shipment_id__unassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update Shipment Status
+         * @description The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->
+         *     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
+         *     on_hand and consumes its FIRM hold.
+         */
+        post: operations["update_shipment_status_api_v1_shipments__shipment_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/location": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Shipment Location
+         * @description A GPS ping from the assigned driver's phone (403 otherwise), while ASSIGNED,
+         *     PICKED_UP or IN_TRANSIT (409 otherwise). Sent to the shipment's orgs as
+         *     `shipment.location`.
+         */
+        post: operations["post_shipment_location_api_v1_shipments__shipment_id__location_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/drivers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Drivers
+         * @description The caller's own org's drivers.
+         */
+        get: operations["list_drivers_api_v1_drivers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Vehicles
+         * @description The caller's own org's vehicles.
+         */
+        get: operations["list_vehicles_api_v1_vehicles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -787,6 +980,21 @@ export interface components {
              * @description BUY: the order sent.
              */
             purchase_order_id: string | null;
+        };
+        /** AssignIn */
+        AssignIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Vehicle Id
+             * Format: uuid
+             */
+            vehicle_id: string;
+            /** Reason */
+            reason?: string | null;
         };
         /** AuditOut */
         AuditOut: {
@@ -1028,6 +1236,16 @@ export interface components {
              */
             open_shortfall_qty: number;
         };
+        /** DeviceAssignIn */
+        DeviceAssignIn: {
+            /**
+             * Shipment Id
+             * @description The shipment the device rides with; null takes it off its shipment.
+             */
+            shipment_id: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** DeviceOut */
         DeviceOut: {
             /**
@@ -1048,12 +1266,43 @@ export interface components {
             battery_level: number | null;
             /** Last Seen */
             last_seen: string | null;
+            /** Assigned Shipment Id */
+            assigned_shipment_id: string | null;
         };
         /**
          * Direction
          * @enum {string}
          */
         Direction: "incoming" | "outgoing";
+        /** DriverOut */
+        DriverOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Name */
+            name: string;
+            /** Phone */
+            phone: string;
+            /** Active */
+            active: boolean;
+        };
+        /** DriverRef */
+        DriverRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /**
          * EventType
          * @enum {string}
@@ -1118,7 +1367,7 @@ export interface components {
          * HoldStatus
          * @enum {string}
          */
-        HoldStatus: "TENTATIVE" | "FIRM" | "RELEASED";
+        HoldStatus: "TENTATIVE" | "FIRM" | "RELEASED" | "CONSUMED";
         /** ImportResult */
         ImportResult: {
             /** Inserted */
@@ -1132,6 +1381,35 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+        };
+        /** LocationIn */
+        LocationIn: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Ts
+             * @description When the phone took the fix; the hub's time if left out.
+             */
+            ts?: string | null;
+        };
+        /** LocationOut */
+        LocationOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
         };
         /** LoginIn */
         LoginIn: {
@@ -1279,6 +1557,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[DriverOut] */
+        Page_DriverOut_: {
+            /** Items */
+            items: components["schemas"]["DriverOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[FacilityOut] */
         Page_FacilityOut_: {
             /** Items */
@@ -1314,6 +1599,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ShipmentOut] */
+        Page_ShipmentOut_: {
+            /** Items */
+            items: components["schemas"]["ShipmentOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[ShortageOut] */
         Page_ShortageOut_: {
             /** Items */
@@ -1325,6 +1617,13 @@ export interface components {
         Page_SourceRequestOut_: {
             /** Items */
             items: components["schemas"]["SourceRequestOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[VehicleOut] */
+        Page_VehicleOut_: {
+            /** Items */
+            items: components["schemas"]["VehicleOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -1633,6 +1932,12 @@ export interface components {
          * @enum {string}
          */
         RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
+        /**
+         * RouteProvider
+         * @description Which provider gave a stored route: OSRM, or the haversine fallback (§4).
+         * @enum {string}
+         */
+        RouteProvider: "OSRM" | "HAVERSINE";
         /** RowError */
         RowError: {
             /** Line */
@@ -1640,6 +1945,183 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** ShipmentDetailOut */
+        ShipmentDetailOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Source Request Id */
+            source_request_id: string | null;
+            /** Purchase Order Id */
+            purchase_order_id: string | null;
+            /**
+             * From Org Id
+             * Format: uuid
+             */
+            from_org_id: string;
+            /** From Org Name */
+            from_org_name: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /** Carrier Org Id */
+            carrier_org_id: string | null;
+            /** Carrier Org Name */
+            carrier_org_name: string | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Qty */
+            qty: number;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            status: components["schemas"]["ShipmentStatus"];
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             * @description The shortage's deadline.
+             */
+            required_by: string;
+            driver: components["schemas"]["DriverRef"] | null;
+            vehicle: components["schemas"]["VehicleOut"] | null;
+            /** Device Id */
+            device_id: string | null;
+            /** Planned Eta */
+            planned_eta: string | null;
+            /** Eta */
+            eta: string | null;
+            /** Route Distance Km */
+            route_distance_km: number | null;
+            route_provider: components["schemas"]["RouteProvider"] | null;
+            pickup: components["schemas"]["StopOut"] | null;
+            drop: components["schemas"]["StopOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Route Geometry
+             * @description GeoJSON LineString ([lng, lat] pairs) of the road route; null until assigned.
+             */
+            route_geometry: {
+                [key: string]: unknown;
+            } | null;
+            /** Status History */
+            status_history: components["schemas"]["StatusChangeOut"][];
+            last_location: components["schemas"]["LocationOut"] | null;
+        };
+        /**
+         * ShipmentOut
+         * @description What every involved org sees: no costs. `planned_eta` is the plan's estimate at
+         *     approval; `eta` and the route are computed at assignment (null while unassigned).
+         */
+        ShipmentOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Shortage Id
+             * Format: uuid
+             */
+            shortage_id: string;
+            /** Source Request Id */
+            source_request_id: string | null;
+            /** Purchase Order Id */
+            purchase_order_id: string | null;
+            /**
+             * From Org Id
+             * Format: uuid
+             */
+            from_org_id: string;
+            /** From Org Name */
+            from_org_name: string;
+            /**
+             * To Org Id
+             * Format: uuid
+             */
+            to_org_id: string;
+            /** To Org Name */
+            to_org_name: string;
+            /** Carrier Org Id */
+            carrier_org_id: string | null;
+            /** Carrier Org Name */
+            carrier_org_name: string | null;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Qty */
+            qty: number;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            status: components["schemas"]["ShipmentStatus"];
+            priority: components["schemas"]["Priority"];
+            /**
+             * Required By
+             * Format: date-time
+             * @description The shortage's deadline.
+             */
+            required_by: string;
+            driver: components["schemas"]["DriverRef"] | null;
+            vehicle: components["schemas"]["VehicleOut"] | null;
+            /** Device Id */
+            device_id: string | null;
+            /** Planned Eta */
+            planned_eta: string | null;
+            /** Eta */
+            eta: string | null;
+            /** Route Distance Km */
+            route_distance_km: number | null;
+            route_provider: components["schemas"]["RouteProvider"] | null;
+            pickup: components["schemas"]["StopOut"] | null;
+            drop: components["schemas"]["StopOut"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ShipmentStatus
+         * @enum {string}
+         */
+        ShipmentStatus: "CREATED" | "ASSIGNED" | "PICKED_UP" | "IN_TRANSIT" | "DELIVERED" | "RECONCILED";
         /**
          * ShortageCreate
          * @description Any unknown field is a 422, except `shortfall`: the hub computes it
@@ -1843,6 +2325,44 @@ export interface components {
          * @enum {string}
          */
         Status: "DRAFT" | "OPEN" | "MATCHING" | "AWAITING_DECISION" | "IN_FULFILLMENT" | "RECEIVED" | "RESOLVED" | "PARTIALLY_RESOLVED" | "CANCELLED";
+        /** StatusChangeOut */
+        StatusChangeOut: {
+            from_status: components["schemas"]["ShipmentStatus"] | null;
+            to_status: components["schemas"]["ShipmentStatus"];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+        };
+        /** StatusIn */
+        StatusIn: {
+            /** @description The next state: PICKED_UP, IN_TRANSIT or DELIVERED, one step at a time. */
+            status: components["schemas"]["ShipmentStatus"];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** StopOut */
+        StopOut: {
+            /** Seq */
+            seq: number;
+            stop_type: components["schemas"]["StopType"];
+            /** Place */
+            place: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /** Planned At */
+            planned_at: string | null;
+            /** Actual At */
+            actual_at: string | null;
+        };
+        /**
+         * StopType
+         * @enum {string}
+         */
+        StopType: "PICKUP" | "DROP";
         /** StreamTicketOut */
         StreamTicketOut: {
             /**
@@ -1930,6 +2450,18 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VehicleOut */
+        VehicleOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Reg No */
+            reg_no: string;
+            /** Has Cold Chain */
+            has_cold_chain: boolean;
         };
         /**
          * VerificationMethod
@@ -2785,6 +3317,41 @@ export interface operations {
             };
         };
     };
+    assign_device_api_v1_devices__device_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceAssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_source_requests_api_v1_source_requests_get: {
         parameters: {
             query: {
@@ -3336,6 +3903,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_DemandOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shipments_api_v1_shipments_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["ShipmentStatus"] | null;
+                /** @description Only the shipments assigned to the caller as driver. */
+                assigned_to_me?: boolean;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ShipmentOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shipment_api_v1_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_shipment_api_v1_shipments__shipment_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unassign_shipment_api_v1_shipments__shipment_id__unassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_shipment_status_api_v1_shipments__shipment_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StatusIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_shipment_location_api_v1_shipments__shipment_id__location_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_drivers_api_v1_drivers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DriverOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vehicles_api_v1_vehicles_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_VehicleOut_"];
                 };
             };
             /** @description Validation Error */

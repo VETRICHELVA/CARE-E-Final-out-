@@ -12,17 +12,12 @@ from typing import Any
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import routing
 from app.audit import service as audit
 from app.auth.models import User
 from app.catalog.models import Product, ProductAuthorization, SupplierOffer
 from app.domain import config, gates
-from app.domain.costing import (
-    HaversineProvider,
-    Point,
-    RoutingProvider,
-    transport_cost_paise,
-    transport_eta_hours,
-)
+from app.domain.costing import Point, transport_cost_paise, transport_eta_hours
 from app.domain.events import EventType
 from app.domain.gates import PASS, GateResult
 from app.domain.inventory import batch_transferable, days_to_expiry_at
@@ -37,6 +32,7 @@ from app.inventory.models import InventoryBatch
 from app.inventory.service import own_facility
 from app.orgs.models import Facility, Organization, OrgStatus, OrgType
 from app.recommendations import transitions as recommendations
+from app.shipments.models import Vehicle
 from app.shortages.models import (
     Candidate,
     MatchRun,
@@ -74,10 +70,6 @@ GATE_ORDER = (
     "deadline",
     "cold_chain",
 )
-ROUTING: RoutingProvider = HaversineProvider()  # S11 adds OSRM, falling back to haversine
-# ponytail: there is no Vehicle table until S11, so no cold-chain vehicle is on record and
-# every cold-chain product fails the cold_chain gate; S11 replaces this with a Vehicle query.
-COLD_CHAIN_VEHICLE_ON_RECORD = False
 STOCK_CHANGED = "Inventory or supplier offers for this product changed."
 HOLDS_RELEASED = "Held stock for this product was released."
 
@@ -420,6 +412,13 @@ async def run_match(
     return run
 
 
+async def cold_chain_vehicle_exists(session: AsyncSession) -> bool:
+    """business-rules.md §3 cold_chain gate, read literally: "a cold-chain vehicle exists".
+    Any Vehicle with has_cold_chain anywhere in the network counts: the gate does not ask
+    which logistics org would carry the shipment, nor whether that vehicle is busy."""
+    return bool(await session.scalar(select(exists().where(Vehicle.has_cold_chain.is_(True)))))
+
+
 async def _sources(
     session: AsyncSession, shortage: Shortage, excluded: list[uuid.UUID], now: datetime
 ) -> list[_Source]:
@@ -427,6 +426,7 @@ async def _sources(
     product = await session.get_one(Product, shortage.product_id)
     to = await session.get_one(Facility, shortage.facility_id)
     dest = Point(to.lat, to.lng)
+    vehicle = await cold_chain_vehicle_exists(session) if product.requires_cold_chain else False
     authorized = set(
         await session.scalars(
             select(ProductAuthorization.org_id).where(
@@ -476,7 +476,7 @@ async def _sources(
     for org_id, rows in groupby(batches, key=lambda r: r.org_id):
         lots = []
         for r in rows:
-            km = await ROUTING.distance_km(Point(r.lat, r.lng), dest)
+            km = await routing.ROUTING.distance_km(Point(r.lat, r.lng), dest)
             eta = transport_eta_hours(km)
             arrival = (now + timedelta(hours=eta)).date()
             qty = batch_transferable(r, today, held.get(r.id, 0))
@@ -521,7 +521,7 @@ async def _sources(
                     "cold_chain": gates.cold_chain(
                         product.requires_cold_chain,
                         all(x.row.has_cold_storage for x in basis),
-                        COLD_CHAIN_VEHICLE_ON_RECORD,
+                        vehicle,
                     ),
                 },
                 batch_ids=[x.row.id for x in counted],
@@ -548,7 +548,7 @@ async def _sources(
         )
     )
     for o in offers:
-        km = await ROUTING.distance_km(Point(o.lat, o.lng), dest)
+        km = await routing.ROUTING.distance_km(Point(o.lat, o.lng), dest)
         eta = o.lead_time_hours + transport_eta_hours(km)
         sources.append(
             _Source(
@@ -575,9 +575,7 @@ async def _sources(
                         o.updated_at, now, config.OFFER_UPDATED_WITHIN, what="Offer last updated"
                     ),
                     "deadline": gates.deadline(now + timedelta(hours=eta), shortage.required_by),
-                    "cold_chain": gates.cold_chain(
-                        product.requires_cold_chain, True, COLD_CHAIN_VEHICLE_ON_RECORD
-                    ),
+                    "cold_chain": gates.cold_chain(product.requires_cold_chain, True, vehicle),
                 },
             )
         )

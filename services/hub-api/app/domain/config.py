@@ -18,7 +18,7 @@ class Tunables(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # §4 Cost and ETA
-    road_factor: Pos = 1.3  # haversine x 1.3 until OSRM routing (S11)
+    road_factor: Pos = 1.3  # haversine x 1.3 when OSRM is off, failing or slow (S11)
     avg_speed_kmh: PosInt = 40
     handover_hours: NonNegInt = 1
     transport_rate_paise_per_km: NonNegInt = 2_500  # Rs 25/km

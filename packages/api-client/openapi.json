@@ -1375,6 +1375,65 @@
         }
       }
     },
+    "/api/v1/devices/{device_id}/assign": {
+      "post": {
+        "tags": [
+          "iot"
+        ],
+        "summary": "Assign Device",
+        "description": "Put one of the caller's org's devices (403 for another org's) on a shipment the org\nmay see, or take it off with `shipment_id: null`. Its new readings are linked to the\nshipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or\nIN_TRANSIT. 409 if the shipment has arrived or already carries another device.",
+        "operationId": "assign_device_api_v1_devices__device_id__assign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceAssignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/source-requests": {
       "get": {
         "tags": [
@@ -2493,6 +2552,527 @@
           }
         }
       }
+    },
+    "/api/v1/shipments": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Shipments",
+        "description": "Shipments the caller's org is involved in (from, to or carrier), newest first; a\nLOGISTICS org also sees every unassigned (CREATED) shipment: the dispatch board.",
+        "operationId": "list_shipments_api_v1_shipments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ShipmentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "assigned_to_me",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only the shipments assigned to the caller as driver.",
+              "default": false,
+              "title": "Assigned To Me"
+            },
+            "description": "Only the shipments assigned to the caller as driver."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ShipmentOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Get Shipment",
+        "description": "One shipment with its route geometry, status history and last driver location.\n403 unless the caller's org is involved (or it is unassigned and the caller is a\nlogistics org).",
+        "operationId": "get_shipment_api_v1_shipments__shipment_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/assign": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Assign Shipment",
+        "description": "CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for\nanother org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason\notherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).\n409 unless CREATED.",
+        "operationId": "assign_shipment_api_v1_shipments__shipment_id__assign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/unassign": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Unassign Shipment",
+        "description": "ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.",
+        "operationId": "unassign_shipment_api_v1_shipments__shipment_id__unassign_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/status": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Update Shipment Status",
+        "description": "The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->\nDELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's\non_hand and consumes its FIRM hold.",
+        "operationId": "update_shipment_status_api_v1_shipments__shipment_id__status_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShipmentDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/{shipment_id}/location": {
+      "post": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "Post Shipment Location",
+        "description": "A GPS ping from the assigned driver's phone (403 otherwise), while ASSIGNED,\nPICKED_UP or IN_TRANSIT (409 otherwise). Sent to the shipment's orgs as\n`shipment.location`.",
+        "operationId": "post_shipment_location_api_v1_shipments__shipment_id__location_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/drivers": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Drivers",
+        "description": "The caller's own org's drivers.",
+        "operationId": "list_drivers_api_v1_drivers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DriverOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vehicles": {
+      "get": {
+        "tags": [
+          "shipments"
+        ],
+        "summary": "List Vehicles",
+        "description": "The caller's own org's vehicles.",
+        "operationId": "list_vehicles_api_v1_vehicles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_VehicleOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2538,6 +3118,38 @@
           "purchase_order_id"
         ],
         "title": "ApprovalOut"
+      },
+      "AssignIn": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "vehicle_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Vehicle Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "driver_id",
+          "vehicle_id"
+        ],
+        "title": "AssignIn"
       },
       "AuditOut": {
         "properties": {
@@ -3078,6 +3690,40 @@
         "title": "DemandOut",
         "description": "Open network demand for one product the caller's supplier org offers. Aggregated over\nevery hospital: no hospital, facility, shortage or count of either (CLAUDE.md rule 6)."
       },
+      "DeviceAssignIn": {
+        "properties": {
+          "shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shipment Id",
+            "description": "The shipment the device rides with; null takes it off its shipment."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "shipment_id"
+        ],
+        "title": "DeviceAssignIn"
+      },
       "DeviceOut": {
         "properties": {
           "id": {
@@ -3120,6 +3766,18 @@
               }
             ],
             "title": "Last Seen"
+          },
+          "assigned_shipment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned Shipment Id"
           }
         },
         "type": "object",
@@ -3129,7 +3787,8 @@
           "device_id",
           "type",
           "battery_level",
-          "last_seen"
+          "last_seen",
+          "assigned_shipment_id"
         ],
         "title": "DeviceOut"
       },
@@ -3140,6 +3799,60 @@
           "outgoing"
         ],
         "title": "Direction"
+      },
+      "DriverOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "phone": {
+            "type": "string",
+            "title": "Phone"
+          },
+          "active": {
+            "type": "boolean",
+            "title": "Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "phone",
+          "active"
+        ],
+        "title": "DriverOut"
+      },
+      "DriverRef": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "DriverRef"
       },
       "EventType": {
         "type": "string",
@@ -3288,7 +4001,8 @@
         "enum": [
           "TENTATIVE",
           "FIRM",
-          "RELEASED"
+          "RELEASED",
+          "CONSUMED"
         ],
         "title": "HoldStatus"
       },
@@ -3330,6 +4044,72 @@
           "lng"
         ],
         "title": "Location"
+      },
+      "LocationIn": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ts",
+            "description": "When the phone took the fix; the hub's time if left out."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "LocationIn"
+      },
+      "LocationOut": {
+        "properties": {
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "shipment_id",
+          "lat",
+          "lng",
+          "ts"
+        ],
+        "title": "LocationOut"
       },
       "LoginIn": {
         "properties": {
@@ -3701,6 +4481,33 @@
         ],
         "title": "Page[DeviceOut]"
       },
+      "Page_DriverOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DriverOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DriverOut]"
+      },
       "Page_FacilityOut_": {
         "properties": {
           "items": {
@@ -3836,6 +4643,33 @@
         ],
         "title": "Page[PurchaseOrderOut]"
       },
+      "Page_ShipmentOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ShipmentOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[ShipmentOut]"
+      },
       "Page_ShortageOut_": {
         "properties": {
           "items": {
@@ -3889,6 +4723,33 @@
           "items"
         ],
         "title": "Page[SourceRequestOut]"
+      },
+      "Page_VehicleOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[VehicleOut]"
       },
       "Page_WebhookOut_": {
         "properties": {
@@ -4557,6 +5418,15 @@
         ],
         "title": "RequestStatus"
       },
+      "RouteProvider": {
+        "type": "string",
+        "enum": [
+          "OSRM",
+          "HAVERSINE"
+        ],
+        "title": "RouteProvider",
+        "description": "Which provider gave a stored route: OSRM, or the haversine fallback (\u00a74)."
+      },
       "RowError": {
         "properties": {
           "line": {
@@ -4574,6 +5444,556 @@
           "message"
         ],
         "title": "RowError"
+      },
+      "ShipmentDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id"
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id"
+          },
+          "from_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Org Id"
+          },
+          "from_org_name": {
+            "type": "string",
+            "title": "From Org Name"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id"
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "carrier_org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Id"
+          },
+          "carrier_org_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_code": {
+            "type": "string",
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By",
+            "description": "The shortage's deadline."
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "planned_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Eta"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "route_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Distance Km"
+          },
+          "route_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteProvider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "route_geometry": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Geometry",
+            "description": "GeoJSON LineString ([lng, lat] pairs) of the road route; null until assigned."
+          },
+          "status_history": {
+            "items": {
+              "$ref": "#/components/schemas/StatusChangeOut"
+            },
+            "type": "array",
+            "title": "Status History"
+          },
+          "last_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "source_request_id",
+          "purchase_order_id",
+          "from_org_id",
+          "from_org_name",
+          "to_org_id",
+          "to_org_name",
+          "carrier_org_id",
+          "carrier_org_name",
+          "product_id",
+          "product_code",
+          "product_name",
+          "qty",
+          "requires_cold_chain",
+          "status",
+          "priority",
+          "required_by",
+          "driver",
+          "vehicle",
+          "device_id",
+          "planned_eta",
+          "eta",
+          "route_distance_km",
+          "route_provider",
+          "pickup",
+          "drop",
+          "created_at",
+          "updated_at",
+          "route_geometry",
+          "status_history",
+          "last_location"
+        ],
+        "title": "ShipmentDetailOut"
+      },
+      "ShipmentOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "shortage_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shortage Id"
+          },
+          "source_request_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Request Id"
+          },
+          "purchase_order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Order Id"
+          },
+          "from_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "From Org Id"
+          },
+          "from_org_name": {
+            "type": "string",
+            "title": "From Org Name"
+          },
+          "to_org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "To Org Id"
+          },
+          "to_org_name": {
+            "type": "string",
+            "title": "To Org Name"
+          },
+          "carrier_org_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Id"
+          },
+          "carrier_org_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carrier Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_code": {
+            "type": "string",
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "priority": {
+            "$ref": "#/components/schemas/Priority"
+          },
+          "required_by": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Required By",
+            "description": "The shortage's deadline."
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VehicleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          },
+          "planned_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Eta"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "route_distance_km": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Distance Km"
+          },
+          "route_provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteProvider"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pickup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StopOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "shortage_id",
+          "source_request_id",
+          "purchase_order_id",
+          "from_org_id",
+          "from_org_name",
+          "to_org_id",
+          "to_org_name",
+          "carrier_org_id",
+          "carrier_org_name",
+          "product_id",
+          "product_code",
+          "product_name",
+          "qty",
+          "requires_cold_chain",
+          "status",
+          "priority",
+          "required_by",
+          "driver",
+          "vehicle",
+          "device_id",
+          "planned_eta",
+          "eta",
+          "route_distance_km",
+          "route_provider",
+          "pickup",
+          "drop",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ShipmentOut",
+        "description": "What every involved org sees: no costs. `planned_eta` is the plan's estimate at\napproval; `eta` and the route are computed at assignment (null while unassigned)."
+      },
+      "ShipmentStatus": {
+        "type": "string",
+        "enum": [
+          "CREATED",
+          "ASSIGNED",
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "DELIVERED",
+          "RECONCILED"
+        ],
+        "title": "ShipmentStatus"
       },
       "ShortageCreate": {
         "properties": {
@@ -4982,6 +6402,126 @@
         ],
         "title": "Status"
       },
+      "StatusChangeOut": {
+        "properties": {
+          "from_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShipmentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_status": {
+            "$ref": "#/components/schemas/ShipmentStatus"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_status",
+          "to_status",
+          "at"
+        ],
+        "title": "StatusChangeOut"
+      },
+      "StatusIn": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ShipmentStatus",
+            "description": "The next state: PICKED_UP, IN_TRANSIT or DELIVERED, one step at a time."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "StatusIn"
+      },
+      "StopOut": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "stop_type": {
+            "$ref": "#/components/schemas/StopType"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "planned_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned At"
+          },
+          "actual_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "stop_type",
+          "place",
+          "lat",
+          "lng",
+          "planned_at",
+          "actual_at"
+        ],
+        "title": "StopOut"
+      },
+      "StopType": {
+        "type": "string",
+        "enum": [
+          "PICKUP",
+          "DROP"
+        ],
+        "title": "StopType"
+      },
       "StreamTicketOut": {
         "properties": {
           "ticket": {
@@ -5164,6 +6704,30 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VehicleOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "reg_no": {
+            "type": "string",
+            "title": "Reg No"
+          },
+          "has_cold_chain": {
+            "type": "boolean",
+            "title": "Has Cold Chain"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "reg_no",
+          "has_cold_chain"
+        ],
+        "title": "VehicleOut"
       },
       "VerificationMethod": {
         "type": "string",

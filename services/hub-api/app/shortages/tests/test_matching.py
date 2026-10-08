@@ -392,7 +392,9 @@ async def test_no_eligible_source_keeps_the_shortage_matching(
 async def test_cold_chain_products_need_a_cold_chain_vehicle_on_record(
     session: AsyncSession, world: World, products: dict[str, Product]
 ) -> None:
-    rdk = products["DIAG-RDK"]  # 2-8 C; no Vehicle table until S11, so none is on record
+    # 2-8 C; this test adds no Vehicle, so no cold-chain vehicle exists (S11 adds the query;
+    # app/shipments/tests/test_cold_chain_flow.py covers the passing case).
+    rdk = products["DIAG-RDK"]
     await add_batch(session, world.hospital_b, rdk, on_hand=500, expiry_days=240)
     authorize(session, rdk, world.hospital_b)
     shortage = await create(session, world, rdk, qty_required=200, qty_local_usable=0)

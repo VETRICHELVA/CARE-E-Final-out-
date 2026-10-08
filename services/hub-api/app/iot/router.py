@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -9,7 +10,7 @@ from app.auth.models import User
 from app.db import SessionDep
 from app.iot import service
 from app.iot.models import Device
-from app.iot.schemas import DeviceOut, TelemetryBatch, TelemetryResult
+from app.iot.schemas import DeviceAssignIn, DeviceOut, TelemetryBatch, TelemetryResult
 from app.pagination import Cursor, Limit, Page, paginate
 
 router = APIRouter(tags=["iot"])
@@ -39,3 +40,17 @@ async def list_devices(
     return Page[DeviceOut](
         items=[DeviceOut.model_validate(d) for d in rows], next_cursor=next_cursor
     )
+
+
+@router.post("/devices/{device_id}/assign")
+async def assign_device(
+    device_id: uuid.UUID, body: DeviceAssignIn, user: Dispatcher, session: SessionDep
+) -> DeviceOut:
+    """Put one of the caller's org's devices (403 for another org's) on a shipment the org
+    may see, or take it off with `shipment_id: null`. Its new readings are linked to the
+    shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
+    IN_TRANSIT. 409 if the shipment has arrived or already carries another device."""
+    device = await service.assign_device(session, user, device_id, body.shipment_id, body.reason)
+    out = DeviceOut.model_validate(device)
+    await session.commit()
+    return out

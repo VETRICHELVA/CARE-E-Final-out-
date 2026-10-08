@@ -42,7 +42,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # Started only with `--profile routing`; map data in ./osrm is prepared in S11.
+  # Started only with `--profile routing`; run ./osrm/prepare.sh first (see osrm/README.md).
   osrm:
     image: osrm/osrm-backend
     profiles: ["routing"]
