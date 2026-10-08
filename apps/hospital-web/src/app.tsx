@@ -1,4 +1,5 @@
 import { type AppConfig, CareApp } from "@care-e/ui";
+import { CopilotPanel } from "./copilot/copilot-panel";
 import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { DeliveriesPage } from "./pages/deliveries";
@@ -33,6 +34,8 @@ export const config: AppConfig = {
   ],
   routes: [{ path: "/shortages/:id", element: <ShortageDetailPage /> }],
   liveUpdates: true,
+  // The copilot (S13) on every screen; it reads the hub as the signed-in user, never writes.
+  aside: <CopilotPanel />,
 };
 
 export const App = () => <CareApp {...config} />;

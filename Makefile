@@ -5,7 +5,7 @@ export
 SERVICES := hub-api ai-service iot-ingest
 COMPOSE := docker compose -f infra/docker-compose.yml
 
-.PHONY: install up down hub worker ingest migrate migration client seed lint test test-hub test-web e2e
+.PHONY: install up down hub ai worker ingest migrate migration client seed lint test test-hub test-web e2e eval-ai
 
 install:
 	for s in $(SERVICES); do (cd services/$$s && uv sync) || exit 1; done
@@ -21,6 +21,11 @@ down:
 
 hub:
 	cd services/hub-api && uv run uvicorn --factory app.main:create_app --reload --port 8000
+
+# The AI service (copilot) on :8100; reads the hub only through GET /ai/read/*. Without
+# AI_API_KEY (or ANTHROPIC_API_KEY) it runs and answers "AI is not configured".
+ai:
+	cd services/ai-service && uv run uvicorn --factory app.main:create_app --reload --port 8100
 
 # MQTT telemetry -> hub every 2 s. Its INGEST_TOKEN must match the hub's.
 ingest:
@@ -64,3 +69,8 @@ test-web:
 e2e:
 	cd services/hub-api && uv run python ../../e2e/seed/scenario1.py
 	pnpm --filter e2e exec playwright test
+
+# The copilot eval (services/ai-service/evals): 15 Scenario 1 questions against the real model.
+# Skips (exit 0) without a key; otherwise needs `make up migrate seed` and the hub running.
+eval-ai:
+	cd services/ai-service && uv run python -m app.evals

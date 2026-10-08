@@ -50,8 +50,9 @@ function refreshOnce(): Promise<boolean> {
   return refreshing;
 }
 
-/** Adds the access token; on a 401 refreshes once and retries the request once. */
-async function authFetch(request: Request): Promise<Response> {
+/** Adds the access token; on a 401 refreshes once and retries the request once. Exported for
+ *  the AI service (hospital-web's copilot), which takes the same signed-in user's token. */
+export async function authFetch(request: Request): Promise<Response> {
   const retry = request.clone();
   const sent = accessToken();
   const response = await fetch(withToken(request));

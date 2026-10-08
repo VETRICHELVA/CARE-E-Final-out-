@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 
 from app import errors, log
+from app.ai.guard import AiTokenGuard
+from app.ai.router import router as ai_router
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
 from app.catalog.router import router as catalog_router
@@ -30,6 +32,7 @@ def create_app() -> FastAPI:
     )
     errors.install(app)
     log.install(app)
+    app.add_middleware(AiTokenGuard)  # the AI token opens GET /ai/read/* only (S13)
     for router in (
         auth_router,
         orgs_router,
@@ -46,6 +49,7 @@ def create_app() -> FastAPI:
         shipments_router,
         receiving_router,
         notifications_router,
+        ai_router,
     ):
         app.include_router(router, prefix=API)
 

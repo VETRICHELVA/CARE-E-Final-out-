@@ -33,6 +33,8 @@ export type AppConfig = {
   routes?: ExtraRoute[];
   /** Refresh screens from the hub's event stream (`useEventStream`) instead of polling. */
   liveUpdates?: boolean;
+  /** Rendered on every signed-in screen after the page, e.g. hospital-web's copilot panel. */
+  aside?: ReactNode;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
@@ -40,7 +42,8 @@ function AppShell({
   name,
   nav,
   liveUpdates = false,
-}: Pick<AppConfig, "name" | "nav" | "liveUpdates">) {
+  aside,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "aside">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
@@ -85,6 +88,7 @@ function AppShell({
       <main className="mx-auto max-w-6xl p-4">
         <Outlet />
       </main>
+      {aside}
     </div>
   );
 }
@@ -94,7 +98,7 @@ const placeholder = (label: string) => (
 );
 
 /** One app: sign-in, the org-type gate, the header and nav, and its screens. */
-export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }: AppConfig) {
+export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates, aside }: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
   useEffect(
@@ -107,7 +111,9 @@ export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }:
         <Routes>
           <Route path="/login" element={<LoginPage appName={name} />} />
           <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
-            <Route element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} />}>
+            <Route
+              element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} aside={aside} />}
+            >
               {nav.map((item) => (
                 <Route
                   key={item.to}
