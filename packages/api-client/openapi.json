@@ -2426,6 +2426,73 @@
           }
         }
       }
+    },
+    "/api/v1/network/demand": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Demand",
+        "description": "Open shortfall totals for each product the caller's supplier org offers (one row per\noffer, oldest offer first; 0 when nothing is open). Totals only: no hospital, facility,\nshortage or count of them.",
+        "operationId": "network_demand_api_v1_network_demand_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_DemandOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2988,6 +3055,28 @@
         ],
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
+      },
+      "DemandOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "open_shortfall_qty": {
+            "type": "integer",
+            "title": "Open Shortfall Qty",
+            "description": "Sum of the hub-computed shortfall of every other org's shortage for this product that is OPEN, MATCHING or AWAITING_DECISION; 0 when there is none."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "product_id",
+          "open_shortfall_qty"
+        ],
+        "title": "DemandOut",
+        "description": "Open network demand for one product the caller's supplier org offers. Aggregated over\nevery hospital: no hospital, facility, shortage or count of either (CLAUDE.md rule 6)."
       },
       "DeviceOut": {
         "properties": {
@@ -3557,6 +3646,33 @@
           "items"
         ],
         "title": "Page[BatchOut]"
+      },
+      "Page_DemandOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DemandOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[DemandOut]"
       },
       "Page_DeviceOut_": {
         "properties": {

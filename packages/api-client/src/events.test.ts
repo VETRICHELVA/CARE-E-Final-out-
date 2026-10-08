@@ -46,6 +46,10 @@ const KEYS = {
   products: ["/api/v1/products"],
   batches: ["/api/v1/inventory/batches"],
   offers: ["/api/v1/supplier-offers"],
+  demand: ["/api/v1/network/demand"],
+  ordersSent: ["/api/v1/purchase-orders", { status: "SENT" }],
+  order1: ["/api/v1/purchase-orders", { purchase_order_id: "po1" }],
+  order2: ["/api/v1/purchase-orders", { purchase_order_id: "po2" }],
   shortages: ["/api/v1/shortages"],
   shortage1: ["/api/v1/shortages/{shortage_id}", { shortage_id: "s1" }],
   shortage2: ["/api/v1/shortages/{shortage_id}", { shortage_id: "s2" }],
@@ -133,7 +137,17 @@ describe("useEventStream's connection", () => {
       ],
     ],
     ["inventory.changed", { batch_ids: ["b1"], product_ids: ["p1"] }, ["batches", "audit1"]],
-    ["supplier_offer.changed", { offer_id: "o1", product_id: "p1" }, ["offers", "audit1"]],
+    [
+      "supplier_offer.changed",
+      { offer_id: "o1", product_id: "p1" },
+      ["offers", "demand", "audit1"],
+    ],
+    [
+      // Only that order's own view, the order lists and the supplier's demand (S10).
+      "purchase_order.status_changed",
+      { purchase_order_id: "po1", from: "SENT", to: "ACKNOWLEDGED" },
+      ["ordersSent", "order1", "demand", "shortage1", "shortage2", "audit1"],
+    ],
     ["coldchain.reading", { shipment_id: "x", temp_c: 4, ts: "" }, []],
     ["not.a.real.event", {}, []],
   ])("on %s invalidates exactly the right query keys", async (type, data, expected) => {

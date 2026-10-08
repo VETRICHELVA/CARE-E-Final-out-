@@ -2,10 +2,11 @@
 // fetch, send and refresh. Never compute a hub figure (shortfall, transferable, rank) here.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, client, type Schemas, unwrap } from "@care-e/api-client";
-import { useMe } from "@care-e/ui";
+import { nextCursor, PAGE_LIMIT as PAGE, productsKey, reasonBody, useMe } from "@care-e/ui";
 
+export { useProducts } from "@care-e/ui";
+export type { Product } from "@care-e/ui";
 export type Batch = Schemas["BatchOut"];
-export type Product = Schemas["ProductOut"];
 export type Facility = Schemas["FacilityOut"];
 export type Shortage = Schemas["ShortageOut"];
 export type MatchRun = Schemas["MatchRunOut"];
@@ -18,13 +19,11 @@ type SourceRequestQuery = {
   shortage_id?: string;
 };
 
-const PAGE = 200; // the hub's maximum `limit`
-
 // Query keys are [path template, params]: `useEventStream()` (on in app.tsx) invalidates
 // them by path when the hub reports a change, so no screen polls.
 export const keys = {
   batches: ["/api/v1/inventory/batches"] as const,
-  products: ["/api/v1/products"] as const,
+  products: productsKey,
   facilities: (orgId: string) => ["/api/v1/orgs/{org_id}/facilities", { org_id: orgId }] as const,
   shortages: ["/api/v1/shortages"] as const,
   shortage: (id: string) => ["/api/v1/shortages/{shortage_id}", { shortage_id: id }] as const,
@@ -37,7 +36,6 @@ export const keys = {
 };
 
 type Cursor = string | undefined;
-const nextCursor = (page: { next_cursor?: string | null }) => page.next_cursor ?? undefined;
 
 /** Own org's batches, oldest first, a page at a time. */
 export function useBatches() {
@@ -65,27 +63,6 @@ export function useShortages(enabled = true) {
     initialPageParam: undefined as Cursor,
     getNextPageParam: nextCursor,
     enabled,
-  });
-}
-
-/** The whole catalog (40 products), keyed by id: batches and shortages carry only `product_id`. */
-export function useProducts() {
-  return useQuery({
-    queryKey: keys.products,
-    queryFn: async () => {
-      const all: Product[] = [];
-      let cursor: Cursor;
-      do {
-        const page = await unwrap(
-          client.GET("/api/v1/products", { params: { query: { limit: PAGE, cursor } } }),
-        );
-        all.push(...page.items);
-        cursor = nextCursor(page);
-      } while (cursor);
-      return all;
-    },
-    select: (products) => ({ list: products, byId: new Map(products.map((p) => [p.id, p])) }),
-    staleTime: 5 * 60_000,
   });
 }
 
@@ -252,9 +229,6 @@ function useRefreshShortage(id: string) {
       ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
     );
 }
-
-/** No reason typed → no body, and the hub records "No reason was entered." itself. */
-const reasonBody = (reason: string | undefined) => (reason ? { reason } : undefined);
 
 // ---- Source request answers (`source_request.respond`, source org only) ----
 

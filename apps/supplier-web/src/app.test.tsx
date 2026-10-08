@@ -5,8 +5,8 @@ import { App, config } from "./app";
 
 const ORG_TYPES = ["HOSPITAL", "SUPPLIER", "LOGISTICS", "PLATFORM"];
 
-/** Signs in a user of `orgType`; the fake hub answers `/auth/me`. */
-function signInAs(orgType: string) {
+/** Signs in a user of `orgType`; the fake hub answers `/auth/me` (and nothing else). */
+function signInAs(orgType: string, capabilities = ["po.respond", "source_request.respond"]) {
   useAuth.setState({ tokens: { access: "a", refresh: "r" } });
   const me = {
     user: { id: "u1", email: "t@x.demo", full_name: "Test User", org_id: "o1", is_active: true },
@@ -18,7 +18,7 @@ function signInAs(orgType: string) {
       location: { lat: 0, lng: 0 },
     },
     roles: [],
-    capabilities: [],
+    capabilities,
   };
   vi.stubGlobal(
     "fetch",
@@ -47,6 +47,19 @@ describe(config.name, () => {
     expect(screen.getByText(orgType)).toBeTruthy();
     for (const { label } of config.nav)
       expect(screen.getByRole("link", { name: label })).toBeTruthy();
+  });
+
+  it("hides purchase orders and network demand from a user without po.respond", async () => {
+    signInAs("SUPPLIER", ["shipment.assign"]);
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "Dashboard" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Catalog and offers" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Purchase orders" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Network demand" })).toBeNull();
+  });
+
+  it("turns on live updates instead of polling", () => {
+    expect(config.liveUpdates).toBe(true);
   });
 
   it.each(ORG_TYPES.filter((t) => !config.allow.includes(t)))(
