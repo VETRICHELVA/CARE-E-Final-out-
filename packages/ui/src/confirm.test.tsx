@@ -46,4 +46,17 @@ describe("ConfirmDialog", () => {
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
+
+  it("styles the trigger with triggerClassName", () => {
+    render(
+      <ConfirmDialog
+        trigger="Picked up"
+        title="Record the pickup?"
+        confirmLabel="Yes"
+        triggerClassName="h-14 w-full"
+        onConfirm={async () => undefined}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Picked up" }).className).toContain("h-14 w-full");
+  });
 });
