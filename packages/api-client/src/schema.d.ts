@@ -1004,6 +1004,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/routes/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Optimize Route
+         * @description A stop order for one of the caller's org's drivers over unassigned shipments,
+         *     starting now: each pickup before its drop, each drop by its shortage's `required_by`,
+         *     each cold-chain shipment within the cold-chain ride limit (business-rules.md §4).
+         *     Shipments that cannot fit come back in `infeasible` with a reason. Writes nothing.
+         *     403 for another org's driver, vehicle or a shipment the caller's org cannot see; 409
+         *     unless every shipment is CREATED.
+         */
+        post: operations["optimize_route_api_v1_routes_optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Route
+         * @description Plans again and assigns the driver and vehicle to every feasible shipment (as
+         *     POST /shipments/{id}/assign does, with its checks and audit rows), with each stop's
+         *     `planned_at` and the ETA from the plan. All or nothing; 409 `conflict` if no shipment
+         *     fits, `invalid_transition` unless every shipment is CREATED.
+         */
+        post: operations["apply_route_api_v1_routes_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shipments/{shipment_id}/receipt": {
         parameters: {
             query?: never;
@@ -1074,6 +1122,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApplyIn */
+        ApplyIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Shipment Ids
+             * @description Unassigned (CREATED) shipments the caller's org may see; repeats count once.
+             */
+            shipment_ids: string[];
+            /**
+             * Timezone
+             * @description IANA time zone for the times in the reasons, e.g. Asia/Kolkata.
+             * @default UTC
+             */
+            timezone: string;
+            /**
+             * Vehicle Id
+             * Format: uuid
+             */
+            vehicle_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ApprovalOut */
         ApprovalOut: {
             recommendation: components["schemas"]["RecommendationOut"];
@@ -1492,6 +1566,19 @@ export interface components {
             /** Errors */
             errors: components["schemas"]["RowError"][];
         };
+        /** InfeasibleOut */
+        InfeasibleOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /**
+             * Reason
+             * @description Why the shipment cannot be in this route, in plain words.
+             */
+            reason: string;
+        };
         /** Location */
         Location: {
             /** Lat */
@@ -1657,6 +1744,30 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** OptimizeIn */
+        OptimizeIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Shipment Ids
+             * @description Unassigned (CREATED) shipments the caller's org may see; repeats count once.
+             */
+            shipment_ids: string[];
+            /**
+             * Timezone
+             * @description IANA time zone for the times in the reasons, e.g. Asia/Kolkata.
+             * @default UTC
+             */
+            timezone: string;
+            /**
+             * Vehicle Id
+             * @description Optional: with a vehicle without cold chain, cold-chain shipments are reported infeasible.
+             */
+            vehicle_id?: string | null;
         };
         /** OrgOut */
         OrgOut: {
@@ -2207,12 +2318,76 @@ export interface components {
          * @enum {string}
          */
         RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
+        /** RouteApplyOut */
+        RouteApplyOut: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /** Vehicle Id */
+            vehicle_id: string | null;
+            /** Stops */
+            stops: components["schemas"]["RouteStopOut"][];
+            /** Infeasible */
+            infeasible: components["schemas"]["InfeasibleOut"][];
+            /**
+             * Assigned Shipment Ids
+             * @description The feasible shipments, now ASSIGNED to the driver, in pickup order.
+             */
+            assigned_shipment_ids: string[];
+        };
+        /**
+         * RoutePlanOut
+         * @description A stop order for one driver: every pickup before its drop, every drop by its
+         *     shortage's `required_by`, every cold-chain shipment within the cold-chain ride limit.
+         *     Shipments that cannot fit are in `infeasible`, never left out silently.
+         */
+        RoutePlanOut: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /** Vehicle Id */
+            vehicle_id: string | null;
+            /** Stops */
+            stops: components["schemas"]["RouteStopOut"][];
+            /** Infeasible */
+            infeasible: components["schemas"]["InfeasibleOut"][];
+        };
         /**
          * RouteProvider
          * @description Which provider gave a stored route: OSRM, or the haversine fallback (§4).
          * @enum {string}
          */
         RouteProvider: "OSRM" | "HAVERSINE";
+        /** RouteStopOut */
+        RouteStopOut: {
+            /**
+             * Seq
+             * @description 1-based position in the route.
+             */
+            seq: number;
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            type: components["schemas"]["StopType"];
+            /** Place */
+            place: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Eta
+             * Format: date-time
+             * @description Planned arrival at the stop.
+             */
+            eta: string;
+        };
         /** RowError */
         RowError: {
             /** Line */
@@ -4522,6 +4697,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_VehicleOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    optimize_route_api_v1_routes_optimize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptimizeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_route_api_v1_routes_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteApplyOut"];
                 };
             };
             /** @description Validation Error */

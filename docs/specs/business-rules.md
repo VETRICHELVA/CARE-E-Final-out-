@@ -40,6 +40,7 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 - Hospital landed cost = qty × batch unit_cost_paise + transport + handling fee (`HANDLING_FEE_PCT`, default 2% of item value).
 - Supplier landed cost = qty × unit_price_paise + transport.
 - Supplier ETA = lead_time_hours + transport ETA.
+- Cold-chain maximum ride time (S16): a cold-chain shipment may spend at most `COLD_CHAIN_MAX_TRANSIT_HOURS` (default 4) between pickup and drop, counted from arriving at its pickup to arriving at its drop (so the handover allowance and every stop in between count). The route planner reports a shipment that cannot meet it as infeasible.
 
 ## 5. Ranking (eligible candidates only)
 - **CRITICAL:** earliest ETA → highest reliability score → lowest landed cost.

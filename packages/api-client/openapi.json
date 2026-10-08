@@ -3222,6 +3222,100 @@
         }
       }
     },
+    "/api/v1/routes/optimize": {
+      "post": {
+        "tags": [
+          "routes"
+        ],
+        "summary": "Optimize Route",
+        "description": "A stop order for one of the caller's org's drivers over unassigned shipments,\nstarting now: each pickup before its drop, each drop by its shortage's `required_by`,\neach cold-chain shipment within the cold-chain ride limit (business-rules.md \u00a74).\nShipments that cannot fit come back in `infeasible` with a reason. Writes nothing.\n403 for another org's driver, vehicle or a shipment the caller's org cannot see; 409\nunless every shipment is CREATED.",
+        "operationId": "optimize_route_api_v1_routes_optimize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutePlanOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/routes/apply": {
+      "post": {
+        "tags": [
+          "routes"
+        ],
+        "summary": "Apply Route",
+        "description": "Plans again and assigns the driver and vehicle to every feasible shipment (as\nPOST /shipments/{id}/assign does, with its checks and audit rows), with each stop's\n`planned_at` and the ETA from the plan. All or nothing; 409 `conflict` if no shipment\nfits, `invalid_transition` unless every shipment is CREATED.",
+        "operationId": "apply_route_api_v1_routes_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteApplyOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/shipments/{shipment_id}/receipt": {
       "post": {
         "tags": [
@@ -3412,6 +3506,57 @@
   },
   "components": {
     "schemas": {
+      "ApplyIn": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "shipment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "minItems": 1,
+            "title": "Shipment Ids",
+            "description": "Unassigned (CREATED) shipments the caller's org may see; repeats count once."
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone",
+            "description": "IANA time zone for the times in the reasons, e.g. Asia/Kolkata.",
+            "default": "UTC"
+          },
+          "vehicle_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Vehicle Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "driver_id",
+          "shipment_ids",
+          "vehicle_id"
+        ],
+        "title": "ApplyIn"
+      },
       "ApprovalOut": {
         "properties": {
           "recommendation": {
@@ -4371,6 +4516,26 @@
         ],
         "title": "ImportResult"
       },
+      "InfeasibleOut": {
+        "properties": {
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the shipment cannot be in this route, in plain words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "shipment_id",
+          "reason"
+        ],
+        "title": "InfeasibleOut"
+      },
       "Location": {
         "properties": {
           "lat": {
@@ -4728,6 +4893,53 @@
           "updated_at"
         ],
         "title": "OfferOut"
+      },
+      "OptimizeIn": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "shipment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "minItems": 1,
+            "title": "Shipment Ids",
+            "description": "Unassigned (CREATED) shipments the caller's org may see; repeats count once."
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone",
+            "description": "IANA time zone for the times in the reasons, e.g. Asia/Kolkata.",
+            "default": "UTC"
+          },
+          "vehicle_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Id",
+            "description": "Optional: with a vehicle without cold chain, cold-chain shipments are reported infeasible."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "driver_id",
+          "shipment_ids"
+        ],
+        "title": "OptimizeIn"
       },
       "OrgOut": {
         "properties": {
@@ -6095,6 +6307,103 @@
         ],
         "title": "RequestStatus"
       },
+      "RouteApplyOut": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "vehicle_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Id"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/RouteStopOut"
+            },
+            "type": "array",
+            "title": "Stops"
+          },
+          "infeasible": {
+            "items": {
+              "$ref": "#/components/schemas/InfeasibleOut"
+            },
+            "type": "array",
+            "title": "Infeasible"
+          },
+          "assigned_shipment_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Assigned Shipment Ids",
+            "description": "The feasible shipments, now ASSIGNED to the driver, in pickup order."
+          }
+        },
+        "type": "object",
+        "required": [
+          "driver_id",
+          "vehicle_id",
+          "stops",
+          "infeasible",
+          "assigned_shipment_ids"
+        ],
+        "title": "RouteApplyOut"
+      },
+      "RoutePlanOut": {
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driver Id"
+          },
+          "vehicle_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle Id"
+          },
+          "stops": {
+            "items": {
+              "$ref": "#/components/schemas/RouteStopOut"
+            },
+            "type": "array",
+            "title": "Stops"
+          },
+          "infeasible": {
+            "items": {
+              "$ref": "#/components/schemas/InfeasibleOut"
+            },
+            "type": "array",
+            "title": "Infeasible"
+          }
+        },
+        "type": "object",
+        "required": [
+          "driver_id",
+          "vehicle_id",
+          "stops",
+          "infeasible"
+        ],
+        "title": "RoutePlanOut",
+        "description": "A stop order for one driver: every pickup before its drop, every drop by its\nshortage's `required_by`, every cold-chain shipment within the cold-chain ride limit.\nShipments that cannot fit are in `infeasible`, never left out silently."
+      },
       "RouteProvider": {
         "type": "string",
         "enum": [
@@ -6103,6 +6412,52 @@
         ],
         "title": "RouteProvider",
         "description": "Which provider gave a stored route: OSRM, or the haversine fallback (\u00a74)."
+      },
+      "RouteStopOut": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq",
+            "description": "1-based position in the route."
+          },
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/StopType"
+          },
+          "place": {
+            "type": "string",
+            "title": "Place"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "eta": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Eta",
+            "description": "Planned arrival at the stop."
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "shipment_id",
+          "type",
+          "place",
+          "lat",
+          "lng",
+          "eta"
+        ],
+        "title": "RouteStopOut"
       },
       "RowError": {
         "properties": {

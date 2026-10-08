@@ -23,6 +23,7 @@ class Tunables(BaseSettings):
     handover_hours: NonNegInt = 1
     transport_rate_paise_per_km: NonNegInt = 2_500  # Rs 25/km
     handling_fee_pct: NonNegInt = 2  # % of item value, hospital sources; integer maths
+    cold_chain_max_transit_hours: Pos = 4  # pickup to drop, cold-chain shipments (S16)
 
     # §3 Eligibility gates: freshness
     verified_within_critical_hours: Pos = 24
@@ -59,6 +60,7 @@ AVG_SPEED_KMH = _t.avg_speed_kmh
 HANDOVER_HOURS = _t.handover_hours
 TRANSPORT_RATE_PAISE_PER_KM = _t.transport_rate_paise_per_km
 HANDLING_FEE_PCT = _t.handling_fee_pct
+COLD_CHAIN_MAX_TRANSIT = timedelta(hours=_t.cold_chain_max_transit_hours)
 
 # §3 Eligibility gates: freshness
 VERIFIED_WITHIN_CRITICAL = timedelta(hours=_t.verified_within_critical_hours)
