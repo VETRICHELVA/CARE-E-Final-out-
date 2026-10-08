@@ -19,6 +19,8 @@ type ConfirmProps = {
   description?: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
+  /** Extra classes for the trigger button, e.g. a large full-width button on a phone. */
+  triggerClassName?: string;
   /** Called with the typed reason, or undefined when the box was left empty. A rejection
    *  keeps the dialog open and shows the error's message (the hub's own words). */
   onConfirm: (reason: string | undefined) => Promise<unknown>;
@@ -32,6 +34,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   destructive,
+  triggerClassName,
   onConfirm,
 }: ConfirmProps) {
   const id = useId();
@@ -63,7 +66,9 @@ export function ConfirmDialog({
   return (
     <Dialog open={open} onOpenChange={change}>
       <DialogTrigger asChild>
-        <Button variant={destructive ? "outline" : "default"}>{trigger}</Button>
+        <Button variant={destructive ? "outline" : "default"} className={triggerClassName}>
+          {trigger}
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

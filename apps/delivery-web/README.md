@@ -1,3 +1,13 @@
 # delivery-web
 
-The delivery app (React 18, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Query): drivers see assigned shipments and routes, record pickup and drop-off, and see cold-chain status. It only displays what the hub decides and reaches the hub only through `packages/api-client`. Scaffolded in S03.
+The delivery app (React 19, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Query, Leaflet): the logistics partner's dispatchers assign drivers and vehicles to shipments and manage cold boxes, and drivers move their shipments through pickup and delivery from a phone. It only displays what the hub decides and reaches the hub only through `packages/api-client`. Scaffolded in S03; screens built in S11 (with the S14 device actions). Mobile-first, down to 360 px.
+
+- `/` dispatch board: unassigned (CREATED) shipments with pickup, drop, deadline, quantity and cold-chain flag, and a status filter; Assign (driver and vehicle; a cold-chain shipment offers only cold-chain vehicles, and the hub's refusal is shown as is) for `shipment.assign` users. A driver-only user is sent to `/driver`.
+- `/shipments/:id` shipment detail: Leaflet map of the hub's stored route, pickup, drop and the driver's last position (refreshed by `shipment.location` events), ETA, route distance and source, status history, Unassign (carrier, while ASSIGNED), the assigned driver's next step, and the cold box riding with it (attach, take off).
+- `/fleet` (`shipment.assign`): drivers, vehicles, and cold boxes with battery, last seen and their shipment; attach a box to a shipment on the way, or take it off.
+- `/driver` (`shipment.update_status`): the driver's own jobs (`assigned_to_me=true`), one large button for the next step (Picked up, In transit, Delivered), and "Share location", which sends the phone's position for each job on the way every 30 s while the page is open.
+- `/plan` route planner: placeholder until S16.
+
+Map tiles come from OpenStreetMap (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`); set `VITE_MAP_TILE_URL` (and `VITE_MAP_TILE_ATTRIBUTION`) to use another tile server.
+
+Run with `pnpm --filter delivery-web dev` (:5175, `/api` proxied to the hub on :8000). Screens refresh from the hub's event stream (`liveUpdates: true`); nothing polls. Tests: `pnpm --filter delivery-web test` (Vitest + Testing Library against a fake hub from `@care-e/ui/testing`; `src/test/setup.ts` swaps react-leaflet for plain stand-ins in jsdom). The 360 px driver flow is `e2e/tests/driver-jobs.spec.ts`.
