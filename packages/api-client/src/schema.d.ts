@@ -893,7 +893,7 @@ export interface paths {
          *     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
          *     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
          *     409 unless CREATED, and 409 `conflict` when the held stock is at more than one of the
-         *     source's facilities (plan it with the route planner). Any device on it comes off.
+         *     source's facilities (one pickup per shipment). Any device on it comes off.
          */
         post: operations["assign_shipment_api_v1_shipments__shipment_id__assign_post"];
         delete?: never;

@@ -16,6 +16,7 @@ from app.catalog.models import Product
 from app.conftest import ClientFor, World
 from app.domain.costing import HaversineProvider, Point, transport_eta_hours
 from app.domain.events import EventType
+from app.domain.fulfillment import MULTI_FACILITY
 from app.inventory.models import InventoryBatch
 from app.orgs.models import Facility
 from app.recommendations.tests.conftest import audit_of, outbox
@@ -299,7 +300,7 @@ async def test_assign_refuses_stock_held_at_more_than_one_facility(
     assert r.status_code == 409
     assert r.json() == {
         "code": "conflict",
-        "message": "Stock is at more than one facility; plan it with the route planner",
+        "message": MULTI_FACILITY,
         "details": {"reason": "multiple_pickup_facilities", "facility_count": 2},
     }
     await session.refresh(shipment)

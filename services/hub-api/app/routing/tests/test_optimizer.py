@@ -136,8 +136,9 @@ def test_shipments_that_fit_alone_but_not_together_leave_one_out_with_a_reason()
     assert len(served) == 1 and bad.shipment_id not in served
     dropped = next(o for o in orders if o.shipment_id == bad.shipment_id)
     assert bad.reason == (
-        f"Cannot reach {dropped.drop_place} before 13:30 IST together with the other "
-        "shipments in this route."
+        "The route search (5 s) found no order that also reaches "
+        f"{dropped.drop_place} by 13:30 IST with the other shipments in this route; "
+        "plan it separately."
     )
     check_windows(result, orders)
 
@@ -195,8 +196,9 @@ def test_a_cold_chain_pair_that_can_only_be_served_over_the_limit_is_infeasible(
     result = plan(cold, PAIR, NOW, IST)
     (bad,) = result.infeasible
     assert bad.reason == (
-        f"Cannot reach Hospital {bad.shipment_id.int} before 17:30 IST within the 4 h "
-        "cold-chain ride limit together with the other shipments in this route."
+        "The route search (5 s) found no order that also reaches "
+        f"Hospital {bad.shipment_id.int} by 17:30 IST within the 4 h cold-chain ride limit "
+        "with the other shipments in this route; plan it separately."
     )
     assert len(result.stops) == 2
     check_windows(result, cold)
@@ -296,3 +298,41 @@ def test_spans_and_clock_times_read_plainly() -> None:
 
 def test_no_shipments_no_stops() -> None:
     assert plan([], [], NOW, UTC) == Plan([], [])
+
+
+def test_a_route_greedy_descent_misses_is_found_by_the_guided_fallback() -> None:
+    """From the S16 review: greedy descent alone serves only one of these three, though
+    P0 -> P1 -> D1 -> D0 (and job 2 after) fits; plan() falls back to guided search."""
+    travel = [
+        [0, 4137, 1628, 3814, 3802, 4927],
+        [4137, 0, 4101, 1332, 5662, 4405],
+        [1628, 4101, 0, 3276, 2251, 3442],
+        [3814, 1332, 3276, 0, 4485, 3076],
+        [3802, 5662, 2251, 4485, 0, 2737],
+        [4927, 4405, 3442, 3076, 2737, 0],
+    ]
+    deadlines = [14697, 15112, 11745]
+    orders = [order(n, deadline_h=d / HOUR) for n, d in enumerate(deadlines)]
+    greedy = solve(
+        travel, [HANDOVER, 0] * 3, [Job(0, 1, 14697), Job(2, 3, 15112), Job(4, 5, 11745)]
+    )
+    assert greedy.left_out  # the fast pass alone misses a feasible route
+    result = plan(orders, travel, NOW, IST, time_limit=timedelta(seconds=2))
+    assert len(greedy.left_out) == 2  # greedy serves one
+    assert [i.shipment_id for i in result.infeasible] == [uuid.UUID(int=2)]  # guided: two
+    assert len(result.stops) == 4
+
+
+def test_a_shipment_with_several_pickups_is_infeasible_with_the_reason() -> None:
+    blocked = Order(**{**order(1, deadline_h=8).__dict__, "blocked": "several pickups"})
+    result = plan([order(0, deadline_h=8), blocked], uniform(4, 20), NOW, IST)
+    assert [(i.shipment_id, i.reason) for i in result.infeasible] == [
+        (uuid.UUID(int=1), "several pickups")
+    ]
+    assert {s.shipment_id for s in result.stops} == {uuid.UUID(int=0)}
+
+
+def test_an_earliest_arrival_seconds_past_the_deadline_rounds_up() -> None:
+    at = NOW.replace(hour=8, minute=30, second=40)  # 14:00:40 IST
+    assert optimizer.clock(at, NOW, IST, up=True) == "14:01 IST"
+    assert optimizer.clock(at, NOW, IST) == "14:00 IST"

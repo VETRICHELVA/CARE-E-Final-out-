@@ -17,6 +17,7 @@ and every cold-chain shipment within COLD_CHAIN_MAX_TRANSIT (business-rules.md Â
 Everything here is pure (no database); the service runs `plan` in a worker thread."""
 
 import math
+import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -75,6 +76,9 @@ class Visit:
 class Solution:
     visits: list[Visit]  # in driving order
     left_out: list[int]  # job indices that could not be served
+
+
+GUIDED_HEADROOM = timedelta(milliseconds=500)
 
 
 def search_parameters(time_limit: timedelta = SEARCH_LIMIT, *, guided: bool = False) -> Any:
@@ -178,6 +182,7 @@ class Order:
     drop: Point
     required_by: datetime
     cold_chain: bool
+    blocked: str | None = None  # a reason it cannot be planned at all (e.g. several pickups)
 
 
 @dataclass(frozen=True)
@@ -206,8 +211,12 @@ def points_of(orders: Sequence[Order]) -> list[Point]:
     return [p for o in orders for p in (o.pickup, o.drop)]
 
 
-def clock(at: datetime, now: datetime, tz: tzinfo) -> str:
-    """'14:00 IST' today, '9 Oct 14:00 IST' on another day, in the planner's time zone."""
+def clock(at: datetime, now: datetime, tz: tzinfo, *, up: bool = False) -> str:
+    """'14:00 IST' today, '9 Oct 14:00 IST' on another day, in the planner's time zone.
+    `up` rounds a part minute up (an earliest arrival at 14:00:40 is "14:01", never a
+    time at or before a 14:00 deadline it misses)."""
+    if up and (at.second or at.microsecond):
+        at = at.replace(second=0, microsecond=0) + timedelta(minutes=1)
     local = at.astimezone(tz)
     day = "" if local.date() == now.astimezone(tz).date() else f"{local.day} {local:%b} "
     return f"{day}{local:%H:%M} {local.tzname()}".rstrip()
@@ -248,7 +257,9 @@ def plan(
         refusal = (
             cold_chain_vehicle_refusal(o.cold_chain, vehicle[0], vehicle[1]) if vehicle else None
         )
-        if refusal:
+        if o.blocked:
+            reasons[k] = o.blocked
+        elif refusal:
             reasons[k] = refusal
         elif deadline < 0:
             reasons[k] = f"Cannot reach {o.drop_place} before {by}: that time has passed."
@@ -258,7 +269,7 @@ def plan(
                 f"the handover, over the {limit} cold-chain limit."
             )
         elif direct > deadline:
-            earliest = clock(now + timedelta(seconds=direct), now, tz)
+            earliest = clock(now + timedelta(seconds=direct), now, tz, up=True)
             reasons[k] = (
                 f"Cannot reach {o.drop_place} before {by}: even going straight there, "
                 f"the earliest arrival is {earliest}."
@@ -269,17 +280,30 @@ def plan(
                 Job(2 * k, 2 * k + 1, math.floor(deadline), int(max_ride) if o.cold_chain else None)
             )
 
+    # A fast first pass (greedy descent); only if it leaves a shipment out, guided local
+    # search over the full time limit, since greedy descent can stop at a local optimum
+    # that misses a route serving everything.
+    started = time.monotonic()
     solution = solve(travel, service, jobs, time_limit=time_limit)
+    # The guided pass gets what is left of the limit, less headroom for OR-Tools' own
+    # overrun, so the whole search stays within the brief's 5 s.
+    left = time_limit - timedelta(seconds=time.monotonic() - started) - GUIDED_HEADROOM
+    if solution.left_out and left > timedelta(milliseconds=100):
+        guided = solve(travel, service, jobs, time_limit=left, guided=True)
+        if len(guided.left_out) < len(solution.left_out):
+            solution = guided
+    searched = f"{time_limit.total_seconds():g} s"
     for j in solution.left_out:
         k = candidates[j]
         o = orders[k]
         by = clock(o.required_by, now, tz)
+        # Each shipment fits on its own (checked above); the search did not prove the
+        # combination impossible, so the reason says only what it found.
         reasons[k] = (
-            f"Cannot reach {o.drop_place} before {by} within the {limit} cold-chain ride "
-            "limit together with the other shipments in this route."
-            if o.cold_chain
-            else f"Cannot reach {o.drop_place} before {by} together with the other shipments "
-            "in this route."
+            f"The route search ({searched}) found no order that also reaches "
+            f"{o.drop_place} by {by}"
+            + (f" within the {limit} cold-chain ride limit" if o.cold_chain else "")
+            + " with the other shipments in this route; plan it separately."
         )
     stops = []
     for visit in solution.visits:

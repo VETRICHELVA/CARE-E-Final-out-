@@ -337,7 +337,7 @@ async def own_vehicle(session: AsyncSession, user: User, vehicle_id: uuid.UUID) 
     return vehicle
 
 
-async def _pickup_facilities(session: AsyncSession, shipment: Shipment) -> int:
+async def pickup_facilities(session: AsyncSession, shipment: Shipment) -> int:
     """How many of the source's facilities hold the shipment's FIRM holds."""
     if shipment.source_request_id is None:
         return 1  # a purchase order: one pickup at the supplier
@@ -404,7 +404,7 @@ async def assign(
     now = now or datetime.now(UTC)
     shipment = await get_visible(session, user, shipment_id, lock=True)
     _check(shipment, S.ASSIGNED, S.ASSIGNED in SHIPMENT_TRANSITIONS.get(shipment.status, set()))
-    facilities = await _pickup_facilities(session, shipment)
+    facilities = await pickup_facilities(session, shipment)
     if facilities > 1:
         raise AppError(
             409,

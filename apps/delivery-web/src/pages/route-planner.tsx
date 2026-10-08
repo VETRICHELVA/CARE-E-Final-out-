@@ -100,7 +100,7 @@ function PlanView({ plan, byId }: { plan: RoutePlan; byId: Map<string, Shipment>
                 </Badge>
                 <span className="font-medium">{stop.place}</span>
                 <span className="text-muted-foreground">{name(stop.shipment_id)}</span>
-                <span className="ml-auto">{formatDateTime(stop.eta)}</span>
+                <span className="ml-auto">Planned {formatDateTime(stop.eta)}</span>
               </li>
             ))}
           </ol>
@@ -304,7 +304,7 @@ export function RoutePlannerPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>{applied ? "Route applied" : "Plan"}</CardTitle>
+            <CardTitle>{applied ? "Planned route assigned" : "Plan"}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             {result === null ? (

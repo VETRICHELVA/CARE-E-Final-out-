@@ -87,7 +87,9 @@ PICKUP_RECORDED = "The driver recorded the pickup of this shipment."
 CARRIER_CHANGED = "The shipment's carrier changed, so the device was taken off it."
 # Assign refuses a shipment whose FIRM holds sit at several facilities of the source
 # (business-rules.md §8: a limitation until S16's route planner plans multi-stop pickups).
-MULTI_FACILITY = "Stock is at more than one facility; plan it with the route planner"
+MULTI_FACILITY = (
+    "Stock is held at more than one of the source's facilities; a shipment can have only one pickup"
+)
 
 
 def short_pickup(on_hand: int, held: int) -> tuple[int, str]:

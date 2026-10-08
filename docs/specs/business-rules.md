@@ -122,7 +122,7 @@ TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock 
 
 **Shipment**: CREATED → ASSIGNED → PICKED_UP → IN_TRANSIT → DELIVERED → RECONCILED. ASSIGNED → CREATED when unassigned.
 - PICKED_UP draws down the source batch and consumes its FIRM hold (§9). A batch that now records less `on_hand` than its hold (a short pickup) does not block it.
-- Limitation (until S16's route planner): one pickup stop per shipment. Assigning a shipment whose FIRM holds sit at more than one of the source's facilities returns 409 `conflict`, "Stock is at more than one facility; plan it with the route planner".
+- Limitation: one pickup stop per shipment (multi-stop pickups are not supported, including by the S16 route planner). Assigning a shipment whose FIRM holds sit at more than one of the source's facilities returns 409 `conflict`, "Stock is held at more than one of the source's facilities; a shipment can have only one pickup"; the route planner reports such a shipment as infeasible with the same reason instead of planning it.
 - Assign and unassign change the carrier, so they take any device (cold box) off the shipment. A device goes on a shipment only while its own org is the carrier (CLAUDE.md rule 6).
 
 ## 9. Receipt and reconciliation

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import routing
 from app.auth.models import User
-from app.domain.fulfillment import ShipmentStatus, StopType
+from app.domain.fulfillment import MULTI_FACILITY, ShipmentStatus, StopType
 from app.errors import AppError
 from app.routing import optimizer
 from app.shipments import service as shipments
@@ -52,6 +52,7 @@ async def _orders(
             )
         pickup, drop = await shipments.stops_of(session, shipment)
         shortage = await session.get_one(Shortage, shipment.shortage_id)
+        several = await shipments.pickup_facilities(session, shipment) > 1
         orders.append(
             optimizer.Order(
                 shipment_id=sid,
@@ -61,6 +62,7 @@ async def _orders(
                 drop=drop.point,
                 required_by=shortage.required_by,
                 cold_chain=shipment.requires_cold_chain,
+                blocked=MULTI_FACILITY if several else None,
             )
         )
     return orders

@@ -162,7 +162,7 @@ describe("Route planner", () => {
       target: { value: "Morning round" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply: assign 2 shipments to Ravi" }));
-    expect(await screen.findByText("Route applied")).toBeTruthy();
+    expect(await screen.findByText("Planned route assigned")).toBeTruthy();
     const [call] = fake.to("POST", "/api/v1/routes/apply");
     expect(JSON.parse(call!.body!)).toEqual({
       driver_id: ravi.id,
@@ -194,7 +194,7 @@ describe("Route planner", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "Shipment 51000000 is ASSIGNED; only unassigned shipments can be planned.",
     );
-    expect(screen.queryByText("Route applied")).toBeNull();
+    expect(screen.queryByText("Planned route assigned")).toBeNull();
   });
 
   it("drops a shown plan when the choices change", async () => {
