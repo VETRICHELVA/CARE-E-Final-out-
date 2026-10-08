@@ -169,6 +169,19 @@ async def _ensure_legs(session: AsyncSession, shipment: Shipment) -> list[Shipme
     return legs
 
 
+async def stops_of(session: AsyncSession, shipment: Shipment) -> tuple[Stop, Stop]:
+    """The shipment's pickup and drop: its stored legs, or where they would be (an older
+    shipment without legs gets them at assignment). Writes nothing."""
+    legs = {leg.stop_type: leg for leg in await legs_of(session, shipment.id)}
+    if StopType.PICKUP in legs and StopType.DROP in legs:
+        pickup, drop = legs[StopType.PICKUP], legs[StopType.DROP]
+        return (
+            Stop(pickup.place, Point(pickup.lat, pickup.lng)),
+            Stop(drop.place, Point(drop.lat, drop.lng)),
+        )
+    return await _pickup(session, shipment), await _drop(session, shipment)
+
+
 def _history(shipment: Shipment, before: str | None, at: datetime) -> None:
     # A new list, so SQLAlchemy sees the JSONB change.
     shipment.status_history = [
@@ -297,6 +310,21 @@ async def _own[T: (Driver, Vehicle)](
     return obj
 
 
+async def own_driver(session: AsyncSession, user: User, driver_id: uuid.UUID) -> Driver:
+    """One of the caller's org's active drivers: 404 unknown, 403 another org's, 400
+    inactive (the checks `assign` makes)."""
+    driver: Driver = await _own(session, user, Driver, driver_id)
+    if not driver.active:
+        raise AppError(400, "validation", "This driver is not active.", {"driver_id": driver_id})
+    return driver
+
+
+async def own_vehicle(session: AsyncSession, user: User, vehicle_id: uuid.UUID) -> Vehicle:
+    """One of the caller's org's vehicles: 404 unknown, 403 another org's."""
+    vehicle: Vehicle = await _own(session, user, Vehicle, vehicle_id)
+    return vehicle
+
+
 async def assign(
     session: AsyncSession,
     user: User,
@@ -306,11 +334,15 @@ async def assign(
     vehicle_id: uuid.UUID,
     reason: str | None,
     now: datetime | None = None,
+    planned: tuple[datetime, datetime] | None = None,
 ) -> Shipment:
     """CREATED -> ASSIGNED with the caller's org's active driver and vehicle; the caller's
     org becomes the carrier. A cold-chain shipment needs a cold-chain vehicle (400 with the
     reason). The road route (OSRM, or haversine when OSRM is off, failing or slow) gives
-    the distance, the geometry and the ETA: now + distance ÷ 40 km/h + 1 h (§4)."""
+    the distance, the geometry and the ETA: now + distance ÷ 40 km/h + 1 h (§4).
+
+    `planned` is (pickup, drop) from a route plan (S16, several shipments for one driver):
+    the legs' `planned_at` and the ETA then come from the plan instead."""
     now = now or datetime.now(UTC)
     shipment = await get_visible(session, user, shipment_id, lock=True)
     _check(shipment, S.ASSIGNED, S.ASSIGNED in SHIPMENT_TRANSITIONS.get(shipment.status, set()))
@@ -331,8 +363,12 @@ async def assign(
 
     pickup, drop = await _ensure_legs(session, shipment)
     route = await routing.ROUTING.route(Point(pickup.lat, pickup.lng), Point(drop.lat, drop.lng))
-    eta = now + timedelta(hours=transport_eta_hours(route.distance_km))
-    pickup.planned_at, drop.planned_at = now, eta
+    if planned is None:
+        pickup.planned_at = now
+        eta = now + timedelta(hours=transport_eta_hours(route.distance_km))
+    else:
+        pickup.planned_at, eta = planned
+    drop.planned_at = eta
     shipment.driver_id, shipment.vehicle_id = driver.id, vehicle.id
     shipment.carrier_org_id = user.org_id
     shipment.eta = eta
@@ -353,6 +389,7 @@ async def assign(
             "eta": eta,
             "route_distance_km": shipment.route_distance_km,
             "route_provider": route.provider,
+            **({"planned_pickup_at": planned[0]} if planned else {}),
         },
     )
     return shipment

@@ -6,7 +6,7 @@ The delivery app (React 19, TypeScript, Vite, Tailwind, shadcn/ui, TanStack Quer
 - `/shipments/:id` shipment detail: Leaflet map of the hub's stored route, pickup, drop and the driver's last position (refreshed by `shipment.location` events), ETA, route distance and source, status history, Unassign (carrier, while ASSIGNED), the assigned driver's next step, and the cold box riding with it (attach, take off).
 - `/fleet` (`shipment.assign`): drivers, vehicles, and cold boxes with battery, last seen and their shipment; attach a box to a shipment on the way, or take it off.
 - `/driver` (`shipment.update_status`): the driver's own jobs (`assigned_to_me=true`), one large button for the next step (Picked up, In transit, Delivered), and "Share location", which sends the phone's position for each job on the way every 30 s while the page is open.
-- `/plan` route planner: placeholder until S16.
+- `/plan` route planner (`shipment.assign`, S16): choose an active driver, a vehicle and up to 25 unassigned shipments; "Plan route" asks the hub (`POST /routes/optimize`, the browser's time zone for the times in its reasons) and shows the numbered stops with ETAs, the stops on the map joined in driving order (the order, not the roads), and every shipment that cannot fit with the hub's reason. Apply (`POST /routes/apply`, optional reason) assigns the driver to the ones that fit; changing a choice drops the shown plan.
 
 Map tiles come from OpenStreetMap (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`); set `VITE_MAP_TILE_URL` (and `VITE_MAP_TILE_ATTRIBUTION`) to use another tile server.
 
