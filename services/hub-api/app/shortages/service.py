@@ -374,6 +374,10 @@ class _Lot:
     days_at_delivery: int
 
 
+def _fresh(verified_at: datetime | None, now: datetime, max_age: timedelta) -> bool:
+    return verified_at is not None and now - verified_at <= max_age
+
+
 async def run_match(
     session: AsyncSession,
     shortage: Shortage,
@@ -512,12 +516,17 @@ async def _sources(
             lots.append(_Lot(r, km, eta, qty, days_to_expiry_at(r, arrival)))
         stocked = [x for x in lots if x.transferable > 0]
         qualifying = [x for x in stocked if x.days_at_delivery >= min_days]  # §2
+        # §3 freshness is per batch: an unverified or stale batch adds nothing to what the
+        # source offers, and the gate fails only when none of the batches that would count
+        # are fresh (so one new, unverified receipt batch never hides verified stock).
+        fresh = [x for x in qualifying if _fresh(x.row.last_verified_at, now, max_age)]
         # If nothing qualifies, shelf_life fails and quantity judges the stock as recorded.
-        counted = sorted(qualifying or stocked, key=lambda x: (x.row.expiry_date, x.row.id))
+        pool = qualifying or stocked
+        counted = sorted(fresh or pool, key=lambda x: (x.row.expiry_date, x.row.id))
         basis = counted or lots
         far = max(basis, key=lambda x: x.km)  # one trip per source, from its farthest store
-        verified = [x.row.last_verified_at for x in basis]
-        oldest = None if None in verified else min(verified)
+        verified = [x.row.last_verified_at for x in basis if x.row.last_verified_at is not None]
+        latest = max(verified) if verified else None  # the reason names the freshest count
         first = basis[0].row
         sources.append(
             _Source(
@@ -543,7 +552,7 @@ async def _sources(
                     "authorization": gates.authorization(
                         first.status == OrgStatus.ACTIVE, org_id in authorized
                     ),
-                    "freshness": gates.freshness(oldest, now, max_age),
+                    "freshness": PASS if fresh else gates.freshness(latest, now, max_age),
                     "deadline": gates.deadline(
                         now + timedelta(hours=far.eta_hours), shortage.required_by
                     ),

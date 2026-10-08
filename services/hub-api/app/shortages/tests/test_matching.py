@@ -400,3 +400,40 @@ async def test_cold_chain_products_need_a_cold_chain_vehicle_on_record(
     shortage = await create(session, world, rdk, qty_required=200, qty_local_usable=0)
     c = by_name(await latest(session, shortage))["Hospital B"]
     assert failed(c) == ["No cold-chain transport available"]
+
+
+# --- freshness is per batch (business-rules.md §3) ----------------------------------------------
+
+
+async def test_an_unverified_batch_does_not_hide_a_sources_verified_stock(
+    session: AsyncSession, world: World, products: dict[str, Product]
+) -> None:
+    """A hospital that just received stock has a new, never-verified batch. Its verified
+    stock of the same product is still offered; the unverified batch adds nothing."""
+    iv = products["IV-CAN-20G"]
+    h = await add_org(session, "Hospital H", OrgType.HOSPITAL, 12.95, 77.60)
+    await add_batch(session, h, iv, on_hand=2000, expiry_days=200, verified_hours_ago=2)
+    received = await add_batch(session, h, iv, on_hand=790, expiry_days=300, batch_no="RCV-1")
+    received.last_verified_at = None
+    authorize(session, iv, h)
+    await session.flush()
+    shortage = await create(session, world, iv, qty_required=650)  # 500 short
+    out = await latest(session, shortage)
+    c = by_name(out)["Hospital H"]
+    assert (c.eligible, c.transferable_qty, failed(c)) == (True, 2000, [])
+    assert plan_of(out) == ("TRANSFER", [(h.id, 500)], [])
+
+
+async def test_freshness_fails_only_when_no_counted_batch_is_fresh(
+    session: AsyncSession, world: World, products: dict[str, Product]
+) -> None:
+    iv = products["IV-CAN-20G"]
+    h = await add_org(session, "Hospital H", OrgType.HOSPITAL, 12.95, 77.60)
+    await add_batch(session, h, iv, on_hand=900, expiry_days=200, verified_hours_ago=30)
+    never = await add_batch(session, h, iv, on_hand=900, expiry_days=200, batch_no="B-2")
+    never.last_verified_at = None
+    authorize(session, iv, h)
+    await session.flush()
+    shortage = await create(session, world, iv, qty_required=650)  # CRITICAL: 24 h
+    c = by_name(await latest(session, shortage))["Hospital H"]
+    assert failed(c) == ["Stock last verified 30 h ago"]  # the freshest count is named

@@ -29,7 +29,7 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 | quantity | transferable ≥ shortfall (single); > 0 (split candidate) | available_qty ≥ shortfall | "Only 100 transferable; 850 needed" |
 | shelf_life | §2 shelf-life rule | Assumed to pass (new stock) | "Expires in 12 days; 30 required" |
 | authorization | Org ACTIVE and has ProductAuthorization | Same | "Not authorized to supply this product" |
-| freshness | last_verified_at within 24 h (CRITICAL) or 7 days (ROUTINE) | Offer updated within 7 days | "Stock last verified 9 days ago" |
+| freshness | Per batch: last_verified_at within 24 h (CRITICAL) or 7 days (ROUTINE). An unverified or stale batch adds nothing to the source's quantity; the gate fails only when none of the batches that would count is fresh (the reason names the most recent count) | Offer updated within 7 days | "Stock last verified 9 days ago" |
 | deadline | now + eta ≤ required_by | now + lead time + transport eta ≤ required_by | "Arrives 6 h after the deadline" |
 | cold_chain | If product requires it: facility has_cold_storage AND a cold-chain vehicle exists | Same for vehicle | "No cold-chain transport available" |
 
