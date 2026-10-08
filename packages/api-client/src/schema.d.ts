@@ -1122,6 +1122,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/forecasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Forecasts
+         * @description The caller's own org's forecasts, one per product with a stored forecast (catalog
+         *     order): the next 30 days with their interval, the predicted stock-out date, the reorder
+         *     suggestion and each expiry-risk batch, against the stock recorded now.
+         */
+        get: operations["list_forecasts_api_v1_forecasts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forecasts/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Forecasts
+         * @description Forecast now instead of waiting for the nightly job. A platform admin runs every
+         *     hospital (or `org_id`); any other caller needs `inventory.edit` in a HOSPITAL org and runs
+         *     its own org only (403 for another `org_id`). Statistics, not an LLM: the same history
+         *     gives the same numbers.
+         */
+        post: operations["run_forecasts_api_v1_forecasts_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Surplus
+         * @description The caller's org's own posts, newest first.
+         */
+        get: operations["list_surplus_api_v1_surplus_get"];
+        put?: never;
+        /**
+         * Create Surplus
+         * @description Offer one of the caller's org's batches to the network (from an expiry-risk
+         *     suggestion or by hand), then match it. 400 if the batch has expired or `qty` exceeds its
+         *     transferable (`details.transferable_qty`); 409 `conflict` if the batch already has a live
+         *     post; 403 for another org's batch.
+         */
+        post: operations["create_surplus_api_v1_surplus_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus/incoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Incoming Surplus
+         * @description Other orgs' live (OPEN or MATCHED) posts matched to the caller's org, newest post
+         *     first: offered qty, expiry band and location only (CLAUDE.md rule 6). A withdrawn or
+         *     expired post leaves this list.
+         */
+        get: operations["list_incoming_surplus_api_v1_surplus_incoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus/{surplus_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Surplus
+         * @description OPEN or MATCHED → WITHDRAWN (posting org only, else 403); otherwise 409
+         *     `invalid_transition`. A withdrawn post is never matched again.
+         */
+        post: operations["withdraw_surplus_api_v1_surplus__surplus_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1503,11 +1618,52 @@ export interface components {
          * @enum {string}
          */
         EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "recommendation.status_changed" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
+        /**
+         * ExpiryRiskOut
+         * @description A batch whose forecast usage before expiry is less than on_hand - safety stock.
+         */
+        ExpiryRiskOut: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch No */
+            batch_no: string;
+            /**
+             * Expiry Date
+             * Format: date
+             */
+            expiry_date: string;
+            /** On Hand */
+            on_hand: number;
+            /** Safety Stock */
+            safety_stock: number;
+            /** Transferable */
+            transferable: number;
+            /** Usage Before Expiry */
+            usage_before_expiry: number;
+            /**
+             * Excess
+             * @description on_hand - safety stock - forecast usage, rounded down.
+             */
+            excess: number;
+            /**
+             * Suggested Qty
+             * @description What "Offer to network" posts: the excess, never more than transferable.
+             */
+            suggested_qty: number;
+            /**
+             * Surplus Post Id
+             * @description The batch's live (OPEN or MATCHED) surplus post, if any.
+             */
+            surplus_post_id: string | null;
+        };
         /** FacilityOut */
         FacilityOut: {
             /** Name */
             name: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
             /**
              * Id
              * Format: uuid
@@ -1522,6 +1678,72 @@ export interface components {
             address: string;
             /** Has Cold Storage */
             has_cold_storage: boolean;
+        };
+        /** ForecastDayOut */
+        ForecastDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Predicted Qty */
+            predicted_qty: number;
+            /**
+             * Lower
+             * @description Lower bound of the 95% prediction interval.
+             */
+            lower: number;
+            /**
+             * Upper
+             * @description Upper bound of the 95% prediction interval.
+             */
+            upper: number;
+        };
+        /**
+         * ForecastOut
+         * @description One product's stored forecast against the caller's org's stock now.
+         */
+        ForecastOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Model Version
+             * @description holt-winters-weekly/1, or moving-average-28/1 under 60 days of history.
+             */
+            model_version: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Synthetic History
+             * @description True when the history includes synthetic (seeded) consumption records.
+             */
+            synthetic_history: boolean;
+            /**
+             * Days
+             * @description The next 30 days, from today.
+             */
+            days: components["schemas"]["ForecastDayOut"][];
+            /**
+             * Usable Stock
+             * @description On hand less reserved, allocated, quarantined and active holds, over unexpired batches (safety stock is usable by its own hospital).
+             */
+            usable_stock: number;
+            /** Safety Stock */
+            safety_stock: number;
+            /**
+             * Stockout Date
+             * @description The first day cumulative forecast use exceeds usable stock; null if it does not within the stored forecast.
+             */
+            stockout_date: string | null;
+            reorder: components["schemas"]["ReorderOut"] | null;
+            /** Expiry Risks */
+            expiry_risks: components["schemas"]["ExpiryRiskOut"][];
         };
         /** GateOut */
         GateOut: {
@@ -1583,13 +1805,6 @@ export interface components {
              */
             reason: string;
         };
-        /** Location */
-        Location: {
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
-        };
         /** LocationIn */
         LocationIn: {
             /** Lat */
@@ -1625,6 +1840,28 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MatchKind
+         * @enum {string}
+         */
+        MatchKind: "SHORTAGE" | "FORECAST";
+        /**
+         * MatchReason
+         * @description Why the post was matched to the caller's org: its own open shortage of the product,
+         *     or its own forecast stock-out within 14 days.
+         */
+        MatchReason: {
+            kind: components["schemas"]["MatchKind"];
+            /** Shortage Id */
+            shortage_id: string | null;
+            /** Stockout Date */
+            stockout_date: string | null;
+            /**
+             * Matched At
+             * Format: date-time
+             */
+            matched_at: string;
         };
         /** MatchRunOut */
         MatchRunOut: {
@@ -1779,7 +2016,7 @@ export interface components {
             name: string;
             /** Type */
             type: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
             /**
              * Id
              * Format: uuid
@@ -1837,6 +2074,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[ForecastOut] */
+        Page_ForecastOut_: {
+            /** Items */
+            items: components["schemas"]["ForecastOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[NotificationOut] */
         Page_NotificationOut_: {
             /** Items */
@@ -1890,6 +2134,20 @@ export interface components {
         Page_SourceRequestOut_: {
             /** Items */
             items: components["schemas"]["SourceRequestOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[SurplusOfferOut] */
+        Page_SurplusOfferOut_: {
+            /** Items */
+            items: components["schemas"]["SurplusOfferOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[SurplusOut] */
+        Page_SurplusOut_: {
+            /** Items */
+            items: components["schemas"]["SurplusOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -1983,7 +2241,7 @@ export interface components {
         PublicFacilityView: {
             /** Name */
             name: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
         };
         /**
          * PublicOrgView
@@ -1994,7 +2252,7 @@ export interface components {
             name: string;
             /** Type */
             type: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
         };
         /**
          * PurchaseOrderOut
@@ -2317,6 +2575,19 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /** ReorderOut */
+        ReorderOut: {
+            /**
+             * Lead Time Days
+             * @description The shortest supplier lead time for the product in whole days (rounded up), or the default (7) when no supplier offers it.
+             */
+            lead_time_days: number;
+            /**
+             * Qty
+             * @description Forecast lead-time demand + safety stock - usable stock, rounded up, never below 0.
+             */
+            qty: number;
+        };
         /**
          * RequestStatus
          * @enum {string}
@@ -2398,6 +2669,23 @@ export interface components {
             line: number;
             /** Message */
             message: string;
+        };
+        /** RunOut */
+        RunOut: {
+            /** Org Ids */
+            org_ids: string[];
+            /**
+             * Series
+             * @description Hospital x product series forecast.
+             */
+            series: number;
+            /**
+             * Models
+             * @description Series per model version.
+             */
+            models: {
+                [key: string]: number;
+            };
         };
         /** ShipmentDetailOut */
         ShipmentDetailOut: {
@@ -2838,6 +3126,126 @@ export interface components {
              */
             expires_at: string;
         };
+        /**
+         * SurplusCreate
+         * @description Offer one of the caller's org's batches to the network. `qty` may not exceed the
+         *     batch's transferable now; afterwards the post offers only up to its current
+         *     transferable (CLAUDE.md rule 4).
+         */
+        SurplusCreate: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Qty */
+            qty: number;
+            /** Min Price Paise */
+            min_price_paise?: number | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * SurplusOfferOut
+         * @description Another org's post as a matched org sees it: transferable qty, expiry band and
+         *     location only (CLAUDE.md rule 6). No batch, expiry date, price or stock figures.
+         */
+        SurplusOfferOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Org Name */
+            org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Offered Qty
+             * @description Never more than the batch's current transferable.
+             */
+            offered_qty: number;
+            /**
+             * Expiry Band
+             * @description UNDER_30_DAYS, 30_TO_59_DAYS, 60_TO_89_DAYS or 90_DAYS_OR_MORE.
+             */
+            expiry_band: string;
+            location: components["schemas"]["app__surplus__schemas__Location"];
+            status: components["schemas"]["SurplusStatus"];
+            match: components["schemas"]["MatchReason"];
+        };
+        /**
+         * SurplusOut
+         * @description The poster's own view of its post.
+         */
+        SurplusOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Qty
+             * @description What was posted.
+             */
+            qty: number;
+            /**
+             * Offered Qty
+             * @description What the network is offered now: qty, never more than the batch's current hub-computed transferable (0 once the batch has expired).
+             */
+            offered_qty: number;
+            /**
+             * Expiry Date
+             * Format: date
+             */
+            expiry_date: string;
+            /** Min Price Paise */
+            min_price_paise: number | null;
+            status: components["schemas"]["SurplusStatus"];
+            /**
+             * Matched Org Ids
+             * @description The orgs it was matched to (each got `surplus.matched`).
+             */
+            matched_org_ids: string[];
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * SurplusStatus
+         * @enum {string}
+         */
+        SurplusStatus: "OPEN" | "MATCHED" | "WITHDRAWN" | "EXPIRED";
         /** TelemetryBatch */
         TelemetryBatch: {
             /** Readings */
@@ -2990,6 +3398,22 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** Location */
+        app__orgs__schemas__Location: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+        };
+        /** Location */
+        app__surplus__schemas__Location: {
+            /** Facility Name */
+            facility_name: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
         };
     };
     responses: never;
@@ -4867,6 +5291,205 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_forecasts_api_v1_forecasts_get: {
+        parameters: {
+            query?: {
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ForecastOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_forecasts_api_v1_forecasts_run_post: {
+        parameters: {
+            query?: {
+                org_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_surplus_api_v1_surplus_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["SurplusStatus"] | null;
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SurplusOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_surplus_api_v1_surplus_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SurplusCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurplusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incoming_surplus_api_v1_surplus_incoming_get: {
+        parameters: {
+            query?: {
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SurplusOfferOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_surplus_api_v1_surplus__surplus_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surplus_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurplusOut"];
                 };
             };
             /** @description Validation Error */

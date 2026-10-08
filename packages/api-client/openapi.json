@@ -3502,6 +3502,441 @@
           }
         }
       }
+    },
+    "/api/v1/forecasts": {
+      "get": {
+        "tags": [
+          "forecasts"
+        ],
+        "summary": "List Forecasts",
+        "description": "The caller's own org's forecasts, one per product with a stored forecast (catalog\norder): the next 30 days with their interval, the predicted stock-out date, the reorder\nsuggestion and each expiry-risk batch, against the stock recorded now.",
+        "operationId": "list_forecasts_api_v1_forecasts_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ForecastOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/forecasts/run": {
+      "post": {
+        "tags": [
+          "forecasts"
+        ],
+        "summary": "Run Forecasts",
+        "description": "Forecast now instead of waiting for the nightly job. A platform admin runs every\nhospital (or `org_id`); any other caller needs `inventory.edit` in a HOSPITAL org and runs\nits own org only (403 for another `org_id`). Statistics, not an LLM: the same history\ngives the same numbers.",
+        "operationId": "run_forecasts_api_v1_forecasts_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Org Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/surplus": {
+      "get": {
+        "tags": [
+          "surplus"
+        ],
+        "summary": "List Surplus",
+        "description": "The caller's org's own posts, newest first.",
+        "operationId": "list_surplus_api_v1_surplus_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SurplusStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SurplusOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "surplus"
+        ],
+        "summary": "Create Surplus",
+        "description": "Offer one of the caller's org's batches to the network (from an expiry-risk\nsuggestion or by hand), then match it. 400 if the batch has expired or `qty` exceeds its\ntransferable (`details.transferable_qty`); 409 `conflict` if the batch already has a live\npost; 403 for another org's batch.",
+        "operationId": "create_surplus_api_v1_surplus_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SurplusCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurplusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/surplus/incoming": {
+      "get": {
+        "tags": [
+          "surplus"
+        ],
+        "summary": "List Incoming Surplus",
+        "description": "Other orgs' live (OPEN or MATCHED) posts matched to the caller's org, newest post\nfirst: offered qty, expiry band and location only (CLAUDE.md rule 6). A withdrawn or\nexpired post leaves this list.",
+        "operationId": "list_incoming_surplus_api_v1_surplus_incoming_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_SurplusOfferOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/surplus/{surplus_id}/withdraw": {
+      "post": {
+        "tags": [
+          "surplus"
+        ],
+        "summary": "Withdraw Surplus",
+        "description": "OPEN or MATCHED \u2192 WITHDRAWN (posting org only, else 403); otherwise 409\n`invalid_transition`. A withdrawn post is never matched again.",
+        "operationId": "withdraw_surplus_api_v1_surplus__surplus_id__withdraw_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "surplus_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Surplus Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurplusOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4367,6 +4802,78 @@
         ],
         "title": "EventType"
       },
+      "ExpiryRiskOut": {
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "batch_no": {
+            "type": "string",
+            "title": "Batch No"
+          },
+          "expiry_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Expiry Date"
+          },
+          "on_hand": {
+            "type": "integer",
+            "title": "On Hand"
+          },
+          "safety_stock": {
+            "type": "integer",
+            "title": "Safety Stock"
+          },
+          "transferable": {
+            "type": "integer",
+            "title": "Transferable"
+          },
+          "usage_before_expiry": {
+            "type": "number",
+            "title": "Usage Before Expiry"
+          },
+          "excess": {
+            "type": "integer",
+            "title": "Excess",
+            "description": "on_hand - safety stock - forecast usage, rounded down."
+          },
+          "suggested_qty": {
+            "type": "integer",
+            "title": "Suggested Qty",
+            "description": "What \"Offer to network\" posts: the excess, never more than transferable."
+          },
+          "surplus_post_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surplus Post Id",
+            "description": "The batch's live (OPEN or MATCHED) surplus post, if any."
+          }
+        },
+        "type": "object",
+        "required": [
+          "batch_id",
+          "batch_no",
+          "expiry_date",
+          "on_hand",
+          "safety_stock",
+          "transferable",
+          "usage_before_expiry",
+          "excess",
+          "suggested_qty",
+          "surplus_post_id"
+        ],
+        "title": "ExpiryRiskOut",
+        "description": "A batch whose forecast usage before expiry is less than on_hand - safety stock."
+      },
       "FacilityOut": {
         "properties": {
           "name": {
@@ -4374,7 +4881,7 @@
             "title": "Name"
           },
           "location": {
-            "$ref": "#/components/schemas/Location"
+            "$ref": "#/components/schemas/app__orgs__schemas__Location"
           },
           "id": {
             "type": "string",
@@ -4406,6 +4913,123 @@
           "has_cold_storage"
         ],
         "title": "FacilityOut"
+      },
+      "ForecastDayOut": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "predicted_qty": {
+            "type": "number",
+            "title": "Predicted Qty"
+          },
+          "lower": {
+            "type": "number",
+            "title": "Lower",
+            "description": "Lower bound of the 95% prediction interval."
+          },
+          "upper": {
+            "type": "number",
+            "title": "Upper",
+            "description": "Upper bound of the 95% prediction interval."
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "predicted_qty",
+          "lower",
+          "upper"
+        ],
+        "title": "ForecastDayOut"
+      },
+      "ForecastOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "model_version": {
+            "type": "string",
+            "title": "Model Version",
+            "description": "holt-winters-weekly/1, or moving-average-28/1 under 60 days of history."
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "synthetic_history": {
+            "type": "boolean",
+            "title": "Synthetic History",
+            "description": "True when the history includes synthetic (seeded) consumption records."
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastDayOut"
+            },
+            "type": "array",
+            "title": "Days",
+            "description": "The next 30 days, from today."
+          },
+          "usable_stock": {
+            "type": "integer",
+            "title": "Usable Stock",
+            "description": "On hand less reserved, allocated, quarantined and active holds, over unexpired batches (safety stock is usable by its own hospital)."
+          },
+          "safety_stock": {
+            "type": "integer",
+            "title": "Safety Stock"
+          },
+          "stockout_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockout Date",
+            "description": "The first day cumulative forecast use exceeds usable stock; null if it does not within the stored forecast."
+          },
+          "reorder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReorderOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expiry_risks": {
+            "items": {
+              "$ref": "#/components/schemas/ExpiryRiskOut"
+            },
+            "type": "array",
+            "title": "Expiry Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "model_version",
+          "generated_at",
+          "synthetic_history",
+          "days",
+          "usable_stock",
+          "safety_stock",
+          "stockout_date",
+          "reorder",
+          "expiry_risks"
+        ],
+        "title": "ForecastOut",
+        "description": "One product's stored forecast against the caller's org's stock now."
       },
       "GateOut": {
         "properties": {
@@ -4536,24 +5160,6 @@
         ],
         "title": "InfeasibleOut"
       },
-      "Location": {
-        "properties": {
-          "lat": {
-            "type": "number",
-            "title": "Lat"
-          },
-          "lng": {
-            "type": "number",
-            "title": "Lng"
-          }
-        },
-        "type": "object",
-        "required": [
-          "lat",
-          "lng"
-        ],
-        "title": "Location"
-      },
       "LocationIn": {
         "properties": {
           "lat": {
@@ -4637,6 +5243,59 @@
           "password"
         ],
         "title": "LoginIn"
+      },
+      "MatchKind": {
+        "type": "string",
+        "enum": [
+          "SHORTAGE",
+          "FORECAST"
+        ],
+        "title": "MatchKind"
+      },
+      "MatchReason": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MatchKind"
+          },
+          "shortage_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shortage Id"
+          },
+          "stockout_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stockout Date"
+          },
+          "matched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Matched At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "shortage_id",
+          "stockout_date",
+          "matched_at"
+        ],
+        "title": "MatchReason",
+        "description": "Why the post was matched to the caller's org: its own open shortage of the product,\nor its own forecast stock-out within 14 days."
       },
       "MatchRunOut": {
         "properties": {
@@ -4952,7 +5611,7 @@
             "title": "Type"
           },
           "location": {
-            "$ref": "#/components/schemas/Location"
+            "$ref": "#/components/schemas/app__orgs__schemas__Location"
           },
           "id": {
             "type": "string",
@@ -5145,6 +5804,33 @@
           "items"
         ],
         "title": "Page[FacilityOut]"
+      },
+      "Page_ForecastOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[ForecastOut]"
       },
       "Page_NotificationOut_": {
         "properties": {
@@ -5361,6 +6047,60 @@
           "items"
         ],
         "title": "Page[SourceRequestOut]"
+      },
+      "Page_SurplusOfferOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SurplusOfferOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[SurplusOfferOut]"
+      },
+      "Page_SurplusOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SurplusOut"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Page[SurplusOut]"
       },
       "Page_VehicleOut_": {
         "properties": {
@@ -5592,7 +6332,7 @@
             "title": "Name"
           },
           "location": {
-            "$ref": "#/components/schemas/Location"
+            "$ref": "#/components/schemas/app__orgs__schemas__Location"
           }
         },
         "additionalProperties": false,
@@ -5614,7 +6354,7 @@
             "title": "Type"
           },
           "location": {
-            "$ref": "#/components/schemas/Location"
+            "$ref": "#/components/schemas/app__orgs__schemas__Location"
           }
         },
         "additionalProperties": false,
@@ -6295,6 +7035,26 @@
         ],
         "title": "RefreshIn"
       },
+      "ReorderOut": {
+        "properties": {
+          "lead_time_days": {
+            "type": "integer",
+            "title": "Lead Time Days",
+            "description": "The shortest supplier lead time for the product in whole days (rounded up), or the default (7) when no supplier offers it."
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty",
+            "description": "Forecast lead-time demand + safety stock - usable stock, rounded up, never below 0."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lead_time_days",
+          "qty"
+        ],
+        "title": "ReorderOut"
+      },
       "RequestStatus": {
         "type": "string",
         "enum": [
@@ -6476,6 +7236,38 @@
           "message"
         ],
         "title": "RowError"
+      },
+      "RunOut": {
+        "properties": {
+          "org_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Org Ids"
+          },
+          "series": {
+            "type": "integer",
+            "title": "Series",
+            "description": "Hospital x product series forecast."
+          },
+          "models": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Models",
+            "description": "Series per model version."
+          }
+        },
+        "type": "object",
+        "required": [
+          "org_ids",
+          "series",
+          "models"
+        ],
+        "title": "RunOut"
       },
       "ShipmentDetailOut": {
         "properties": {
@@ -7593,6 +8385,209 @@
         ],
         "title": "StreamTicketOut"
       },
+      "SurplusCreate": {
+        "properties": {
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "qty": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Qty"
+          },
+          "min_price_paise": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2147483647.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Price Paise"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "batch_id",
+          "qty"
+        ],
+        "title": "SurplusCreate",
+        "description": "Offer one of the caller's org's batches to the network. `qty` may not exceed the\nbatch's transferable now; afterwards the post offers only up to its current\ntransferable (CLAUDE.md rule 4)."
+      },
+      "SurplusOfferOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "org_name": {
+            "type": "string",
+            "title": "Org Name"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "offered_qty": {
+            "type": "integer",
+            "title": "Offered Qty",
+            "description": "Never more than the batch's current transferable."
+          },
+          "expiry_band": {
+            "type": "string",
+            "title": "Expiry Band",
+            "description": "UNDER_30_DAYS, 30_TO_59_DAYS, 60_TO_89_DAYS or 90_DAYS_OR_MORE."
+          },
+          "location": {
+            "$ref": "#/components/schemas/app__surplus__schemas__Location"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SurplusStatus"
+          },
+          "match": {
+            "$ref": "#/components/schemas/MatchReason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "org_name",
+          "product_id",
+          "offered_qty",
+          "expiry_band",
+          "location",
+          "status",
+          "match"
+        ],
+        "title": "SurplusOfferOut",
+        "description": "Another org's post as a matched org sees it: transferable qty, expiry band and\nlocation only (CLAUDE.md rule 6). No batch, expiry date, price or stock figures."
+      },
+      "SurplusOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "org_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Org Id"
+          },
+          "batch_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Batch Id"
+          },
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "qty": {
+            "type": "integer",
+            "title": "Qty",
+            "description": "What was posted."
+          },
+          "offered_qty": {
+            "type": "integer",
+            "title": "Offered Qty",
+            "description": "What the network is offered now: qty, never more than the batch's current hub-computed transferable (0 once the batch has expired)."
+          },
+          "expiry_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Expiry Date"
+          },
+          "min_price_paise": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Price Paise"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SurplusStatus"
+          },
+          "matched_org_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Matched Org Ids",
+            "description": "The orgs it was matched to (each got `surplus.matched`)."
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "batch_id",
+          "product_id",
+          "qty",
+          "offered_qty",
+          "expiry_date",
+          "min_price_paise",
+          "status",
+          "matched_org_ids",
+          "created_by",
+          "created_at"
+        ],
+        "title": "SurplusOut",
+        "description": "The poster's own view of its post."
+      },
+      "SurplusStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "MATCHED",
+          "WITHDRAWN",
+          "EXPIRED"
+        ],
+        "title": "SurplusStatus"
+      },
       "TelemetryBatch": {
         "properties": {
           "readings": {
@@ -7926,6 +8921,47 @@
           "created_at"
         ],
         "title": "WebhookOut"
+      },
+      "app__orgs__schemas__Location": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "Location"
+      },
+      "app__surplus__schemas__Location": {
+        "properties": {
+          "facility_name": {
+            "type": "string",
+            "title": "Facility Name"
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          }
+        },
+        "type": "object",
+        "required": [
+          "facility_name",
+          "lat",
+          "lng"
+        ],
+        "title": "Location"
       }
     },
     "securitySchemes": {

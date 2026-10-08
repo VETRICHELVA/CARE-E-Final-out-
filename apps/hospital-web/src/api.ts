@@ -35,6 +35,10 @@ export type Receipt = Schemas["ReceiptOut"];
 export type ReceiptIn = Schemas["ReceiptIn"];
 export type Reconciliation = Schemas["ReconciliationOut"];
 export type Notification = Schemas["NotificationOut"];
+export type Forecast = Schemas["ForecastOut"];
+export type ExpiryRisk = Schemas["ExpiryRiskOut"];
+export type SurplusPost = Schemas["SurplusOut"];
+export type SurplusOffer = Schemas["SurplusOfferOut"];
 type SourceRequestQuery = {
   direction: Schemas["Direction"];
   status?: Schemas["RequestStatus"];
@@ -70,6 +74,9 @@ export const keys = {
   notifications: ["/api/v1/notifications"] as const,
   allNotifications: ["/api/v1/notifications", { unread: false }] as const,
   unreadNotifications: ["/api/v1/notifications", { unread: true }] as const,
+  forecasts: ["/api/v1/forecasts"] as const,
+  surplus: ["/api/v1/surplus"] as const,
+  incomingSurplus: ["/api/v1/surplus/incoming"] as const,
 };
 
 type Cursor = string | undefined;
@@ -540,5 +547,91 @@ export function useMarkRead() {
         }),
       ),
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.notifications }),
+  });
+}
+
+// ---- Forecasts and surplus (S18) ----
+
+/** Own org's forecasts, one per product (an org has at most the catalog's products, so every
+ *  page is read). Every figure is the hub's: stock-out dates, reorder and expiry-risk excess. */
+export function useForecasts(enabled = true) {
+  return useQuery({
+    queryKey: keys.forecasts,
+    queryFn: () =>
+      fetchAllPages((cursor) =>
+        unwrap(client.GET("/api/v1/forecasts", { params: { query: { limit: PAGE, cursor } } })),
+      ),
+    enabled,
+  });
+}
+
+/** Forecast now instead of waiting for the nightly run (`inventory.edit`, own org). */
+export function useRunForecasts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(client.POST("/api/v1/forecasts/run")),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.forecasts }),
+  });
+}
+
+/** Own org's surplus posts, newest first, a page at a time (`inventory.edit`). */
+export function useSurplusPosts(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: keys.surplus,
+    queryFn: ({ pageParam }) =>
+      unwrap(
+        client.GET("/api/v1/surplus", { params: { query: { limit: PAGE, cursor: pageParam } } }),
+      ),
+    initialPageParam: undefined as Cursor,
+    getNextPageParam: nextCursor,
+    enabled,
+  });
+}
+
+/** Other hospitals' surplus matched to this org: offered qty, expiry band and location only. */
+export function useIncomingSurplus(enabled = true) {
+  return useQuery({
+    queryKey: keys.incomingSurplus,
+    queryFn: () =>
+      fetchAllPages((cursor) =>
+        unwrap(
+          client.GET("/api/v1/surplus/incoming", { params: { query: { limit: PAGE, cursor } } }),
+        ),
+      ),
+    enabled,
+  });
+}
+
+function useRefreshSurplus() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all(
+      [keys.surplus, keys.forecasts, keys.incomingSurplus].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
+}
+
+/** Offers a batch to the network. The hub refuses more than the batch's transferable. */
+export function useCreateSurplus() {
+  const refresh = useRefreshSurplus();
+  return useMutation({
+    mutationFn: (body: Schemas["SurplusCreate"]) =>
+      unwrap(client.POST("/api/v1/surplus", { body })),
+    onSettled: refresh,
+  });
+}
+
+export function useWithdrawSurplus() {
+  const refresh = useRefreshSurplus();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string | undefined }) =>
+      unwrap(
+        client.POST("/api/v1/surplus/{surplus_id}/withdraw", {
+          params: { path: { surplus_id: id } },
+          body: reasonBody(reason),
+        }),
+      ),
+    onSettled: refresh,
   });
 }

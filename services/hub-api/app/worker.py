@@ -1,5 +1,6 @@
 """arq worker for the hub's timers (business-rules.md §6: response, hold and recommendation
-deadlines), the event publisher and webhook deliveries (api-and-events.md, Events and
+deadlines; S18: surplus expiry), the nightly forecast and surplus matching (S18), the event
+publisher and webhook deliveries (api-and-events.md, Events and
 Webhooks). Run it with `make worker`; the apps get live updates only while it runs.
 
 Deadlines, unpublished events and due deliveries are all stored in the database, so a
@@ -20,9 +21,11 @@ from app.db import SessionLocal
 from app.domain import config
 from app.events import service as events
 from app.events import webhooks
+from app.forecasting import service as forecasting
 from app.recommendations import service as recommendations
 from app.shortages import service as shortages
 from app.source_requests import service as source_requests
+from app.surplus import service as surplus
 
 WEBHOOK_INTERVAL_SECONDS = 5
 
@@ -74,6 +77,28 @@ async def deliver_webhooks(ctx: dict[str, Any]) -> int:
         return await webhooks.deliver_due(session, ctx["http"])
 
 
+async def expire_surplus(ctx: dict[str, Any]) -> int:
+    """Expire surplus posts whose batch expiry date has come (S18); returns how many."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    async with sessionmaker() as session:
+        count = await surplus.expire_due(session, forecasting.today())
+        await session.commit()
+        return count
+
+
+async def nightly_forecasts(ctx: dict[str, Any]) -> int:
+    """Forecast every hospital (statsmodels, committed per org), then expire and match every
+    live surplus post (S18). Returns the number of new surplus matches."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    day = forecasting.today()
+    async with sessionmaker() as session:
+        await forecasting.run(session, await forecasting.hospital_org_ids(session), day)
+        await surplus.expire_due(session, day)
+        count = await surplus.match_open(session, day)
+        await session.commit()
+        return count
+
+
 class WorkerSettings:
     functions: list[Any] = []
     cron_jobs = [
@@ -96,6 +121,20 @@ class WorkerSettings:
             unique=True,
         ),
         cron(publish_events, second=set(range(60)), run_at_startup=True, unique=True),
+        cron(
+            expire_surplus,
+            second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
+            run_at_startup=True,
+            unique=True,
+        ),
+        cron(
+            nightly_forecasts,
+            hour={config.FORECAST_NIGHTLY_HOUR_UTC},
+            minute={config.FORECAST_NIGHTLY_MINUTE_UTC},
+            second={0},
+            unique=True,
+            timeout=60 * 60,  # every hospital x product fit; minutes, not seconds
+        ),
         cron(
             deliver_webhooks,
             second=set(range(0, 60, WEBHOOK_INTERVAL_SECONDS)),

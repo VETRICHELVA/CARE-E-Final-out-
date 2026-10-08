@@ -1,6 +1,17 @@
 import { act, cleanup, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { incoming, meAs, NOW, page, products, shortage } from "../test/fixtures";
+import {
+  forecastB,
+  forecastE,
+  incoming,
+  meAs,
+  NOW,
+  offerFromB,
+  page,
+  products,
+  productsWithIv,
+  shortage,
+} from "../test/fixtures";
 import { fakeHub, hubError, renderAs } from "../test/hub";
 import { DashboardPage } from "./dashboard";
 
@@ -57,11 +68,14 @@ describe("Dashboard", () => {
   });
 
   describe("incoming requests awaiting response", () => {
+    // A store manager also keeps the stock, so the S18 cards ask for forecasts and surplus.
     const hub = (requests: unknown) =>
       fakeHub({
         "GET /api/v1/shortages": page([]),
         "GET /api/v1/products": products,
         "GET /api/v1/source-requests": requests,
+        "GET /api/v1/forecasts": page([]),
+        "GET /api/v1/surplus/incoming": page([]),
       });
 
     it("lists each request with product, qty, requester and a countdown", async () => {
@@ -109,6 +123,51 @@ describe("Dashboard", () => {
       await screen.findByText("No open shortages");
       expect(screen.queryByText("Incoming requests awaiting response")).toBeNull();
       expect(fake.to("GET", "/api/v1/source-requests")).toHaveLength(0);
+    });
+  });
+
+  describe("forecasts and surplus (S18)", () => {
+    const hub = (routes: Record<string, unknown>) =>
+      fakeHub({
+        "GET /api/v1/shortages": page([]),
+        "GET /api/v1/products": productsWithIv,
+        "GET /api/v1/source-requests": page([]),
+        "GET /api/v1/forecasts": page([]),
+        "GET /api/v1/surplus/incoming": page([]),
+        ...routes,
+      });
+
+    it("suggests offering an expiry-risk batch's excess and counts the risks", async () => {
+      hub({ "GET /api/v1/forecasts": page([forecastB]) });
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      expect((await screen.findByTestId("expiry-risk-count")).textContent).toBe("1");
+      const list = screen.getByRole("list", { name: "Expiry-risk suggestions" });
+      expect(list.textContent).toContain("Offer 300 each to the network: IV Cannula 20G");
+      expect(within(list).getByTestId("synthetic").textContent).toBe("Synthetic history");
+    });
+
+    it("shows the predicted stock-out and the surplus matched to this hospital", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.parse("2026-10-08T06:00:00Z"));
+      hub({
+        "GET /api/v1/forecasts": page([forecastE]),
+        "GET /api/v1/surplus/incoming": page([offerFromB]),
+      });
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      const stockouts = await screen.findByRole("list", { name: "Predicted stock-outs" });
+      expect(within(stockouts).getByTestId("stockout").textContent).toContain("(in 4 days)");
+      const offers = await screen.findByRole("list", { name: "Surplus offered to you" });
+      expect(offers.textContent).toContain("Hospital B offers 300 each IV Cannula 20G");
+      expect(offers.textContent).toContain("Expires in 30–59 days");
+      expect(offers.textContent).toContain("Matches your predicted stock-out on");
+    });
+
+    it("isn't shown without inventory.edit", async () => {
+      const fake = hub({});
+      renderAs(meAs("REQUESTER"), <DashboardPage />);
+      await screen.findByText("No open shortages");
+      expect(fake.to("GET", "/api/v1/forecasts")).toHaveLength(0);
+      expect(fake.to("GET", "/api/v1/surplus/incoming")).toHaveLength(0);
     });
   });
 });

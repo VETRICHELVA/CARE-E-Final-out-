@@ -31,6 +31,8 @@ const SHIPMENTS = `${API}/shipments`;
 const SHIPMENT = `${API}/shipments/{shipment_id}`;
 const COLDCHAIN = `${API}/shipments/{shipment_id}/coldchain`;
 const SURPLUS = `${API}/surplus`;
+const SURPLUS_INCOMING = `${API}/surplus/incoming`;
+const FORECASTS = `${API}/forecasts`;
 
 const SHORTAGE_VIEWS = [SHORTAGES, SHORTAGE, LATEST_RUN, AUDIT, SHORTAGE_AUDIT] as const;
 const RECOMMENDATION_VIEWS = [RECOMMENDATION, LATEST_RECOMMENDATION] as const;
@@ -47,7 +49,8 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   "source_request.created": [...SHORTAGE_VIEWS, SOURCE_REQUESTS],
   // Accepting or releasing a request places or frees holds, which change `transferable`.
   "source_request.status_changed": [...SHORTAGE_VIEWS, SOURCE_REQUESTS, BATCHES],
-  "inventory.changed": [BATCHES, AUDIT],
+  // Stock feeds the forecasts' stock-out dates and expiry risks and what a surplus post offers.
+  "inventory.changed": [BATCHES, AUDIT, FORECASTS, SURPLUS],
   // A new or changed offer can add a product to the supplier's network demand.
   "supplier_offer.changed": [OFFERS, NETWORK_DEMAND, AUDIT],
   "recommendation.ready": [...SHORTAGE_VIEWS, ...RECOMMENDATION_VIEWS],
@@ -70,7 +73,7 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   "coldchain.device_silent": COLDCHAIN_VIEWS,
   "coldchain.recovered": COLDCHAIN_VIEWS,
   "reconciliation.completed": [...SHORTAGE_VIEWS, ...SHIPMENT_VIEWS, BATCHES],
-  "surplus.matched": [SURPLUS],
+  "surplus.matched": [SURPLUS, SURPLUS_INCOMING, FORECASTS],
 };
 
 /**
