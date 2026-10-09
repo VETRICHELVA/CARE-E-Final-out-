@@ -7,6 +7,7 @@ from app.auth import service
 from app.auth.deps import CurrentUser, user_capabilities
 from app.auth.schemas import LoginIn, MeOut, RefreshIn, TokenPair, UserOut
 from app.db import SessionDep
+from app.net import request_client_ip
 from app.orgs.schemas import OrgOut
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,7 +20,7 @@ async def login(
     session: SessionDep,
     redis: Annotated[Redis, Depends(service.get_redis)],
 ) -> TokenPair:
-    await service.check_login_rate(redis, request.client.host if request.client else "unknown")
+    await service.check_login_rate(redis, request_client_ip(request))
     pair = await service.login(session, body.email, body.password)
     await session.commit()
     return pair

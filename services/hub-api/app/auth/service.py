@@ -19,8 +19,6 @@ from app.errors import AppError
 
 ACCESS_TTL = timedelta(minutes=15)
 REFRESH_TTL = timedelta(days=7)
-LOGIN_LIMIT = 5  # attempts per IP per window
-LOGIN_WINDOW_S = 60
 JWT_ALG = "HS256"
 # A stream ticket opens GET /events/stream (EventSource cannot send an Authorization header).
 # Its audience makes it useless as an access token, and an access token useless as a ticket.
@@ -127,14 +125,15 @@ async def issue_tokens(
 
 
 async def check_login_rate(redis: Redis, ip: str) -> None:
-    """Fixed window: every login attempt from an IP counts, success or not."""
+    """Fixed window: every login attempt from an IP counts, success or not
+    (`LOGIN_RATE_LIMIT` attempts per `LOGIN_RATE_WINDOW_SECONDS`, default 5 per minute)."""
     key = f"rl:login:{ip}"
     async with redis.pipeline(transaction=True) as pipe:
         pipe.incr(key)
-        pipe.expire(key, LOGIN_WINDOW_S, nx=True)
+        pipe.expire(key, settings.login_rate_window_seconds, nx=True)
         pipe.ttl(key)
         count, _, ttl = await pipe.execute()
-    if count > LOGIN_LIMIT:
+    if count > settings.login_rate_limit:
         raise AppError(
             429,
             "rate_limited",

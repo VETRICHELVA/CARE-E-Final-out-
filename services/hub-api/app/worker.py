@@ -1,8 +1,8 @@
 """arq worker for the hub's timers (business-rules.md §6: response, hold and recommendation
 deadlines; §11: silent cold-chain devices; S18: surplus expiry), the nightly forecast and
-surplus matching (S18), the nightly reliability recompute (§12), the event publisher and
-webhook deliveries (api-and-events.md, Events and Webhooks). Run it with `make worker`; the
-apps get live updates only while it runs.
+surplus matching (S18), the nightly reliability recompute (§12), the event publisher, the
+hourly outbox pruning (S20) and webhook deliveries (api-and-events.md, Events and Webhooks).
+Run it with `make worker`; the apps get live updates only while it runs.
 
 Deadlines, unpublished events and due deliveries are all stored in the database, so a
 restarted worker loses nothing. Every job is idempotent and safe with several workers: the
@@ -88,6 +88,14 @@ async def publish_events(ctx: dict[str, Any]) -> int:
         return await events.publish_pending(session, redis)
 
 
+async def prune_events(ctx: dict[str, Any]) -> int:
+    """S20: drop published outbox events past their retention (EVENT_RETENTION_HOURS;
+    `coldchain.reading` READING_EVENT_RETENTION_HOURS) with their finished deliveries."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    async with sessionmaker() as session:
+        return await events.prune(session)
+
+
 async def deliver_webhooks(ctx: dict[str, Any]) -> int:
     sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
     async with sessionmaker() as session:
@@ -165,6 +173,7 @@ class WorkerSettings:
             unique=True,
             timeout=60 * 60,  # every hospital x product fit; minutes, not seconds
         ),
+        cron(prune_events, minute=5, second=0, run_at_startup=True, unique=True, timeout=10 * 60),
         cron(
             deliver_webhooks,
             second=set(range(0, 60, WEBHOOK_INTERVAL_SECONDS)),
