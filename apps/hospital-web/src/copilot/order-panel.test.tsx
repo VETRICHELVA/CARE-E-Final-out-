@@ -206,6 +206,39 @@ describe("Order mode", () => {
     expect(body).toMatchObject({ product_id: rdk.id, min_shelf_life_days: 60, source: "CHAT" });
   });
 
+  it("applies the new product's shelf-life default when the product is changed", async () => {
+    const fake = hub(CLEAR);
+    const card = within(await order("need 850 SK-A by fri for ICU"));
+    const shelf = () => card.getByLabelText("Min shelf life (days)") as HTMLInputElement;
+    expect(shelf().value).toBe("30");
+    expect(card.getByTestId("missing-min_shelf_life_days")).toBeTruthy();
+    expect(card.getByTestId("shelf-life-default").textContent).toBe("Product default: 30 days.");
+
+    // Not stated in the message, so it follows the product picked from the dropdown.
+    fireEvent.change(card.getByLabelText("Product"), { target: { value: rdk.id } });
+    expect(shelf().value).toBe("60");
+    expect(card.getByTestId("shelf-life-default").textContent).toBe("Product default: 60 days.");
+    expect(card.getByTestId("missing-min_shelf_life_days")).toBeTruthy();
+
+    fireEvent.click(card.getByRole("button", { name: "Create shortage" }));
+    await waitFor(() => expect(fake.to("POST", "/api/v1/shortages")).toHaveLength(1));
+    const body = JSON.parse(fake.to("POST", "/api/v1/shortages")[0]!.body!);
+    expect(body).toMatchObject({ product_id: rdk.id, min_shelf_life_days: 60 });
+  });
+
+  it("keeps a shelf life the user stated when the product is changed", async () => {
+    hub({
+      ...CLEAR,
+      draft: { ...CLEAR.draft!, min_shelf_life_days: 45 },
+      missing_fields: ["priority", "qty_local_usable"],
+    });
+    const card = within(await order("need 850 SK-A by fri, min 45 days expiry"));
+    fireEvent.change(card.getByLabelText("Product"), { target: { value: rdk.id } });
+    expect((card.getByLabelText("Min shelf life (days)") as HTMLInputElement).value).toBe("45");
+    expect(card.queryByTestId("missing-min_shelf_life_days")).toBeNull();
+    expect(card.getByTestId("shelf-life-default").textContent).toBe("Product default: 60 days.");
+  });
+
   it("shows the question alone when there is nothing to draft", async () => {
     const fake = fakeHub({
       "GET /ai/status": { configured: true, model: "m" },

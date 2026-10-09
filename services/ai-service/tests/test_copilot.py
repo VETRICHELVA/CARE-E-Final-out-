@@ -131,15 +131,76 @@ async def test_an_answer_that_keeps_inventing_numbers_is_withheld() -> None:
     assert out.unsupported_numbers == ["12000"]
 
 
-async def test_numbers_from_the_question_may_be_repeated() -> None:
+APOLLO_RUN = {
+    "run_no": 1,
+    "shortage_id": SHORTAGE,
+    "candidates": [
+        {
+            "source_org_name": "Apollo",
+            "eligible": False,
+            "rank": None,
+            "transferable_qty": 120,
+            "gate_results": [
+                {"gate": "quantity", "passed": False, "reason": "Only 120 transferable"}
+            ],
+        }
+    ],
+}
+
+
+def apollo_hub() -> FakeHub:
+    hub = FakeHub()
+    hub.routes[f"shortages/{SHORTAGE}/match-run"] = (200, APOLLO_RUN)
+    return hub
+
+
+async def test_a_number_from_the_question_is_not_confirmed_unless_a_tool_returned_it() -> None:
+    # The user's figure is not a source: the hub says 120, so 480 must not be repeated.
+    def brain(conv: FakeConversation) -> ModelTurn:
+        if len(conv.steps) == 1:
+            return tool_turn(use("get_match_run", shortage_id=SHORTAGE))
+        if conv.last.followup is None:
+            return text("Yes, Apollo has 480 vials.")
+        assert "no tool result contains: 480." in conv.last.followup
+        return text("No: the hub shows Apollo with 120 transferable.")
+
     out = await copilot.ask(
-        "Is 1200 enough?",
+        "Apollo has 480 vials, right?",
+        {"shortage_id": SHORTAGE},
+        user_token=USER_TOKEN,
+        hub=apollo_hub().reader(),
+        provider=FakeProvider(brain),
+    )
+    assert out.answer == "No: the hub shows Apollo with 120 transferable."
+    assert "480" not in out.answer
+
+
+async def test_an_answer_that_keeps_confirming_the_users_number_is_withheld() -> None:
+    def brain(conv: FakeConversation) -> ModelTurn:
+        if len(conv.steps) == 1:
+            return tool_turn(use("get_match_run", shortage_id=SHORTAGE))
+        return text("Yes, Apollo has 480 vials.")
+
+    out = await copilot.ask(
+        "Apollo has 480 vials, right?",
+        {"shortage_id": SHORTAGE},
+        user_token=USER_TOKEN,
+        hub=apollo_hub().reader(),
+        provider=FakeProvider(brain),
+    )
+    assert out.answer == NO_DATA
+    assert out.unsupported_numbers == ["480"]
+
+
+async def test_a_number_from_the_question_that_a_tool_returned_may_be_repeated() -> None:
+    out = await copilot.ask(
+        "Is our shortfall 850?",
         {"shortage_id": SHORTAGE},
         user_token=USER_TOKEN,
         hub=FakeHub().reader(),
-        provider=FakeProvider(lambda conv: text("1200 is more than the shortfall of 850.")),
+        provider=FakeProvider(lambda conv: text("Yes, the shortfall is 850.")),
     )
-    assert out.answer.startswith("1200")
+    assert out.answer == "Yes, the shortfall is 850."
 
 
 async def test_the_tool_loop_stops_at_six_calls() -> None:

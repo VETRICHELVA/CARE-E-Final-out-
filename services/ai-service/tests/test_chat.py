@@ -26,17 +26,22 @@ from tests.fakes import (
 pytestmark = pytest.mark.anyio
 
 MONDAY = datetime(2026, 10, 5, 4, 30, tzinfo=UTC)  # Monday 10:00 in Asia/Kolkata
+FRIDAY = datetime(2026, 10, 9, 4, 30, tzinfo=UTC)  # Friday 9 October 10:00 in Asia/Kolkata
 
 
 async def draft(
-    message: str, raw: dict[str, Any] | None, hub: FakeHub | None = None, tz: str = "Asia/Kolkata"
+    message: str,
+    raw: dict[str, Any] | None,
+    hub: FakeHub | None = None,
+    tz: str = "Asia/Kolkata",
+    now: datetime = MONDAY,
 ) -> tuple[chat.ChatResult, FakeHub, FakeProvider]:
     hub = hub or FakeHub()
     provider = FakeProvider(lambda conv: text(""), lambda user_text: raw)
     result = await chat.draft(
         message,
         user_tz=tz,
-        now=MONDAY,
+        now=now,
         user_token=USER_TOKEN,
         hub=hub.reader(),
         provider=provider,
@@ -254,10 +259,165 @@ async def test_a_clock_time_the_user_did_not_write_is_dropped() -> None:
     assert chat.NO_TIME in result.assumptions
 
 
+async def required_by(message: str, item: dict[str, Any]) -> chat.ChatResult:
+    """The draft for `message` on Friday 9 October 10:00 IST with `item` as the model's date."""
+    raw = extraction(products=["SK-A"], qty_required=q(850, "850"), required_by=item)
+    result, _, _ = await draft(message, raw, now=FRIDAY)
+    assert result.draft is not None
+    return result
+
+
+NEXT_FRI = "need 850 SK-A by next fri"
+
+
+@pytest.mark.parametrize(
+    ("message", "item", "expected"),
+    [
+        # Review finding 1: "next" was lost, so "by next fri" said on a Friday meant today.
+        (NEXT_FRI, when("weekday", "by next fri", weekday="friday", modifier="next"), "10-16"),
+        (NEXT_FRI, when("weekday", "next fri", weekday="friday", modifier="next"), "10-16"),
+        ("need 850 SK-A by this fri", when("weekday", "this fri", weekday="friday"), "10-09"),
+        (
+            "need 850 SK-A by this fri",
+            when("weekday", "by this fri", weekday="friday", modifier="this"),
+            "10-09",
+        ),
+        (
+            "need 850 SK-A by next Monday",
+            when("weekday", "by next Monday", weekday="monday", modifier="next"),
+            "10-12",
+        ),
+        # The model drops "next" (from the modifier or the quote) or adds one: asked for.
+        (NEXT_FRI, when("weekday", "by next fri", weekday="friday"), None),
+        (NEXT_FRI, when("weekday", "fri", weekday="friday"), None),
+        (
+            "need 850 SK-A by fri",
+            when("weekday", "by fri", weekday="friday", modifier="next"),
+            None,
+        ),
+    ],
+)
+async def test_next_weekday_is_kept_from_the_users_words(
+    message: str, item: dict[str, Any], expected: str | None
+) -> None:
+    result = await required_by(message, item)
+    assert result.draft is not None
+    if expected is None:
+        assert result.draft.required_by is None and "required_by" in result.missing_fields
+    else:
+        assert result.draft.required_by == f"2026-{expected}T23:59:00+05:30"
+
+
+@pytest.mark.parametrize(
+    ("quote", "clock", "expected"),
+    [
+        # Review finding 2: "6 am" with the model's 18:00 passed.
+        ("by 6 am tmrw", "18:00", None),
+        ("by 6 am tmrw", "06:00", "06:00"),
+        ("by 6am tmrw", "06:00", "06:00"),
+        ("by 6 a.m. tmrw", "06:00", "06:00"),
+        ("by 6 pm tmrw", "18:00", "18:00"),
+        ("by 6 pm tmrw", "06:00", None),
+        ("by 6:30 pm tmrw", "18:30", "18:30"),
+        ("by 6:30 pm tmrw", "18:00", None),
+        ("by 12 pm tmrw", "12:00", "12:00"),
+        ("by 12 am tmrw", "00:00", "00:00"),
+        ("by 12 am tmrw", "12:00", None),
+        ("by 12 noon tmrw", "12:00", "12:00"),
+        ("by midnight tmrw", "00:00", "00:00"),
+        # 24-hour notation is read as written.
+        ("by 18:00 tmrw", "18:00", "18:00"),
+        ("by 06:00 tmrw", "18:00", None),
+        ("by 1800 hrs tmrw", "18:00", "18:00"),
+        # A bare hour says neither am nor pm: no time is taken from it.
+        ("by 6 tmrw", "18:00", None),
+        ("by 6 tmrw", "06:00", None),
+    ],
+)
+async def test_an_hour_must_match_the_users_am_or_pm(
+    quote: str, clock: str, expected: str | None
+) -> None:
+    result = await required_by(f"need 850 SK-A {quote}", when("tomorrow", quote, clock_time=clock))
+    d = result.draft
+    assert d is not None
+    if expected is None:
+        assert d.required_by == "2026-10-10T23:59:00+05:30"
+        assert chat.NO_TIME in result.assumptions
+    else:
+        assert d.required_by == f"2026-10-10T{expected}:00+05:30"
+        assert result.assumptions == []
+
+
+async def test_a_passed_day_and_month_is_this_year_and_flagged() -> None:
+    # Review finding 3: "by 5 oct" on 9 October 2026 became 5 October 2027.
+    result = await required_by("need 850 SK-A by 5 oct", when("date", "by 5 oct", day=5, month=10))
+    assert result.draft is not None
+    assert result.draft.required_by == "2026-10-05T23:59:00+05:30"
+    assert chat.PASSED in result.assumptions
+
+
+@pytest.mark.parametrize(
+    ("word", "clock"),
+    [("morning", "09:00"), ("afternoon", "14:00"), ("evening", "18:00"), ("night", "21:00")],
+)
+async def test_time_of_day_words_are_flagged_as_assumed_hours(word: str, clock: str) -> None:
+    # Review finding 4: these hours are not figures the user gave, so the card says so.
+    quote = f"tomorrow {word}"
+    result = await required_by(f"need 850 SK-A {quote}", when("tomorrow", quote, time_of_day=word))
+    assert result.draft is not None
+    assert result.draft.required_by == f"2026-10-10T{clock}:00+05:30"
+    assert result.assumptions == [chat.ASSUMED_TIME.format(word=word, clock=clock)]
+
+
+async def test_end_of_day_and_a_written_time_are_not_assumptions() -> None:
+    eod = await required_by(
+        "need 850 SK-A tmrw EOD", when("tomorrow", "tmrw EOD", time_of_day="end_of_day")
+    )
+    assert eod.draft is not None and eod.draft.required_by == "2026-10-10T23:59:00+05:30"
+    assert eod.assumptions == []
+    item = when("tomorrow", "tomorrow morning 7:30", time_of_day="morning", clock_time="07:30")
+    written = await required_by("need 850 SK-A tomorrow morning 7:30", item)
+    assert written.draft is not None
+    assert written.draft.required_by == "2026-10-10T07:30:00+05:30"
+    assert written.assumptions == []
+
+
+@pytest.mark.parametrize(
+    ("quote", "weekday", "ok"),
+    [
+        # Review finding 5: "mon" inside "month" counted as Monday.
+        ("within a month", "monday", False),
+        ("before sunset", "sunday", False),
+        ("by satisfactory date", "saturday", False),
+        ("by wedding day", "wednesday", False),
+        ("by mon", "monday", True),
+        ("by Monday", "monday", True),
+        ("by tues", "tuesday", True),
+        ("by weds", "wednesday", True),
+        ("by thurs", "thursday", True),
+        ("by fri.", "friday", True),
+    ],
+)
+async def test_a_weekday_must_be_a_whole_word(quote: str, weekday: str, ok: bool) -> None:
+    result = await required_by(f"need 850 SK-A {quote}", when("weekday", quote, weekday=weekday))
+    assert result.draft is not None
+    assert (result.draft.required_by is not None) is ok
+
+
 async def test_notes_with_figures_the_user_did_not_write_are_dropped() -> None:
     result, _, _ = await draft(O01, {**O01_RAW, "notes": "ICU bed 12"})
     assert result.draft is not None and result.draft.notes is None
     result, _, _ = await draft("IV cannula 20G - 300, ward 4", {**O01_RAW, "notes": "ward 4"})
+    assert result.draft is not None and result.draft.notes == "ward 4"
+
+
+async def test_chat_may_echo_the_users_own_figures_unlike_the_copilot() -> None:
+    # Chat ordering repeats the user's words back (a product phrase, the ward), so the user's
+    # message is a source of figures here; the copilot's question is not (test_copilot).
+    hub = FakeHub()
+    raw = extraction(products=["IV kanula 20G"], qty_required=q(5, "5"), notes="ward 4")
+    result, _, _ = await draft("need 5 IV kanula 20G for ward 4", raw, hub)
+    assert result.question == chat.NOT_FOUND.format(mention="IV kanula 20G")
     assert result.draft is not None and result.draft.notes == "ward 4"
 
 

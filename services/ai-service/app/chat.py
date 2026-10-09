@@ -19,7 +19,7 @@ The message is untrusted: it reaches the model inside <chat_message> tags as dat
 import calendar
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from decimal import Decimal, InvalidOperation
 from typing import Any, TypeGuard
 from zoneinfo import ZoneInfo
@@ -36,6 +36,7 @@ AMBIGUOUS_WITHIN = 0.10  # another product within 10% of the best score -> ask
 DEFAULT_PRIORITY = "ROUTINE"
 DEFAULT_LOCAL_USABLE = 0
 NO_TIME = "No time of day was given, so the end of that day (23:59) is used."
+ASSUMED_TIME = 'No clock time was given: "{word}" is taken as {clock}. Please check the time.'
 PASSED = "That time has already passed. Please check the required-by date."
 REFUSED = "I can't help with that message. Please describe the supplies you need."
 ONE_PRODUCT = (
@@ -84,10 +85,11 @@ otherwise ("asap" alone is not a priority).
 exact words (e.g. "by fri", "within 72 hrs", "tomorrow morning", "before 6 pm today", "by \
 12th oct"). kind is one of: today; tomorrow; day_after_tomorrow; weekday (set weekday); \
 date (set day, and month or year only if written); in_hours or in_days (set amount, for \
-"in 48 hrs", "within 72 hrs", "in 3 days"). time_of_day is morning, afternoon, evening, \
-night or end_of_day (EOD) if one is said; clock_time is a clock time the user wrote, as \
-24-hour HH:MM (6 pm -> 18:00). Leave every field that does not apply null. Do not work out \
-any date yourself.
+"in 48 hrs", "within 72 hrs", "in 3 days"). For a weekday, modifier is "next" when the user \
+wrote "next" before it ("by next fri"), "this" for "this fri", and null otherwise. \
+time_of_day is morning, afternoon, evening, night or end_of_day (EOD) if one is said; \
+clock_time is a clock time the user wrote, as 24-hour HH:MM (6 pm -> 18:00, 6 am -> 06:00). \
+Leave every field that does not apply null. Do not work out any date yourself.
 - notes: other details worth keeping for the order, such as the ward, department or purpose \
 ("for ICU", "OT", "lab", "ward 4", "casualty"), in the user's own words; null if none. Not \
 the product, quantities, dates, priority words or pleasantries.
@@ -122,6 +124,7 @@ SCHEMA: dict[str, Any] = _object(
         _object(
             kind={"type": "string", "enum": list(dates.KINDS)},
             weekday=_nullable({"type": "string", "enum": list(dates.WEEKDAYS)}),
+            modifier=_nullable({"type": "string", "enum": list(dates.MODIFIERS)}),
             day=_nullable(_INT),
             month=_nullable(_INT),
             year=_nullable(_INT),
@@ -227,8 +230,66 @@ def _quoted_int(item: Any, message: str) -> int | None:
     return value
 
 
+# Whole words only ("mon" is not in "month"); "next" or "this" may come before ("this
+# coming fri").
+WEEKDAY_WORDS = {
+    "monday": ("monday", "mon"),
+    "tuesday": ("tuesday", "tues", "tue"),
+    "wednesday": ("wednesday", "weds", "wed"),
+    "thursday": ("thursday", "thurs", "thur", "thu"),
+    "friday": ("friday", "fri"),
+    "saturday": ("saturday", "sat"),
+    "sunday": ("sunday", "sun"),
+}
+MODIFIER_WORDS = {"next": "next", "nxt": "next", "this": "this"}
+
+
+def weekday_mentions(text: str, weekday: str) -> list[str | None]:
+    """How each whole-word mention of `weekday` in `text` is qualified: "next", "this" or
+    None (bare)."""
+    forms = "|".join(WEEKDAY_WORDS.get(weekday, ()))
+    if not forms:
+        return []
+    pattern = rf"(?:\b(next|nxt|this)\s+(?:coming\s+)?)?\b(?:{forms})\b"
+    return [
+        MODIFIER_WORDS.get((m.group(1) or "").lower())
+        for m in re.finditer(pattern, text, re.IGNORECASE)
+    ]
+
+
+MERIDIEM_RE = re.compile(r"(?<![\d:.])(\d{1,2})(?:[:.](\d{2}))?\s*([ap])\.?\s*m\b\.?", re.I)
+H24_RE = re.compile(r"(?<![\d:.])(\d{1,2})[:.](\d{2})(?![\d:.])")
+HRS_RE = re.compile(r"(?<![\d:.])([01]\d|2[0-3])([0-5]\d)\s*(?:hrs|hours|hr|h)\b", re.I)
+
+
+def clock_times(quote: str) -> set[time]:
+    """The clock times `quote` writes, read as written: "6 am" 06:00, "6:30 pm" 18:30,
+    "12 pm" and "noon" 12:00, "12 am" and "midnight" 00:00; 24-hour "18:00", "06.30" and
+    "1800 hrs". A bare hour ("by 6") says neither am nor pm, so it gives no time."""
+    found: set[time] = set()
+
+    def add(h: int, m: int) -> None:
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            found.add(time(h, m))
+
+    for m in MERIDIEM_RE.finditer(quote):
+        h, minute = int(m.group(1)), int(m.group(2) or 0)
+        if 1 <= h <= 12:
+            add(h % 12 + (12 if m.group(3).lower() == "p" else 0), minute)
+    rest = MERIDIEM_RE.sub(" ", quote)
+    for m in H24_RE.finditer(rest):
+        add(int(m.group(1)), int(m.group(2)))
+    for m in HRS_RE.finditer(rest):
+        add(int(m.group(1)), int(m.group(2)))
+    if re.search(r"\bnoon\b", quote, re.I):
+        add(12, 0)
+    if re.search(r"\bmidnight\b", quote, re.I):
+        add(0, 0)
+    return found
+
+
 def _when(item: Any, message: str) -> tuple[dates.When, str] | None:
-    """The date the user wrote, if every figure in it is in their quote."""
+    """The date the user wrote, if every figure and word in it is in their quote."""
     if not isinstance(item, dict) or item.get("kind") not in dates.KINDS:
         return None
     quote = item.get("quote")
@@ -239,9 +300,18 @@ def _when(item: Any, message: str) -> tuple[dates.When, str] | None:
     def has(n: Any) -> bool:
         return n is None or (isinstance(n, int | float) and Decimal(str(n)) in figures)
 
-    weekday = item.get("weekday")
-    if item["kind"] == "weekday" and not (isinstance(weekday, str) and weekday[:3] in q):
-        return None
+    weekday, modifier = item.get("weekday"), item.get("modifier")
+    if modifier not in dates.MODIFIERS:
+        modifier = None
+    if item["kind"] == "weekday":
+        # The weekday must be a whole word of the quote, and "next" must be kept exactly
+        # where the user wrote it: in the quote and wherever the message names that day.
+        if not isinstance(weekday, str):
+            return None
+        said = {m == "next" for m in weekday_mentions(quote, weekday)}
+        everywhere = {m == "next" for m in weekday_mentions(message, weekday)}
+        if said != {modifier == "next"} or (modifier == "next") not in everywhere:
+            return None
     month = item.get("month")
     month_named = (
         isinstance(month, int)
@@ -255,16 +325,12 @@ def _when(item: Any, message: str) -> tuple[dates.When, str] | None:
     if month is not None and not month_named:
         return None
     clock = dates.parse_clock(item.get("clock_time"))
-    if clock is not None:
-        h = clock.hour
-        hour_said = has(h) or (h > 12 and has(h - 12)) or (h == 12 and "noon" in q)
-        if not (hour_said or (h == 0 and "midnight" in q)) or not (
-            clock.minute == 0 or has(clock.minute)
-        ):
-            clock = None  # keep the date, drop a time the user didn't write
+    if clock is not None and clock not in clock_times(quote):
+        clock = None  # keep the date, drop a time the user didn't write (am/pm included)
     when = dates.When(
         kind=item["kind"],
         weekday=weekday if isinstance(weekday, str) else None,
+        modifier=modifier if item["kind"] == "weekday" else None,
         day=item.get("day"),
         month=month,
         year=item.get("year"),
@@ -426,7 +492,10 @@ async def draft(
     if got.when is not None:
         resolved = dates.resolve(got.when[0], now, tz)
         if resolved is not None:
-            if not resolved.time_given:
+            if resolved.assumed is not None:
+                clock = f"{resolved.at:%H:%M}"
+                assumptions.append(ASSUMED_TIME.format(word=resolved.assumed, clock=clock))
+            elif not resolved.time_given:
                 assumptions.append(NO_TIME)
             if resolved.at <= now:
                 assumptions.append(PASSED)
