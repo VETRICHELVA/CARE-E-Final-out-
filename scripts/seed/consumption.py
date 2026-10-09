@@ -3,7 +3,8 @@ consumption history"). Every row it writes is a ConsumptionRecord with `syntheti
 no hospital has reported real consumption yet, and the apps say so.
 
 - 12 months of daily records, ending yesterday (UTC), per hospital x product for the 15
-  most-used products (TOP_PRODUCTS).
+  most-used products (TOP_PRODUCTS), except a product the hospital does not stock
+  (NOT_STOCKED).
 - Base rate by product and hospital size; weekly seasonality (weekdays 1.2x weekends); +-15%
   noise; 3-5 spikes of 2-3x per series. Fixed random seed: the same `today` always gives the
   same numbers.
@@ -62,9 +63,15 @@ TOP_PRODUCTS = {
     "DIAG-EDTA-TUB": 12,
     "WND-TAP-MIC": 10,
     "IV-STC-3W": 9,
-    "SURG-KIT-A": 8,
+    # 16 (S20): Hospital B's Scenario 1 batch (2,500 on hand, safety 500, +180 days) is then
+    # used up before it expires, so it shows no expiry-risk excess beside Scenario 3's.
+    "SURG-KIT-A": 16,
     "DIAG-RDK": 6,
 }
+
+# Series not generated: Hospital F stocks no Surgical Kit A (it must not be a Scenario 1
+# candidate, demo-scenarios.md), so it has no history of using it either (S20).
+NOT_STOCKED = {("Hospital F", "SURG-KIT-A")}
 
 # Scenario 3 (demo-scenarios.md): exact weekly patterns, Monday first.
 # B: 64 a week (weekdays 9.6 on average, weekends 8: 1.2x), so any 55 days use 502-504.
@@ -104,6 +111,8 @@ def rows(hospitals: list[str], today: date) -> Iterator[tuple[str, str, date, in
     days = history_days(today)
     for hospital in hospitals:
         for code in TOP_PRODUCTS:
+            if (hospital, code) in NOT_STOCKED:
+                continue
             yield from (
                 (hospital, code, d, q)
                 for d, q in zip(days, series(hospital, code, today), strict=True)

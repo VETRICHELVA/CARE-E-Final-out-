@@ -2,7 +2,7 @@
 shortage at Hospital A AWAITING_DECISION on a BUY from Supplier Y, as at Scenario 1 step 4
 (docs/specs/demo-scenarios.md), with Scenario 1's figures (1,000 required, 150 usable, shortfall
 850) but for Sterile Drapes, so it never touches the other e2e tests' products (Surgical Kit A,
-IV Cannula 20G, Face Shield).
+Nebulizer Mask, Face Shield).
 
 Run from services/hub-api, against the database the hub under test uses (the spec runs it):
 
