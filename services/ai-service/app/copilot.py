@@ -7,6 +7,10 @@ CLAUDE.md rule 2, as code:
   action to take;
 - no figure a tool didn't return: every answer goes through the number check
   (app.numbers); an answer that still fails after one correction is replaced, not shown.
+  A figure from the question counts only if a tool result also holds it, so "Apollo has 480
+  vials, right?" cannot be confirmed when the hub says 120: the copilot corrects the user.
+  (Chat ordering differs: its draft echoes the user's own figures, so there the user's
+  message is a source; see app.chat.)
 """
 
 import json
@@ -159,7 +163,7 @@ async def ask(
     answer = turn.text if not turn.tool_uses else ""
 
     results = [t.result for t in trace if t.ok]
-    missing = unsupported_numbers(answer, results, also=question)
+    missing = unsupported_numbers(answer, results)
     if answer and missing:
         turn = await conversation.step(
             followup=(
@@ -170,7 +174,7 @@ async def ask(
             allow_tools=False,
         )
         answer = "" if turn.refused else turn.text
-        missing = unsupported_numbers(answer, results, also=question)
+        missing = unsupported_numbers(answer, results)
     if not answer or missing:
         return CopilotAnswer(NO_DATA, trace, missing)
     return CopilotAnswer(answer, trace)

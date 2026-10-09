@@ -83,12 +83,14 @@ function OrderCard({ reply, onCancel }: { reply: ChatDraftReply; onCancel: () =>
   });
   const only = facilities.data?.length === 1 ? facilities.data[0]?.id : undefined;
 
-  const choose = (c: ProductCandidate) => {
-    form.set("product_id", c.product_id);
-    // The chosen product's default, as returned by the hub's search (a tool's figure).
+  /** Sets the product. A shelf life the message didn't state follows the product: its
+   *  default, as the hub returned it (a candidate from the search, or the catalog). */
+  const pick = (productId: string, defaultDays: number | undefined) => {
+    form.set("product_id", productId);
     if (missing.has("min_shelf_life_days"))
-      form.set("min_shelf_life_days", String(c.default_min_shelf_life_days));
+      form.set("min_shelf_life_days", defaultDays === undefined ? "" : String(defaultDays));
   };
+  const choose = (c: ProductCandidate) => pick(c.product_id, c.default_min_shelf_life_days);
 
   const save = (status: "OPEN" | "DRAFT") => (event?: FormEvent) => {
     event?.preventDefault();
@@ -133,6 +135,12 @@ function OrderCard({ reply, onCancel }: { reply: ChatDraftReply; onCancel: () =>
 
   const full = fullDateTime(form.values.required_by);
   const chosen = products.data?.byId.get(form.values.product_id);
+  const shelfDefaulted = hintFor("min_shelf_life_days", missing);
+  const shelfDefault = chosen && (
+    <span data-testid="shelf-life-default">
+      Product default: {chosen.default_min_shelf_life_days} days.
+    </span>
+  );
   return (
     <form
       onSubmit={save("OPEN")}
@@ -168,7 +176,15 @@ function OrderCard({ reply, onCancel }: { reply: ChatDraftReply; onCancel: () =>
         error={form.errors.product_id}
         hint={hintFor("product_id", missing)}
       >
-        <NativeSelect {...form.bind("product_id")}>
+        <NativeSelect
+          {...form.bind("product_id")}
+          onChange={(e) =>
+            pick(
+              e.target.value,
+              products.data?.byId.get(e.target.value)?.default_min_shelf_life_days,
+            )
+          }
+        >
           <option value="">Choose…</option>
           {products.data?.list.map((p) => (
             <option key={p.id} value={p.id}>
@@ -241,8 +257,11 @@ function OrderCard({ reply, onCancel }: { reply: ChatDraftReply; onCancel: () =>
           label="Min shelf life (days)"
           error={form.errors.min_shelf_life_days}
           hint={
-            hintFor("min_shelf_life_days", missing) ??
-            (chosen ? `Product default: ${chosen.default_min_shelf_life_days} days.` : undefined)
+            shelfDefaulted || shelfDefault ? (
+              <>
+                {shelfDefaulted} {shelfDefault}
+              </>
+            ) : undefined
           }
         >
           <Input inputMode="numeric" {...form.bind("min_shelf_life_days")} />

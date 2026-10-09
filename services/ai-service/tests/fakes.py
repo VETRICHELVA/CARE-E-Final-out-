@@ -110,6 +110,7 @@ def when(kind: str, quote: str, **fields: Any) -> dict[str, Any]:
     out: dict[str, Any] = {
         "kind": kind,
         "weekday": None,
+        "modifier": None,
         "day": None,
         "month": None,
         "year": None,

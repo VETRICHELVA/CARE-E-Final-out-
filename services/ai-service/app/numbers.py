@@ -185,8 +185,10 @@ def numbers_in_data(value: Any) -> set[str]:
 
 
 def unsupported_numbers(answer: str, results: Iterable[Any], *, also: str = "") -> list[str]:
-    """Figures in `answer` found in none of `results` (nor in `also`, e.g. the question when
-    the service guards its own answers). Empty means the answer passes."""
+    """Figures in `answer` found in none of `results` (nor in `also`). Empty means the answer
+    passes. The copilot passes no `also`: a figure in the user's question must also be in a
+    tool result. Chat ordering passes the user's own message, because its draft, notes and
+    questions echo the user's figures (the quantity, a product phrase such as "20G")."""
     allowed: set[str] = set(numbers_in_text(also))
     for r in results:
         allowed |= numbers_in_data(r)

@@ -52,8 +52,9 @@ product_candidates, question, assumptions, tool_trace}`. `draft` holds the card'
   the model is asked.
 - **Never acts.** There is nothing to act with, and the system prompt forbids claiming an action.
 - **No invented figures.** Every answer is checked (`app/numbers.py`): a number found in no
-  tool result (nor in the question) earns one correction turn; if the rewrite still fails, the
-  answer is withheld.
+  tool result earns one correction turn; if the rewrite still fails, the answer is withheld.
+  A number from the question counts only if a tool result also holds it, so "Apollo has 480
+  vials, right?" is corrected, never confirmed, when the hub returns 120.
 - **Bounded.** At most 6 tool calls per question.
 
 ## Chat ordering (S17, `app/chat.py`, `app/dates.py`)
@@ -65,14 +66,20 @@ product_candidates, question, assumptions, tool_trace}`. `draft` holds the card'
   `app.chat.SCHEMA`, no tools) returns the product phrases, the figures with the user's words
   each came from, and the kind of date. Every figure's quote must be in the message and hold
   that figure ("2k" for 2000), or the field is dropped and asked for. Notes and questions pass
-  the S13 number check. The model never computes a date or a shortfall.
+  the S13 number check with the user's own message as a source too (unlike the copilot):
+  they echo the user's words. The model never computes a date or a shortfall.
 - **Products.** Each phrase must be the user's own words; the hub scores it
   (`GET /ai/read/products/search`, as the user) against names, codes and
   `scripts/seed/synonyms.yaml`. Another product within 10% of the best: no product is chosen,
   the candidates and a question come back. Several products: the user is asked to split it.
-- **Dates.** `app/dates.py` resolves the model's `{kind, weekday, day, month, amount,
-time_of_day, clock_time}` in `user_tz` from `now`: weekdays and days of the month roll to the
-  next one on or after today, "in N hours" is exact, an unstated time is 23:59 (and says so).
+- **Dates.** `app/dates.py` resolves the model's `{kind, weekday, modifier, day, month,
+amount, time_of_day, clock_time}` in `user_tz` from `now`: a weekday (or "this <weekday>")
+  and a day of the month roll to the next one on or after today, "next <weekday>" is the
+  following week's, a day and month without a year is this year's (flagged if passed), "in N
+  hours" is exact. `app/chat.py` keeps a weekday only as a whole word with the user's "next",
+  and a clock time only as written (am/pm, noon, midnight or 24-hour). Assumed times are
+  listed in `assumptions`: none given 23:59; morning 09:00, afternoon 14:00, evening 18:00,
+  night 21:00.
 - **Untrusted text.** The message reaches the model inside `<chat_message>` tags, with `<`
   escaped, as data.
 
