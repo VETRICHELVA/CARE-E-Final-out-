@@ -12,13 +12,16 @@ import secrets
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import net
 from app.audit import service as audit
 from app.auth.models import User
+from app.config import settings
 from app.domain import webhooks as rules
 from app.domain.webhooks import SIGNATURE_HEADER, DeliveryStatus
 from app.errors import AppError
@@ -35,7 +38,25 @@ DELIVERY_TIMEOUT_SECONDS = 10.0
 # --- subscriptions -----------------------------------------------------------------------------
 
 
+def check_url(url: str) -> None:
+    """S20: outside dev a webhook must be https; and unless a dev hub allows it
+    (WEBHOOK_ALLOW_PRIVATE_TARGETS), its host may not be a local name or an internal IP. Names
+    are resolved and checked again before every delivery (`net.target_refusal`)."""
+    if not settings.is_dev and urlsplit(url).scheme != "https":
+        raise AppError(
+            400, "validation", "Webhook URLs must use https.", {"reason": "https_required"}
+        )
+    if not net.private_targets_allowed() and (refusal := net.literal_target_refusal(url)):
+        raise AppError(
+            400,
+            "validation",
+            f"Webhooks cannot target internal addresses: {refusal}",
+            {"reason": "webhook_target_not_allowed"},
+        )
+
+
 async def create(session: AsyncSession, user: User, body: WebhookIn) -> WebhookSubscription:
+    check_url(str(body.url))
     sub = WebhookSubscription(
         org_id=user.org_id,
         url=str(body.url),
@@ -101,9 +122,20 @@ def body_of(event: EventOutbox) -> bytes:
 
 
 async def _post(
-    http: httpx.AsyncClient, sub: WebhookSubscription, event: EventOutbox
+    http: httpx.AsyncClient,
+    sub: WebhookSubscription,
+    event: EventOutbox,
+    resolver: net.Resolver | None = None,
 ) -> int | None:
-    """The response status, or None if there was none (connection error, timeout)."""
+    """The response status, or None if there was none (connection error, timeout, or a
+    target that now resolves to an internal address, S20)."""
+    if not net.private_targets_allowed():
+        refusal = await net.target_refusal(sub.url, resolver or net.resolve)
+        if refusal is not None:
+            log.warning(
+                "webhook target refused", extra={"subscription_id": str(sub.id), "error": refusal}
+            )
+            return None
     body = body_of(event)
     headers = {
         "Content-Type": "application/json",
@@ -122,7 +154,11 @@ async def _post(
 
 
 async def deliver_due(
-    session: AsyncSession, http: httpx.AsyncClient, *, now: datetime | None = None
+    session: AsyncSession,
+    http: httpx.AsyncClient,
+    *,
+    now: datetime | None = None,
+    resolver: net.Resolver | None = None,
 ) -> int:
     """Attempt every PENDING delivery due by `now` (rows locked, SKIP LOCKED for parallel
     workers), record each result and schedule retries; returns how many were attempted."""
@@ -141,7 +177,7 @@ async def deliver_due(
             .with_for_update(of=WebhookDelivery, skip_locked=True)
         )
     ).all()
-    codes = await asyncio.gather(*(_post(http, sub, event) for _, sub, event in rows))
+    codes = await asyncio.gather(*(_post(http, sub, event, resolver) for _, sub, event in rows))
     for (delivery, _, event), code in zip(rows, codes, strict=True):
         delivery.response_code = code
         if code is not None and 200 <= code < 300:

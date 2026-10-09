@@ -41,9 +41,10 @@ Do not change a business rule without updating `docs/specs/` in the same change,
 - `make lint` — ruff, mypy, eslint, prettier, tsc
 - `make migrate` / `make migration m="msg"` — Alembic
 - `make client` — regenerate `packages/api-client` from the hub's OpenAPI (imports the app; no server needed)
-- `make seed` — load demo data
+- `make seed` — load the demo data (every org, user, product, batch, offer, fleet, device and 12 months of synthetic consumption in `demo-scenarios.md`, times relative to now; idempotent). Logins `<role>@<org>.demo`, password `$SEED_PASSWORD` or `demo1234`
+- `make demo-reset` — drop, migrate and seed the local dev database `care`; refuses any other database (needs `APP_ENV=dev` and a loopback `DATABASE_URL`)
 - `make eval-ai` — the AI evals against the real model: the copilot's 15 Scenario 1 questions, then chat ordering's 20 phrasings (pass bar 18); each skips without a key, else needs `make up migrate seed` and the hub running
-- `make e2e` — Playwright tests in `e2e/` (needs `make up migrate seed`; starts the hub and apps unless running)
+- `make e2e` — Playwright tests in `e2e/` (needs `make up migrate seed`; starts the hub and apps unless running; a hub it starts allows `E2E_LOGIN_RATE_LIMIT` logins per minute, default 100)
 - `pnpm --filter <app> dev` — run one app (hospital-web :5173, supplier-web :5174, delivery-web :5175; proxies `/api` to the hub)
 
 ## Conventions

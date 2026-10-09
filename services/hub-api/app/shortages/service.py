@@ -709,6 +709,7 @@ def _candidate(s: _Source, run_id: uuid.UUID, need: int) -> Candidate:
         ],
         eligible=s.eligible,
         landed_cost_paise=s.option.cost(need) if s.eligible else None,
+        unit_price_paise=None if hospital else s.option.lots[0][1],
         eta_hours=s.option.eta_hours,
         reliability=s.option.reliability,
         rank=s.rank,

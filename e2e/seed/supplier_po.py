@@ -1,7 +1,8 @@
 """Setup for the supplier-web Playwright test (e2e/tests/supplier-po.spec.ts): a purchase order
 SENT to Supplier Y, reached through the hub's own services as in Scenario 1 steps 4-5
-(docs/specs/demo-scenarios.md), but for IV Cannula 20G so it never touches Scenario 1's
-Surgical Kit A data.
+(docs/specs/demo-scenarios.md), but for Nebulizer Masks, which the demo seed neither stocks nor
+offers (`E2E_PRODUCTS` in app/seed.py), so Supplier Y is the only source and the scenarios'
+data is never touched.
 
 Run from services/hub-api, against the database the hub under test uses (the spec runs it):
 
@@ -9,10 +10,10 @@ Run from services/hub-api, against the database the hub under test uses (the spe
 
 Each run:
 - loads the dev seed and adds Supplier Y with a supplier desk user if missing;
-- gives Supplier Y a fresh IV Cannula 20G offer and authorization;
-- cancels Hospital A's open IV Cannula 20G shortages from earlier runs (hub service, with
+- gives Supplier Y a fresh Nebulizer Mask offer and authorization;
+- cancels Hospital A's open Nebulizer Mask shortages from earlier runs (hub service, with
   audit rows);
-- reports a new IV Cannula 20G shortage as Hospital A's store manager: matching recommends a
+- reports a new Nebulizer Mask shortage as Hospital A's store manager: matching recommends a
   BUY from Supplier Y, which Hospital A's approver approves, so the hub sends the PO;
 - issues Supplier Y's desk user a session (no login, so the hub's 5-logins-per-minute budget
   stays with the other e2e tests).
@@ -43,7 +44,7 @@ from app.shortages.schemas import ShortageCreate  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-PRODUCT = "IV-CAN-20G"
+PRODUCT = "RSP-NEB-MSK"
 CANCELLABLE = ("OPEN", "MATCHING", "AWAITING_DECISION")
 DESK_EMAIL = "supplier.desk@supplier-y.demo"
 # Supplier Y as in Scenario 1 (e2e/seed/scenario1.py); unit price in paise, hours, qty.

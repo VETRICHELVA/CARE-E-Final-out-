@@ -41,6 +41,12 @@ class EventOutbox(Entity):
             "id",
             postgresql_where=text("published_at IS NULL"),
         ),
+        # The pruning job's scan by age (S20).
+        Index(
+            "ix_event_outbox_published_at",
+            "published_at",
+            postgresql_where=text("published_at IS NOT NULL"),
+        ),
     )
 
     event_type: Mapped[str] = mapped_column(String(64))
@@ -48,6 +54,18 @@ class EventOutbox(Entity):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     seq: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+
+
+class EventPruneMark(Base):
+    """One row (S20): the highest `seq` the pruning job has deleted. A client resuming from an
+    older Last-Event-ID may have missed pruned events, so it gets `reset` instead of a replay
+    with holes (gaps in `seq` alone prove nothing: a rolled-back publish leaves one)."""
+
+    __tablename__ = "event_prune_mark"
+    __table_args__ = (CheckConstraint("id = 1", name="single_row"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False, default=1)
+    seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
 
 
 class WebhookSubscription(Entity):

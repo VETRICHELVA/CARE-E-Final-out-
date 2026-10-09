@@ -4705,6 +4705,33 @@
           }
         }
       }
+    },
+    "/api/v1/metrics/network": {
+      "get": {
+        "tags": [
+          "metrics"
+        ],
+        "summary": "Network Metrics",
+        "description": "Network-wide figures across every org: platform users with `audit.read` only (403\nfor anyone else, as the figures span other orgs).",
+        "operationId": "network_metrics_api_v1_metrics_network_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkMetricsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -5743,6 +5770,51 @@
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
       },
+      "ColdChainComplianceOut": {
+        "properties": {
+          "deliveries": {
+            "type": "integer",
+            "title": "Deliveries",
+            "description": "Cold-chain shipments recorded DELIVERED or RECONCILED."
+          },
+          "monitored": {
+            "type": "integer",
+            "title": "Monitored",
+            "description": "Of those, shipments with at least one sensor reading."
+          },
+          "with_excursion": {
+            "type": "integer",
+            "title": "With Excursion",
+            "description": "Monitored shipments with an EXCURSION event."
+          },
+          "with_device_silent": {
+            "type": "integer",
+            "title": "With Device Silent",
+            "description": "Monitored shipments with a DEVICE_SILENT event (not a breach, a gap)."
+          },
+          "compliance_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compliance Rate",
+            "description": "(monitored - with_excursion) \u00f7 monitored; null with none monitored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "deliveries",
+          "monitored",
+          "with_excursion",
+          "with_device_silent",
+          "compliance_rate"
+        ],
+        "title": "ColdChainComplianceOut"
+      },
       "ColdChainDeviceOut": {
         "properties": {
           "device_id": {
@@ -5934,6 +6006,31 @@
           "TEMPERATURE_ISSUE"
         ],
         "title": "Condition"
+      },
+      "CostAvoidedOut": {
+        "properties": {
+          "paise": {
+            "type": "integer",
+            "title": "Paise",
+            "description": "\u03a3 units accepted from hospital transfers \u00d7 the cheapest supplier unit price recorded by the match run that chose the source."
+          },
+          "units_priced": {
+            "type": "integer",
+            "title": "Units Priced"
+          },
+          "units_unpriced": {
+            "type": "integer",
+            "title": "Units Unpriced",
+            "description": "Accepted transfer units whose match run recorded no supplier price; not counted in `paise`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "paise",
+          "units_priced",
+          "units_unpriced"
+        ],
+        "title": "CostAvoidedOut"
       },
       "DemandOut": {
         "properties": {
@@ -6216,6 +6313,20 @@
         ],
         "title": "ExpiryRiskOut",
         "description": "A batch whose forecast usage before expiry is less than on_hand - safety stock."
+      },
+      "ExpirySavedOut": {
+        "properties": {
+          "units": {
+            "type": "integer",
+            "title": "Units",
+            "description": "Units accepted from hospital transfers that came from batches posted as surplus before the source request."
+          }
+        },
+        "type": "object",
+        "required": [
+          "units"
+        ],
+        "title": "ExpirySavedOut"
       },
       "FacilityOut": {
         "properties": {
@@ -6748,6 +6859,41 @@
           "capabilities"
         ],
         "title": "MeOut"
+      },
+      "NetworkMetricsOut": {
+        "properties": {
+          "computed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Computed At"
+          },
+          "time_to_confirmed_source": {
+            "$ref": "#/components/schemas/TimeToSourceOut"
+          },
+          "resolution_mix": {
+            "$ref": "#/components/schemas/ResolutionMixOut"
+          },
+          "procurement_cost_avoided": {
+            "$ref": "#/components/schemas/CostAvoidedOut"
+          },
+          "units_saved_from_expiry": {
+            "$ref": "#/components/schemas/ExpirySavedOut"
+          },
+          "cold_chain": {
+            "$ref": "#/components/schemas/ColdChainComplianceOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "computed_at",
+          "time_to_confirmed_source",
+          "resolution_mix",
+          "procurement_cost_avoided",
+          "units_saved_from_expiry",
+          "cold_chain"
+        ],
+        "title": "NetworkMetricsOut",
+        "description": "Network-wide figures for the platform admin, each computed from recorded rows only\n(api-and-events.md \"Network metrics\"). No hospital's unit cost appears or is used."
       },
       "NotificationOut": {
         "properties": {
@@ -8653,6 +8799,52 @@
         ],
         "title": "RequestStatus"
       },
+      "ResolutionMixOut": {
+        "properties": {
+          "transfers": {
+            "type": "integer",
+            "title": "Transfers",
+            "description": "Approved TRANSFER and TRANSFER_SPLIT recommendations."
+          },
+          "purchases": {
+            "type": "integer",
+            "title": "Purchases",
+            "description": "Approved BUY recommendations."
+          },
+          "transfer_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Share",
+            "description": "transfers \u00f7 (transfers + purchases)."
+          },
+          "purchase_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Share",
+            "description": "purchases \u00f7 (transfers + purchases)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "transfers",
+          "purchases",
+          "transfer_share",
+          "purchase_share"
+        ],
+        "title": "ResolutionMixOut"
+      },
       "RouteApplyOut": {
         "properties": {
           "driver_id": {
@@ -10268,6 +10460,38 @@
           "unknown_devices"
         ],
         "title": "TelemetryResult"
+      },
+      "TimeToSourceOut": {
+        "properties": {
+          "median_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Minutes",
+            "description": "Median minutes from a shortage being reported to its first confirmed source; null while no shortage has one."
+          },
+          "shortages_confirmed": {
+            "type": "integer",
+            "title": "Shortages Confirmed",
+            "description": "Shortages with a confirmed source."
+          },
+          "shortages_reported": {
+            "type": "integer",
+            "title": "Shortages Reported"
+          }
+        },
+        "type": "object",
+        "required": [
+          "median_minutes",
+          "shortages_confirmed",
+          "shortages_reported"
+        ],
+        "title": "TimeToSourceOut"
       },
       "TokenPair": {
         "properties": {

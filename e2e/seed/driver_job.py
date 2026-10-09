@@ -1,7 +1,7 @@
 """Setup for the delivery-web Playwright test (e2e/tests/driver-jobs.spec.ts): an unassigned
 shipment on SwiftMed Logistics' dispatch board, reached through the hub's own services as in
 Scenario 1 steps 4-6 (docs/specs/demo-scenarios.md), but for Face Shields so it never touches
-the other e2e tests' products (Surgical Kit A, IV Cannula 20G).
+the other e2e tests' products (Surgical Kit A, Nebulizer Mask).
 
 Run from services/hub-api, against the database the hub under test uses (the spec runs it):
 

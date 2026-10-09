@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 // order's state allows are on screen at each step.
 //
 // Self-seeding: `e2e/seed/supplier_po.py` (run below, against the hub's DATABASE_URL) reaches a
-// SENT purchase order through the hub's own services (an IV Cannula 20G BUY from Supplier Y,
+// SENT purchase order through the hub's own services (a Nebulizer Mask BUY from Supplier Y,
 // approved by Hospital A) and issues Supplier Y's desk user a session. The test then uses that
 // session instead of logging in, so `make e2e` stays within the hub's 5 logins per minute.
 
@@ -42,7 +42,7 @@ test("Scenario 1 step 6: Supplier Y acknowledges and dispatches the PO", async (
   await page.goto(SUPPLIER);
   await expect(page.getByTestId("org-name")).toHaveText("Supplier Y");
   const newOrders = page.getByRole("region", { name: /^New purchase orders/ });
-  await expect(newOrders.getByRole("link", { name: /IV Cannula 20G/ }).first()).toBeVisible();
+  await expect(newOrders.getByRole("link", { name: /Nebulizer Mask/ }).first()).toBeVisible();
 
   // SENT: Acknowledge and Reject only.
   await page.goto(`${SUPPLIER}/orders/${seed.purchase_order_id}`);
@@ -72,6 +72,6 @@ test("Scenario 1 step 6: Supplier Y acknowledges and dispatches the PO", async (
   // Network demand names no hospital.
   await page.getByRole("link", { name: "Network demand" }).click();
   const demand = page.getByRole("table", { name: "Network demand" });
-  await expect(demand).toContainText("IV Cannula 20G");
+  await expect(demand).toContainText("Nebulizer Mask");
   await expect(demand).not.toContainText("Hospital");
 });

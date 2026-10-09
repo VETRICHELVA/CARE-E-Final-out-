@@ -1473,6 +1473,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Network Metrics
+         * @description Network-wide figures across every org: platform users with `audit.read` only (403
+         *     for anyone else, as the figures span other orgs).
+         */
+        get: operations["network_metrics_api_v1_metrics_network_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1937,6 +1958,34 @@ export interface components {
              */
             rank: number | null;
         };
+        /** ColdChainComplianceOut */
+        ColdChainComplianceOut: {
+            /**
+             * Deliveries
+             * @description Cold-chain shipments recorded DELIVERED or RECONCILED.
+             */
+            deliveries: number;
+            /**
+             * Monitored
+             * @description Of those, shipments with at least one sensor reading.
+             */
+            monitored: number;
+            /**
+             * With Excursion
+             * @description Monitored shipments with an EXCURSION event.
+             */
+            with_excursion: number;
+            /**
+             * With Device Silent
+             * @description Monitored shipments with a DEVICE_SILENT event (not a breach, a gap).
+             */
+            with_device_silent: number;
+            /**
+             * Compliance Rate
+             * @description (monitored - with_excursion) ÷ monitored; null with none monitored.
+             */
+            compliance_rate: number | null;
+        };
         /** ColdChainDeviceOut */
         ColdChainDeviceOut: {
             /** Device Id */
@@ -2032,6 +2081,21 @@ export interface components {
          * @enum {string}
          */
         Condition: "GOOD" | "DAMAGED" | "TEMPERATURE_ISSUE";
+        /** CostAvoidedOut */
+        CostAvoidedOut: {
+            /**
+             * Paise
+             * @description Σ units accepted from hospital transfers × the cheapest supplier unit price recorded by the match run that chose the source.
+             */
+            paise: number;
+            /** Units Priced */
+            units_priced: number;
+            /**
+             * Units Unpriced
+             * @description Accepted transfer units whose match run recorded no supplier price; not counted in `paise`.
+             */
+            units_unpriced: number;
+        };
         /**
          * DemandOut
          * @description Open network demand for one product the caller's supplier org offers. Aggregated over
@@ -2161,6 +2225,14 @@ export interface components {
              * @description The batch's live (OPEN or MATCHED) surplus post, if any.
              */
             surplus_post_id: string | null;
+        };
+        /** ExpirySavedOut */
+        ExpirySavedOut: {
+            /**
+             * Units
+             * @description Units accepted from hospital transfers that came from batches posted as surplus before the source request.
+             */
+            units: number;
         };
         /** FacilityOut */
         FacilityOut: {
@@ -2408,6 +2480,23 @@ export interface components {
             roles: string[];
             /** Capabilities */
             capabilities: string[];
+        };
+        /**
+         * NetworkMetricsOut
+         * @description Network-wide figures for the platform admin, each computed from recorded rows only
+         *     (api-and-events.md "Network metrics"). No hospital's unit cost appears or is used.
+         */
+        NetworkMetricsOut: {
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            time_to_confirmed_source: components["schemas"]["TimeToSourceOut"];
+            resolution_mix: components["schemas"]["ResolutionMixOut"];
+            procurement_cost_avoided: components["schemas"]["CostAvoidedOut"];
+            units_saved_from_expiry: components["schemas"]["ExpirySavedOut"];
+            cold_chain: components["schemas"]["ColdChainComplianceOut"];
         };
         /** NotificationOut */
         NotificationOut: {
@@ -3213,6 +3302,29 @@ export interface components {
          * @enum {string}
          */
         RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
+        /** ResolutionMixOut */
+        ResolutionMixOut: {
+            /**
+             * Transfers
+             * @description Approved TRANSFER and TRANSFER_SPLIT recommendations.
+             */
+            transfers: number;
+            /**
+             * Purchases
+             * @description Approved BUY recommendations.
+             */
+            purchases: number;
+            /**
+             * Transfer Share
+             * @description transfers ÷ (transfers + purchases).
+             */
+            transfer_share: number | null;
+            /**
+             * Purchase Share
+             * @description purchases ÷ (transfers + purchases).
+             */
+            purchase_share: number | null;
+        };
         /** RouteApplyOut */
         RouteApplyOut: {
             /**
@@ -3909,6 +4021,21 @@ export interface components {
              * @description device_ids with no Device; not stored.
              */
             unknown_devices: string[];
+        };
+        /** TimeToSourceOut */
+        TimeToSourceOut: {
+            /**
+             * Median Minutes
+             * @description Median minutes from a shortage being reported to its first confirmed source; null while no shortage has one.
+             */
+            median_minutes: number | null;
+            /**
+             * Shortages Confirmed
+             * @description Shortages with a confirmed source.
+             */
+            shortages_confirmed: number;
+            /** Shortages Reported */
+            shortages_reported: number;
         };
         /** TokenPair */
         TokenPair: {
@@ -6518,6 +6645,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_metrics_api_v1_metrics_network_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMetricsOut"];
                 };
             };
         };
