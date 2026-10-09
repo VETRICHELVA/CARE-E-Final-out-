@@ -3,7 +3,7 @@
 // chips from the service's tool trace. It reads only; it never offers an action.
 import { type FormEvent, useState } from "react";
 import { matchPath, useLocation } from "react-router";
-import { Badge, Button, Loading, Textarea } from "@care-e/ui";
+import { Badge, Button, Loading, Textarea, useCan } from "@care-e/ui";
 import {
   type CopilotContext,
   CopilotError,
@@ -11,6 +11,7 @@ import {
   useAskCopilot,
   useCopilotStatus,
 } from "./copilot-api";
+import { OrderMode } from "./order-panel";
 
 /** Screen routes whose id the copilot gets as context. */
 const SCREENS: { pattern: string; key: keyof CopilotContext; about: string }[] = [
@@ -110,11 +111,15 @@ function Conversation({ about, context }: { about: string | null; context: Copil
   );
 }
 
-/** A button that opens the panel; the AI service is contacted only once it is open. */
+/** A button that opens the panel; the AI service is contacted only once it is open. "Order"
+ *  mode (S17, chat ordering) shows only to users who may create shortages. */
 export function CopilotPanel() {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"ask" | "order">("ask");
+  const canOrder = useCan("shortage.create");
   const { context, about } = useScreenContext();
   const status = useCopilotStatus(open);
+  const ordering = canOrder && mode === "order";
 
   if (!open)
     return (
@@ -133,19 +138,38 @@ export function CopilotPanel() {
         <div>
           <h2 className="font-semibold">Copilot</h2>
           <p className="text-xs text-muted-foreground">
-            Answers only from hub data. It cannot change anything.
+            {ordering
+              ? "Drafts a shortage for you to check. Nothing is sent until you click."
+              : "Answers only from hub data. It cannot change anything."}
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Close
         </Button>
       </header>
+      {canOrder && (
+        <div className="flex gap-1 border-b px-4 py-2" role="group" aria-label="Copilot mode">
+          {(["ask", "order"] as const).map((m) => (
+            <Button
+              key={m}
+              size="sm"
+              variant={mode === m ? "secondary" : "ghost"}
+              aria-pressed={mode === m}
+              onClick={() => setMode(m)}
+            >
+              {m === "ask" ? "Ask" : "Order"}
+            </Button>
+          ))}
+        </div>
+      )}
       {status.isPending ? (
         <Loading />
       ) : error || status.error ? (
         <p role="status" className="px-4 py-3 text-sm text-muted-foreground">
           {error?.message ?? "The copilot is not available right now."}
         </p>
+      ) : ordering ? (
+        <OrderMode />
       ) : (
         <Conversation about={about} context={context} />
       )}

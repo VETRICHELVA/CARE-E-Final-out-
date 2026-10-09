@@ -13,12 +13,15 @@ from sqlalchemy import select
 
 from app.ai import service
 from app.ai.guard import AiUser
-from app.ai.schemas import AiColdChainOut, AiShortageOut
+from app.ai.schemas import AiColdChainOut, AiShortageOut, ProductMatchOut, ProductSearchOut
 from app.audit.models import AuditLog
 from app.audit.schemas import AuditOut
 from app.auth.capabilities import Capability
 from app.auth.deps import ensure_any, is_platform_admin, org_scoped
+from app.catalog import service as catalog
+from app.catalog.models import Product
 from app.db import NulFreeStr, SessionDep
+from app.domain import product_search
 from app.pagination import Cursor, Limit, Page, paginate
 from app.recommendations import router as recommendations
 from app.recommendations.schemas import RecommendationOut
@@ -98,3 +101,36 @@ async def ai_audit(
         stmt = org_scoped(stmt, user)
     rows, next_cursor = await paginate(session, stmt, AuditLog.ts, AuditLog.id, limit, cursor)
     return Page[AuditOut](items=[AuditOut.model_validate(r) for r in rows], next_cursor=next_cursor)
+
+
+@router.get("/products/search")
+async def ai_product_search(
+    user: AiUser,
+    session: SessionDep,
+    q: Annotated[
+        NulFreeStr, Query(min_length=1, max_length=200, description="The words the user typed.")
+    ],
+    limit: Annotated[int, Query(ge=1, le=20)] = product_search.DEFAULT_LIMIT,
+) -> ProductSearchOut:
+    """Chat ordering (S17): fuzzy match on product name, code and synonyms
+    (scripts/seed/synonyms.yaml), best first, each with its score; products under the
+    minimum score are left out. The catalog is the same for every user (GET /products), so
+    this reads nothing of any org. It ranks and never picks."""
+    items = []
+    for m in product_search.search(q, await catalog.search_entries(session), limit=limit):
+        p = m.key
+        assert isinstance(p, Product)
+        items.append(
+            ProductMatchOut(
+                product_id=p.id,
+                code=p.code,
+                name=p.name,
+                category=p.category,
+                unit=p.unit,
+                requires_cold_chain=p.requires_cold_chain,
+                default_min_shelf_life_days=p.default_min_shelf_life_days,
+                score=m.score,
+                matched_on=m.matched_on,
+            )
+        )
+    return ProductSearchOut(q=q, items=items)

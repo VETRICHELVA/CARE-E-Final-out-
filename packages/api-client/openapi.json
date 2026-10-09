@@ -926,7 +926,7 @@
           "shortages"
         ],
         "summary": "Create Shortage",
-        "description": "Create a shortage in the caller's org. The hub computes the shortfall and runs the\nfirst match, so the shortage comes back MATCHING.",
+        "description": "Create a shortage in the caller's org. The hub computes the shortfall and runs the\nfirst match, so the shortage comes back MATCHING; with `status: DRAFT` it comes back\nDRAFT and unmatched (a chat draft saved for later, S17).",
         "operationId": "create_shortage_api_v1_shortages_post",
         "security": [
           {
@@ -1015,6 +1015,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Page_ShortageOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shortages/{shortage_id}/confirm": {
+      "post": {
+        "tags": [
+          "shortages"
+        ],
+        "summary": "Confirm Draft",
+        "description": "DRAFT -> OPEN (business-rules \u00a78: the requester confirms a chat draft), then the first\nmatch run, so it comes back MATCHING. 409 `invalid_transition` unless DRAFT.",
+        "operationId": "confirm_draft_api_v1_shortages__shortage_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shortage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shortage Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReasonIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortageOut"
                 }
               }
             }
@@ -3994,6 +4060,88 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Page_AuditOut_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/read/products/search": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "Ai Product Search",
+        "description": "Chat ordering (S17): fuzzy match on product name, code and synonyms\n(scripts/seed/synonyms.yaml), best first, each with its score; products under the\nminimum score are left out. The catalog is the same for every user (GET /products), so\nthis reads nothing of any org. It ranks and never picks.",
+        "operationId": "ai_product_search_api_v1_ai_read_products_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "The words the user typed.",
+              "title": "Q"
+            },
+            "description": "The words the user typed."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "X-On-Behalf-Of",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The signed-in user's access token (with or without 'Bearer '); the hub answers as that user.",
+              "title": "X-On-Behalf-Of"
+            },
+            "description": "The signed-in user's access token (with or without 'Bearer '); the hub answers as that user."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductSearchOut"
                 }
               }
             }
@@ -7460,6 +7608,63 @@
         ],
         "title": "Priority"
       },
+      "ProductMatchOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "default_min_shelf_life_days": {
+            "type": "integer",
+            "title": "Default Min Shelf Life Days"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score",
+            "description": "0-1; 1.0 = the phrase is the name, code or a synonym."
+          },
+          "matched_on": {
+            "type": "string",
+            "title": "Matched On",
+            "description": "The name, code or synonym that scored best."
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "code",
+          "name",
+          "category",
+          "unit",
+          "requires_cold_chain",
+          "default_min_shelf_life_days",
+          "score",
+          "matched_on"
+        ],
+        "title": "ProductMatchOut",
+        "description": "One catalog product the search phrase may name (S17), with how well it scored."
+      },
       "ProductOut": {
         "properties": {
           "id": {
@@ -7527,6 +7732,28 @@
           "default_min_shelf_life_days"
         ],
         "title": "ProductOut"
+      },
+      "ProductSearchOut": {
+        "properties": {
+          "q": {
+            "type": "string",
+            "title": "Q"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductMatchOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "q",
+          "items"
+        ],
+        "title": "ProductSearchOut",
+        "description": "Best first; products scoring under the search's minimum are left out. The search ranks\nand never picks: callers must ask the user when scores are close (apps-ai-iot.md)."
       },
       "PublicFacilityView": {
         "properties": {
@@ -9296,6 +9523,21 @@
               }
             ],
             "title": "Reason"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ShortageSource",
+            "description": "Where the user filled it in: FORM, or CHAT for a chat draft the user checked and confirmed on its card (S17). The AI service never calls this.",
+            "default": "FORM"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "DRAFT"
+            ],
+            "title": "Status",
+            "description": "OPEN (the default) starts matching at once. DRAFT saves it unmatched until the requester confirms it (POST /shortages/{id}/confirm; business-rules \u00a78).",
+            "default": "OPEN"
           }
         },
         "additionalProperties": false,

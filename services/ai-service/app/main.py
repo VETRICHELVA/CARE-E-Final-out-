@@ -1,4 +1,4 @@
-"""The AI service API (api-and-events.md: POST /copilot/ask; S17 adds POST /chat/draft).
+"""The AI service API (api-and-events.md): POST /copilot/ask (S13), POST /chat/draft (S17).
 
 The caller is the signed-in user (hospital-web sends their access token). The service reads
 the hub as that user and never writes anywhere."""
@@ -6,15 +6,17 @@ the hub as that user and never writes anywhere."""
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
-from app import copilot
+from app import chat, copilot
 from app.config import Settings, settings
 from app.hub import HubReader, HubUnauthenticated, HubUnavailable
 from app.llm import AiNotConfigured, AiUnavailable, Provider, provider_from
@@ -48,6 +50,40 @@ class TraceOut(BaseModel):
 
 class AskOut(BaseModel):
     answer: str
+    tool_trace: list[TraceOut]
+
+
+class DraftIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    user_tz: str = Field(description='IANA zone the user is in, e.g. "Asia/Kolkata".')
+    now: AwareDatetime | None = Field(
+        default=None, description="The instant relative dates anchor on; default the server's."
+    )
+
+    @field_validator("user_tz")
+    @classmethod
+    def _known_zone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError("user_tz must be an IANA time zone, e.g. Asia/Kolkata") from e
+        return v
+
+
+class DraftOut(BaseModel):
+    """A draft only: the hospital app shows it on a card, and only the user's click sends
+    POST /shortages to the hub, as the user. This service never writes."""
+
+    draft: chat.DraftOut | None
+    missing_fields: list[str] = Field(
+        description="Fields the user did not give, including defaulted ones (priority, "
+        "min_shelf_life_days, qty_local_usable), so the card can highlight them."
+    )
+    product_candidates: list[chat.CandidateOut] = Field(
+        description="Set when the product is ambiguous: the user picks one; none is chosen."
+    )
+    question: str | None
+    assumptions: list[str]
     tool_trace: list[TraceOut]
 
 
@@ -122,6 +158,41 @@ def create_app(
             return _error(502, "ai_unavailable", str(e))
         return AskOut(
             answer=result.answer,
+            tool_trace=[TraceOut(**asdict(t)) for t in result.tool_trace],
+        )
+
+    @app.post("/chat/draft", response_model=DraftOut)
+    async def chat_draft(
+        body: DraftIn,
+        creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    ) -> Any:
+        """Chat ordering (S17): a pre-filled shortage card from one message. Product search
+        reads the hub as the caller; nothing is created here."""
+        if model is None:
+            return JSONResponse(NOT_CONFIGURED, status_code=503)
+        if creds is None:
+            return _error(401, "unauthenticated", "Sign in first.")
+        try:
+            result = await chat.draft(
+                body.message,
+                user_tz=body.user_tz,
+                now=body.now or datetime.now(UTC),
+                user_token=creds.credentials,
+                hub=reader,
+                provider=model,
+            )
+        except HubUnauthenticated:
+            return _error(401, "unauthenticated", "Sign in again.")
+        except HubUnavailable:
+            return _error(502, "hub_unavailable", "The hub could not be reached.")
+        except AiUnavailable as e:
+            return _error(502, "ai_unavailable", str(e))
+        return DraftOut(
+            draft=result.draft,
+            missing_fields=result.missing_fields,
+            product_candidates=result.product_candidates,
+            question=result.question,
+            assumptions=result.assumptions,
             tool_trace=[TraceOut(**asdict(t)) for t in result.tool_trace],
         )
 

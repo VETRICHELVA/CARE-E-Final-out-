@@ -59,15 +59,70 @@ class FakeConversation:
         return [json.loads(o.content) for s in self.steps for o in s.outcomes]
 
 
+Extractor = Callable[[str], dict[str, Any] | None]
+
+
+@dataclass
+class Extraction:
+    """What the fake model was given for one structured extraction (S17)."""
+
+    system: str
+    user_text: str
+    schema: dict[str, Any]
+
+
 class FakeProvider:
-    def __init__(self, brain: Brain) -> None:
+    def __init__(self, brain: Brain, extractor: Extractor | None = None) -> None:
         self.brain = brain
+        self.extractor = extractor
         self.conversations: list[FakeConversation] = []
+        self.extractions: list[Extraction] = []
 
     def start(self, system: str, user_text: str, tools: list[dict[str, Any]]) -> Conversation:
         conversation = FakeConversation(system, user_text, tools, self.brain)
         self.conversations.append(conversation)
         return conversation
+
+    async def extract(
+        self, system: str, user_text: str, schema: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        self.extractions.append(Extraction(system, user_text, schema))
+        if self.extractor is None:
+            raise AssertionError("this test scripted no extraction")
+        return self.extractor(user_text)
+
+
+def extraction(**fields: Any) -> dict[str, Any]:
+    """A chat extraction (app.chat.SCHEMA) with every field null unless given."""
+    out: dict[str, Any] = {
+        "products": [],
+        "qty_required": None,
+        "qty_local_usable": None,
+        "min_shelf_life_days": None,
+        "priority": None,
+        "required_by": None,
+        "notes": None,
+    }
+    return {**out, **fields}
+
+
+def when(kind: str, quote: str, **fields: Any) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "kind": kind,
+        "weekday": None,
+        "day": None,
+        "month": None,
+        "year": None,
+        "amount": None,
+        "time_of_day": None,
+        "clock_time": None,
+        "quote": quote,
+    }
+    return {**out, **fields}
+
+
+def q(value: int, quote: str) -> dict[str, Any]:
+    return {"value": value, "quote": quote}
 
 
 def use(name: str, **args: Any) -> ModelToolUse:
@@ -132,6 +187,55 @@ MATCH_RUN_BODY = {
 }
 
 
+KIT_A_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+RDK_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+CANNULA_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+
+
+def product(pid: str, code: str, name: str, unit: str, days: int, score: float) -> dict[str, Any]:
+    return {
+        "product_id": pid,
+        "code": code,
+        "name": name,
+        "category": "Test",
+        "unit": unit,
+        "requires_cold_chain": code == "DIAG-RDK",
+        "default_min_shelf_life_days": days,
+        "score": score,
+        "matched_on": name,
+    }
+
+
+def kit_a(score: float = 1.0) -> dict[str, Any]:
+    return product(KIT_A_ID, "SURG-KIT-A", "Surgical Kit A", "kit", 30, score)
+
+
+def rdk(score: float = 1.0) -> dict[str, Any]:
+    return product(RDK_ID, "DIAG-RDK", "Rapid Diagnostic Kit", "kit", 60, score)
+
+
+def cannula(score: float = 1.0) -> dict[str, Any]:
+    return product(CANNULA_ID, "IV-CAN-20G", "IV Cannula 20G", "each", 30, score)
+
+
+# GET /ai/read/products/search?q= as the hub scores these phrases (app.domain.product_search).
+SEARCH: dict[str, list[dict[str, Any]]] = {
+    "sk-a": [kit_a()],
+    "surgical kits a": [kit_a(), rdk(0.4)],
+    "rapid kits": [rdk(), kit_a(0.5)],
+    "rapid diagnostic kits": [rdk(), kit_a(0.4)],
+    "20g cannula": [cannula()],
+    "iv cannula 20g": [cannula()],
+    "kits": [rdk(0.667), kit_a(0.667)],
+    "kit": [rdk(0.667), kit_a(0.62)],  # within 10%: still ambiguous
+    "kit a": [kit_a(), rdk(0.5)],
+    "surgical kit a": [kit_a(), rdk(0.4)],
+    "rapid diagnostic kit": [rdk(), kit_a(0.4)],
+    "iv cannula 20 g": [cannula()],
+    "ot kits": [rdk(0.5), kit_a(0.5)],
+}
+
+
 class FakeHub:
     """Routes GET /api/v1/ai/read/* to canned bodies and records every request."""
 
@@ -142,6 +246,9 @@ class FakeHub:
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path.removeprefix("/api/v1/ai/read/")
+        if path == "products/search" and path not in self.routes:
+            q = request.url.params.get("q", "")
+            return httpx.Response(200, json={"q": q, "items": SEARCH.get(q.lower(), [])})
         for pattern, (status, body) in self.routes.items():
             if re.fullmatch(pattern, path):
                 return httpx.Response(status, json=body)

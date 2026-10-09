@@ -26,6 +26,7 @@ import {
   type Shortage,
   useAudit,
   useCancelShortage,
+  useConfirmDraft,
   useLatestRun,
   useProducts,
   useRerunMatch,
@@ -34,6 +35,7 @@ import {
 import { PageHeader } from "../components/page";
 import {
   CANCEL_FROM,
+  CONFIRM_FROM,
   OPEN_REQUEST_STATES,
   qty,
   RERUN_FROM,
@@ -113,6 +115,7 @@ function Actions({ shortage }: { shortage: Shortage }) {
   const canAct = useCan("shortage.create");
   const rerun = useRerunMatch(shortage.id);
   const cancel = useCancelShortage(shortage.id);
+  const confirm = useConfirmDraft(shortage.id);
   const requests = useShortageRequests(shortage.id);
   if (!canAct) return null;
   // The hub refuses a manual re-run while a source request is open; it re-runs on its own when
@@ -122,6 +125,18 @@ function Actions({ shortage }: { shortage: Shortage }) {
     requests.data.pages.some((p) => p.items.some((r) => OPEN_REQUEST_STATES.has(r.status)));
   return (
     <>
+      {CONFIRM_FROM.has(shortage.status) && (
+        <ConfirmDialog
+          trigger="Confirm draft"
+          title="Confirm this draft?"
+          description="The shortage opens and the hub starts looking for transferable stock."
+          confirmLabel="Confirm draft"
+          onConfirm={async (reason) => {
+            await confirm.mutateAsync(reason);
+            toast.success("Draft confirmed. Matching has started.");
+          }}
+        />
+      )}
       {RERUN_FROM.has(shortage.status) && !waitingOnSource && (
         <ConfirmDialog
           trigger="Re-run match"

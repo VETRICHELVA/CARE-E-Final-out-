@@ -23,7 +23,7 @@ import { FormField } from "../components/page";
 import { qty } from "../display";
 import { count, optionalCount, optionalText, useForm } from "../forms";
 
-const schema = z.object({
+export const shortageSchema = z.object({
   product_id: z.string().min(1, "Choose a product."),
   facility_id: z.string().min(1, "Choose a facility."),
   qty_required: count("the quantity required"),
@@ -60,7 +60,9 @@ export function NewShortageDialog({ onClose }: { onClose: () => void }) {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const body = form.parse(only ? schema.extend({ facility_id: z.string() }) : schema);
+    const body = form.parse(
+      only ? shortageSchema.extend({ facility_id: z.string() }) : shortageSchema,
+    );
     if (!body) return;
     create.mutate(
       { ...body, facility_id: only ?? body.facility_id },

@@ -1,4 +1,7 @@
+import json
+import re
 import runpy
+from functools import cache
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -10,11 +13,34 @@ from app.catalog.models import Product, SupplierOffer
 from app.catalog.schemas import OfferIn
 from app.db import flush_or_conflict
 from app.domain.events import EventType
+from app.domain.product_search import Entry
 from app.errors import AppError
 from app.events import service as events
 
 CATALOG_FILE = Path(__file__).resolve().parents[4] / "scripts" / "seed" / "catalog.py"
+SYNONYMS_FILE = CATALOG_FILE.with_name("synonyms.yaml")
 OFFER_FIELDS = ("unit_price_paise", "lead_time_hours", "available_qty")
+
+
+@cache
+def load_synonyms(path: Path = SYNONYMS_FILE) -> dict[str, tuple[str, ...]]:
+    """scripts/seed/synonyms.yaml: product code -> synonyms (S17). The file keeps to YAML's
+    JSON-compatible subset, so it is JSON once its "#" comment lines and the trailing commas
+    Prettier adds are dropped."""
+    lines = [ln for ln in path.read_text().splitlines() if not ln.lstrip().startswith("#")]
+    data = json.loads(re.sub(r",(\s*[}\]])", r"\1", "\n".join(lines)))
+    if not isinstance(data, dict) or not all(
+        isinstance(v, list) and all(isinstance(x, str) for x in v) for v in data.values()
+    ):
+        raise ValueError(f"{path} must map product codes to lists of strings")
+    return {str(code): tuple(names) for code, names in data.items()}
+
+
+async def search_entries(session: AsyncSession) -> list[Entry]:
+    """Every catalog product with its synonyms, for app.domain.product_search."""
+    synonyms = load_synonyms()
+    products = await session.scalars(select(Product).order_by(Product.name))
+    return [Entry(p, p.code, p.name, synonyms.get(p.code, ())) for p in products]
 
 
 async def seed_catalog(session: AsyncSession) -> dict[str, Product]:
