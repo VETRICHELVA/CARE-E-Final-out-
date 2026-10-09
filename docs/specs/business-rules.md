@@ -147,6 +147,9 @@ TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock 
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].
 - Device silent for 2 minutes while the shipment is IN_TRANSIT → DEVICE_SILENT event (warning).
 - Back in range for 2 consecutive readings → RECOVERED event; the excursion stays on record.
+- ColdChainEvents are append-only: an event on record is never revised or removed.
+- Late data: a reading that arrives dated at or before the shipment's last EXCURSION or RECOVERED on record never raises or changes an event dated at or before that event. Its batch is evaluated only after that event: an excursion or recovery its readings would have shown before it is not recorded (the events on record stand), and those readings count only as the run of consecutive readings leading into later readings.
+- Otherwise the events recorded are those of the readings in timestamp order, whatever their arrival order or batching.
 
 ## 12. Reliability and credits (S19)
 - score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, rounded half up and clamped to 0–100. Recomputed nightly and after each reconciliation.
