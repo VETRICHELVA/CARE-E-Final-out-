@@ -129,3 +129,21 @@ export function candidateQty(c: Candidate, product: Product | undefined) {
 /** A browser date (`YYYY-MM-DD`) from a hub date, shown in the user's locale. */
 export const formatDate = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { dateStyle: "medium" });
+
+/** The expiry band another hospital's surplus shows instead of its expiry date (CLAUDE.md
+ *  rule 6). */
+export const EXPIRY_BAND_LABELS: Record<string, string> = {
+  UNDER_30_DAYS: "Expires in under 30 days",
+  "30_TO_59_DAYS": "Expires in 30–59 days",
+  "60_TO_89_DAYS": "Expires in 60–89 days",
+  "90_DAYS_OR_MORE": "Expires in 90 days or more",
+};
+
+/** Surplus post states the poster may still withdraw (the hub's OPEN or MATCHED). */
+export const WITHDRAW_FROM = new Set(["OPEN", "MATCHED"]);
+
+/** Whole days from `today` (a YYYY-MM-DD date) to `iso` (another), for "in 4 days". */
+export function daysUntil(iso: string, today: Date = new Date()) {
+  const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - start) / 86_400_000);
+}

@@ -5,6 +5,7 @@ import type {
   Batch,
   Candidate,
   Facility,
+  Forecast,
   MatchRun,
   Notification,
   Receipt,
@@ -15,6 +16,8 @@ import type {
   ShipmentDetail,
   Shortage,
   SourceRequest,
+  SurplusOffer,
+  SurplusPost,
 } from "../api";
 
 export const ORG_A = "0a000000-0000-4000-8000-000000000001";
@@ -577,4 +580,102 @@ export const excursionColdChain: Schemas["ColdChainOut"] = {
     },
   ],
   has_excursion: true,
+};
+
+// ---- Scenario 3 (S18): expiry surplus meets a forecast stock-out ----
+
+export const ivCannula: Product = {
+  id: "9a000000-0000-4000-8000-000000000020",
+  code: "IV-CAN-20G",
+  name: "IV Cannula 20G",
+  category: "IV and infusion",
+  unit: "each",
+  requires_cold_chain: false,
+  temp_min_c: null,
+  temp_max_c: null,
+  default_min_shelf_life_days: 30,
+};
+export const productsWithIv = { items: [kitA, ivCannula], next_cursor: null };
+export const IV_BATCH = "ba000000-0000-4000-8000-000000000020";
+export const SURPLUS_ID = "50000000-0000-4000-8000-000000000001";
+
+const days = (n: number, value = 30) =>
+  Array.from({ length: n }, (_, i) => ({
+    date: `2026-10-${String(8 + i).padStart(2, "0")}`,
+    predicted_qty: value,
+    lower: value - 5,
+    upper: value + 5,
+  }));
+
+/** Hospital B: on hand 1,000, safety 200, expiry +55 days, about 500 used before then. */
+export const forecastB: Forecast = {
+  product_id: ivCannula.id,
+  model_version: "holt-winters-weekly/1",
+  generated_at: "2026-10-07T20:30:00Z",
+  synthetic_history: true,
+  days: days(20, 9),
+  usable_stock: 1000,
+  safety_stock: 200,
+  stockout_date: null,
+  reorder: { lead_time_days: 1, qty: 0 },
+  expiry_risks: [
+    {
+      batch_id: IV_BATCH,
+      batch_no: "IV-2026-07",
+      expiry_date: "2026-12-02",
+      on_hand: 1000,
+      safety_stock: 200,
+      transferable: 800,
+      usage_before_expiry: 502.4,
+      excess: 300,
+      suggested_qty: 300,
+      surplus_post_id: null,
+    },
+  ],
+};
+
+/** Hospital E: 120 usable at about 30 a day runs out in 4 days. */
+export const forecastE: Forecast = {
+  product_id: ivCannula.id,
+  model_version: "holt-winters-weekly/1",
+  generated_at: "2026-10-07T20:30:00Z",
+  synthetic_history: true,
+  days: days(20),
+  usable_stock: 120,
+  safety_stock: 0,
+  stockout_date: "2026-10-12",
+  reorder: { lead_time_days: 1, qty: 0 },
+  expiry_risks: [],
+};
+
+export const offerFromB: SurplusOffer = {
+  id: SURPLUS_ID,
+  org_id: ORG_B,
+  org_name: "Hospital B",
+  product_id: ivCannula.id,
+  offered_qty: 300,
+  expiry_band: "30_TO_59_DAYS",
+  location: { facility_name: "Hospital B central store", lat: 12.93, lng: 77.62 },
+  status: "MATCHED",
+  match: {
+    kind: "FORECAST",
+    shortage_id: null,
+    stockout_date: "2026-10-12",
+    matched_at: "2026-10-08T06:00:00Z",
+  },
+};
+
+export const ownPost: SurplusPost = {
+  id: SURPLUS_ID,
+  org_id: ORG_A,
+  batch_id: IV_BATCH,
+  product_id: ivCannula.id,
+  qty: 300,
+  offered_qty: 300,
+  expiry_date: "2026-12-02",
+  min_price_paise: null,
+  status: "MATCHED",
+  matched_org_ids: [ORG_B],
+  created_by: ME_ID,
+  created_at: "2026-10-08T06:00:00Z",
 };

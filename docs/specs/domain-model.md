@@ -24,7 +24,8 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **Shortage**: org_id, facility_id, product_id, qty_required, qty_local_usable, shortfall (computed by hub), required_by, priority (CRITICAL | ROUTINE), min_shelf_life_days, status, notes, parent_shortage_id (residuals), created_by, source (FORM | CHAT)
 - **SurplusPost**: org_id, batch_id, product_id, qty, expiry_date, min_price_paise, status (OPEN | MATCHED | WITHDRAWN | EXPIRED)
 - **Forecast**: org_id, product_id, date, predicted_qty, lower, upper, model_version
-- **ConsumptionRecord**: org_id, product_id, date, qty (synthetic history for forecasting)
+- **ConsumptionRecord**: org_id, product_id, date, qty (synthetic history for forecasting) — S18 adds `synthetic` (true for seeded rows; a reported row for the same day wins)
+- **SurplusMatch** (S18): surplus_id, org_id, kind (SHORTAGE | FORECAST), shortage_id, stockout_date — one per post and matched org; the matched org then sees the post
 
 ## Matching
 - **MatchRun**: shortage_id, run_no, triggered_by (CREATE | DECLINE | EXPIRY | MANUAL | RECOMMENDATION_EXPIRED | STOCK_CHANGE), ts

@@ -4,6 +4,7 @@ import { SHORTAGE_READERS } from "./display";
 import { DashboardPage } from "./pages/dashboard";
 import { DeliveriesPage } from "./pages/deliveries";
 import { DeliveryDetailPage } from "./pages/delivery-detail";
+import { ForecastsPage } from "./pages/forecasts";
 import { InventoryPage } from "./pages/inventory";
 import { NotificationBell, NotificationsPage } from "./pages/notifications";
 import { ReceivePage } from "./pages/receive";
@@ -33,7 +34,7 @@ export const config: AppConfig = {
       element: <RequestsPage />,
     },
     { to: "/deliveries", label: "Deliveries", element: <DeliveriesPage /> },
-    { to: "/forecasts", label: "Forecasts" },
+    { to: "/forecasts", label: "Forecasts", element: <ForecastsPage /> },
   ],
   routes: [
     { path: "/shortages/:id", element: <ShortageDetailPage /> },
