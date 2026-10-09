@@ -12,6 +12,7 @@ import type {
   Product,
   Recommendation,
   RecommendationLine,
+  Reliability,
   Shipment,
   ShipmentDetail,
   Shortage,
@@ -678,4 +679,19 @@ export const ownPost: SurplusPost = {
   matched_org_ids: [ORG_B],
   created_by: ME_ID,
   created_at: "2026-10-08T06:00:00Z",
+};
+
+/** S19: Hospital A's stored reliability, with history, as GET /orgs/{id}/reliability returns
+ *  it to its own users (credits included). */
+export const ownReliability: Reliability = {
+  org_id: ORG_A,
+  score: 93,
+  has_history: true,
+  acceptance_rate: 1,
+  response_speed: 0.8,
+  median_response_minutes: 3,
+  on_time_rate: 1,
+  discrepancy_rate: 0.0529,
+  computed_at: "2026-10-07T02:00:00Z",
+  credits: 80,
 };

@@ -39,6 +39,7 @@ export type Forecast = Schemas["ForecastOut"];
 export type ExpiryRisk = Schemas["ExpiryRiskOut"];
 export type SurplusPost = Schemas["SurplusOut"];
 export type SurplusOffer = Schemas["SurplusOfferOut"];
+export type Reliability = Schemas["ReliabilityOut"];
 type SourceRequestQuery = {
   direction: Schemas["Direction"];
   status?: Schemas["RequestStatus"];
@@ -77,6 +78,7 @@ export const keys = {
   forecasts: ["/api/v1/forecasts"] as const,
   surplus: ["/api/v1/surplus"] as const,
   incomingSurplus: ["/api/v1/surplus/incoming"] as const,
+  reliability: (orgId: string) => ["/api/v1/orgs/{org_id}/reliability", { org_id: orgId }] as const,
 };
 
 type Cursor = string | undefined;
@@ -173,6 +175,19 @@ export function useSourceRequests(query: SourceRequestQuery, enabled = true) {
     initialPageParam: undefined as Cursor,
     getNextPageParam: nextCursor,
     enabled,
+  });
+}
+
+/** An org's stored reliability score and its four components (business-rules.md §12, S19);
+ *  `credits` only for the caller's own org. Fetched only while `enabled`. */
+export function useReliability(orgId: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.reliability(orgId),
+    queryFn: () =>
+      unwrap(
+        client.GET("/api/v1/orgs/{org_id}/reliability", { params: { path: { org_id: orgId } } }),
+      ),
+    enabled: enabled && orgId !== "",
   });
 }
 

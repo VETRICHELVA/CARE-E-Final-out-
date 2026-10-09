@@ -221,9 +221,22 @@ async def create(
         )
     )
     names = await _names(session, {c.source_org_id for c in candidates} | set(run.excluded_org_ids))
-    lines = [await _line(session, shortage, x, names, now) for x in plan["lines"]]
+    planned, asked = plan["lines"], plan.get("parallel") or []
+    if asked:
+        # CRITICAL parallel requests (S19): the line is the source that accepted first.
+        holding = {
+            str(c)
+            for c in await session.scalars(
+                select(SourceRequest.candidate_id).where(
+                    SourceRequest.shortage_id == shortage.id,
+                    SourceRequest.status == RequestStatus.TENTATIVE_HOLD,
+                )
+            )
+        }
+        planned = [x for x in asked if str(x["candidate_id"]) in holding]
+    lines = [await _line(session, shortage, x, names, now) for x in planned]
     alternatives = [await _line(session, shortage, x, names, now) for x in plan["alternatives"]]
-    used = {x["candidate_id"] for x in (*lines, *alternatives)}
+    used = {str(x["candidate_id"]) for x in (*lines, *alternatives, *asked)}
     rejected = sorted(
         (
             rules.Rejected(
@@ -244,6 +257,7 @@ async def create(
         other_eligible=sum(c.eligible and str(c.id) not in used for c in candidates),
         rejected=rejected,
         left_out=await _left_out(session, shortage, run, names),
+        asked_at_once=len(asked),
     )
     rec = Recommendation(
         id=uuid.uuid4(),

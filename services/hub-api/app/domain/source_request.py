@@ -46,6 +46,7 @@ ACTIVE_HOLD = frozenset({H.TENTATIVE, H.FIRM})  # counted as `reserved` (§2)
 RESPONSE_DEADLINE_PASSED = "Response deadline passed."
 HOLD_DEADLINE_PASSED = "Hold deadline passed."
 STOCK_CHANGED = "Stock changed before acceptance."
+ANOTHER_SOURCE_FIRST = "Another source confirmed first."  # CRITICAL parallel requests (S19)
 
 
 def response_deadline(priority: str, now: datetime) -> datetime:
@@ -88,6 +89,10 @@ def allocate(lots: Iterable[Lot], qty: int) -> list[tuple[uuid.UUID, int]] | Non
     return None
 
 
-def all_ready(statuses: Sequence[str]) -> bool:
-    """§7 step 4: every request of the plan holds stock."""
+def all_ready(statuses: Sequence[str], *, parallel: bool = False) -> bool:
+    """§7 step 4: every request of the plan holds stock. For CRITICAL parallel requests
+    (§7 step 2) the plan needs one source: ready once exactly one holds stock and none is
+    still waiting for an answer (the others were superseded, declined or expired)."""
+    if parallel:
+        return statuses.count(R.TENTATIVE_HOLD) == 1 and R.REQUESTED not in statuses
     return bool(statuses) and all(s == R.TENTATIVE_HOLD for s in statuses)

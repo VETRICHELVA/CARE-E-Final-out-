@@ -1405,6 +1405,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{org_id}/reliability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reliability
+         * @description Any signed-in user may read any org's stored score and its four components (they rank
+         *     and explain candidates). The credit balance is shown to the org's own users only.
+         */
+        get: operations["get_reliability_api_v1_orgs__org_id__reliability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2637,6 +2658,11 @@ export interface components {
              * @description The best BUY, or for a BUY the next one.
              */
             alternatives: components["schemas"]["PlanLine"][];
+            /**
+             * Parallel
+             * @description CRITICAL TRANSFER only (S19): the single-source candidates asked at once, the planned line first; the first to accept wins. Empty for every other plan.
+             */
+            parallel?: components["schemas"]["PlanLine"][];
         };
         /**
          * PoStatus
@@ -3023,6 +3049,60 @@ export interface components {
         RefreshIn: {
             /** Refresh Token */
             refresh_token: string;
+        };
+        /**
+         * ReliabilityOut
+         * @description An org's stored reliability (business-rules.md §12). Components are null while the
+         *     org has no history for them; the score is then the no-history default (70).
+         */
+        ReliabilityOut: {
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Score
+             * @description 0-100; what matching ranks by.
+             */
+            score: number;
+            /**
+             * Has History
+             * @description False while the score is the no-history default (some component has no history yet).
+             */
+            has_history: boolean;
+            /**
+             * Acceptance Rate
+             * @description Share of answered requests accepted.
+             */
+            acceptance_rate: number | null;
+            /**
+             * Response Speed
+             * @description max(0, 1 - median response time ÷ the response limit).
+             */
+            response_speed: number | null;
+            /** Median Response Minutes */
+            median_response_minutes: number | null;
+            /**
+             * On Time Rate
+             * @description Share of delivered shipments delivered by the shortage's deadline.
+             */
+            on_time_rate: number | null;
+            /**
+             * Discrepancy Rate
+             * @description Units not accepted ÷ units expected, over reconciled shipments.
+             */
+            discrepancy_rate: number | null;
+            /**
+             * Computed At
+             * @description Null until first computed.
+             */
+            computed_at: string | null;
+            /**
+             * Credits
+             * @description The org's credit balance (§12, not spendable yet); the caller's own org only, null for any other org.
+             */
+            credits: number | null;
         };
         /** ReorderOut */
         ReorderOut: {
@@ -6224,6 +6304,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SurplusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reliability_api_v1_orgs__org_id__reliability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReliabilityOut"];
                 };
             };
             /** @description Validation Error */

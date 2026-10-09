@@ -83,3 +83,39 @@ def test_hospitals_with_nothing_transferable_are_skipped() -> None:
 
 def test_nothing_eligible_is_no_plan() -> None:
     assert plan([], [], NEED, critical=True) is None
+
+
+# --- CRITICAL parallel requests (§7 step 2, S19) ----------------------------------------------
+
+
+def parallel(p: Plan | None) -> list[tuple[str, int]]:
+    assert p is not None
+    return [(x.option.key, x.qty) for x in p.parallel]
+
+
+def test_a_critical_transfer_asks_up_to_three_single_sources_in_rank_order() -> None:
+    hospitals = [hospital(k, 900, eta=eta) for k, eta in (("d", 4), ("a", 1), ("c", 3), ("b", 2))]
+    p = plan(hospitals, [X], NEED, critical=True)
+    assert p is not None and p.type == TRANSFER
+    assert lines(p) == [("a", 850)]  # the planned line is the top-ranked, and asked first
+    assert parallel(p) == [("a", 850), ("b", 850), ("c", 850)]
+    assert config.CRITICAL_PARALLEL_REQUESTS == 3
+
+
+def test_only_sources_covering_the_shortfall_alone_are_asked_in_parallel() -> None:
+    p = plan([hospital("big", 900, eta=3), hospital("small", 500, eta=1)], [], NEED, critical=True)
+    assert lines(p) == [("big", 850)]
+    assert parallel(p) == [("big", 850)]
+
+
+def test_a_routine_transfer_asks_one_source() -> None:
+    p = plan([hospital(k, 900) for k in "abc"], [], NEED, critical=False)
+    assert p is not None and p.type == TRANSFER and lines(p) == [("a", 850)]
+    assert parallel(p) == []
+
+
+def test_a_critical_split_or_buy_asks_no_one_in_parallel() -> None:
+    split = plan([hospital("P", 500), hospital("Q", 350)], [X], NEED, critical=True)
+    assert split is not None and split.type == TRANSFER_SPLIT and parallel(split) == []
+    buy = plan([], [X, Y], NEED, critical=True)
+    assert buy is not None and buy.type == BUY and parallel(buy) == []

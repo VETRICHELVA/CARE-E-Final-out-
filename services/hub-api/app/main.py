@@ -22,6 +22,7 @@ from app.shipments.router import router as shipments_router
 from app.shortages.router import router as shortages_router
 from app.source_requests.router import router as source_requests_router
 from app.surplus.router import router as surplus_router
+from app.trust.router import router as trust_router
 
 API = "/api/v1"
 
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
         coldchain_router,
         forecasting_router,
         surplus_router,
+        trust_router,
     ):
         app.include_router(router, prefix=API)
 

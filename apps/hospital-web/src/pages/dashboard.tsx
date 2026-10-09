@@ -2,6 +2,7 @@
 // requests awaiting this hospital's response with live countdowns. S18 adds, for users who
 // keep the stock (`inventory.edit`): predicted stock-outs, the expiry-risk count with each
 // batch's "Offer N to the network" suggestion, and surplus other hospitals offer this one.
+// S19 adds this hospital's reliability as a source and the credits it has earned.
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
@@ -15,16 +16,19 @@ import {
   Loading,
   StatusChip,
   useCan,
+  useMe,
   useNow,
 } from "@care-e/ui";
 import {
   useForecasts,
   useIncomingSurplus,
   useProducts,
+  useReliability,
   useShortages,
   useSourceRequests,
 } from "../api";
 import { PageHeader } from "../components/page";
+import { ReliabilityBadge } from "../components/reliability";
 import { ANSWERABLE, EXPIRY_BAND_LABELS, OPEN_STATES, qty, SHORTAGE_READERS } from "../display";
 import { matchLabel, StockoutDate, SyntheticBadge } from "./forecasts";
 import { useCanEditInventory } from "./inventory";
@@ -134,6 +138,38 @@ function ForecastSummary() {
   );
 }
 
+/** The hub's stored score for this org (what matching ranks it by) and its credit balance. */
+function OwnReliability() {
+  const orgId = useMe().data?.org.id ?? "";
+  const reliability = useReliability(orgId);
+  if (reliability.isPending) return <Loading label="Loading reliability…" />;
+  if (reliability.isError) return <ErrorState error={reliability.error} />;
+  const r = reliability.data;
+  return (
+    <div className="grid gap-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span>Reliability score</span>
+        <ReliabilityBadge orgId={orgId} score={r.score} />
+      </div>
+      {!r.has_history && (
+        <p className="text-xs text-muted-foreground">
+          Not enough history yet, so the default score applies.
+        </p>
+      )}
+      <div className="flex items-center justify-between">
+        <span>Credits earned</span>
+        <span className="font-semibold" data-testid="credits">
+          {r.credits ?? 0}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        One credit per 10 units you transferred that the receiver accepted. Credits cannot be spent
+        yet.
+      </p>
+    </div>
+  );
+}
+
 function SurplusOffers() {
   const offers = useIncomingSurplus();
   const products = useProducts();
@@ -187,6 +223,16 @@ export function DashboardPage() {
             <DashCard title="Incoming requests awaiting response" to="/requests">
               <AwaitingRequests />
             </DashCard>
+          )}
+          {canRespond && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your reliability as a source</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OwnReliability />
+              </CardContent>
+            </Card>
           )}
           {canSeeShortages && (
             <DashCard title="Open shortages" to="/shortages">

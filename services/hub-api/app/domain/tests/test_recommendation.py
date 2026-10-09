@@ -142,6 +142,24 @@ def test_a_transfer_explanation() -> None:
     )
 
 
+def test_a_critical_transfer_asked_in_parallel_names_who_accepted_first() -> None:
+    """S19: the line is the source that accepted first, which need not be the top-ranked."""
+    text = explain(
+        "TRANSFER", [B], X, shortfall=850, critical=True, other_eligible=1, rejected=[],
+        asked_at_once=3,
+    )  # fmt: skip
+    assert text == (
+        "Hospital B holds 850 units with 180 days of shelf life at delivery and can deliver "
+        "in about 6 h. 3 sources were asked at once because the shortage is CRITICAL; "
+        "Hospital B accepted first. Sources are ranked by earliest arrival because the "
+        "shortage is CRITICAL. 1 other eligible source ranked lower. Alternative: buy 850 "
+        "units from Supplier X for ₹12,120.00, arriving in about 68 h."
+    )
+    one = explain("TRANSFER", [B], X, shortfall=850, critical=True, other_eligible=0,
+                  rejected=[], asked_at_once=1)  # fmt: skip
+    assert "asked at once" not in one
+
+
 def test_a_split_explanation_names_every_source() -> None:
     p = Source("Hospital P", 500, 2.0, shelf_life_days=170)
     q = Source("Hospital Q", 350, 3.2, shelf_life_days=1)

@@ -17,7 +17,8 @@ import app.recommendations.models
 import app.shipments.models
 import app.shortages.models
 import app.source_requests.models
-import app.surplus.models  # noqa: F401  (register every model on Base.metadata)
+import app.surplus.models
+import app.trust.models  # noqa: F401  (register every model on Base.metadata)
 from alembic import context
 from app.config import settings
 from app.db import Base

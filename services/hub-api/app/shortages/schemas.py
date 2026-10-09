@@ -110,6 +110,11 @@ class PlannedResolution(BaseModel):
     type: Literal["TRANSFER", "TRANSFER_SPLIT", "BUY"]
     lines: list[PlanLine]
     alternatives: list[PlanLine] = Field(description="The best BUY, or for a BUY the next one.")
+    parallel: list[PlanLine] = Field(
+        default_factory=list,
+        description="CRITICAL TRANSFER only (S19): the single-source candidates asked at once, "
+        "the planned line first; the first to accept wins. Empty for every other plan.",
+    )
 
 
 class MatchRunOut(BaseModel):
@@ -127,7 +132,7 @@ class MatchRunOut(BaseModel):
     def _shown(plan: dict[str, Any]) -> PlannedResolution:
         """The stored plan keeps every cost; the requester sees supplier costs only."""
         out = PlannedResolution.model_validate(plan)
-        for line in (*out.lines, *out.alternatives):
+        for line in (*out.lines, *out.alternatives, *out.parallel):
             if line.source_type == SourceType.HOSPITAL:
                 line.landed_cost_paise = None
         return out

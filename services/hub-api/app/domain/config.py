@@ -35,6 +35,13 @@ class Tunables(BaseSettings):
     max_split_sources: Annotated[int, Field(ge=2)] = 3
     default_reliability: Annotated[int, Field(ge=0, le=100)] = 70  # an org with no history
 
+    # §7 step 2: a CRITICAL TRANSFER asks up to this many single-source candidates at once (S19)
+    critical_parallel_requests: PosInt = 3
+
+    # §12 Reliability and credits (S19)
+    reliability_nightly_hour_utc: Annotated[int, Field(ge=0, le=23)] = 2  # the nightly recompute
+    units_per_credit: PosInt = 10  # +1 credit per this many units transferred and reconciled
+
     # §6 Time limits, by shortage priority
     sla_critical_response_minutes: Pos = 15
     sla_routine_response_minutes: Pos = 4 * 60
@@ -87,6 +94,13 @@ OFFER_UPDATED_WITHIN = timedelta(days=_t.offer_updated_within_days)
 NEAR_EXPIRY_DAYS = _t.near_expiry_days
 MAX_SPLIT_SOURCES = _t.max_split_sources
 DEFAULT_RELIABILITY = _t.default_reliability
+
+# §7 step 2 (S19)
+CRITICAL_PARALLEL_REQUESTS = _t.critical_parallel_requests
+
+# §12 Reliability and credits (S19)
+RELIABILITY_NIGHTLY_HOUR_UTC = _t.reliability_nightly_hour_utc
+UNITS_PER_CREDIT = _t.units_per_credit
 
 # §6 Time limits, by shortage priority
 SOURCE_RESPONSE_LIMIT = {

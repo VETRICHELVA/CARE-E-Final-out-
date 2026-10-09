@@ -46,8 +46,8 @@ Every table: `id` UUID PK, `created_at`, `updated_at` (UTC). Owned tables carry 
 - **Reconciliation**: shortage_id, shipment_id (unique), expected, accepted, discrepancy (= expected − accepted for that shipment), outcome (CONFIRMED | PARTIAL), residual_shortage_id. Written for every shipment of the shortage when the last receipt arrives; `outcome` and `residual_shortage_id` are the shortage's (PARTIAL exactly when a residual was opened)
 
 ## Trust
-- **ReliabilityScore**: org_id, acceptance_rate, median_response_minutes, on_time_rate, discrepancy_rate, score (0–100), computed_at
-- **CreditLedger**: org_id, delta, reason, shortage_id, ts
+- **ReliabilityScore**: org_id (unique), acceptance_rate, median_response_minutes, response_speed, on_time_rate, discrepancy_rate, score (0–100), computed_at. A component is null while the org has no history for it
+- **CreditLedger** (append-only): org_id, delta, reason, shortage_id, ts; one row per source org and shortage
 
 ## IoT
 - **Device**: org_id (owning org, e.g. the logistics company), device_id (string, unique), type, assigned_shipment_id (only a shipment its own org carries; cleared when assign or unassign changes the carrier), battery_level, last_seen
