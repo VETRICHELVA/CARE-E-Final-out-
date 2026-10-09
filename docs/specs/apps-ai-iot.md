@@ -60,6 +60,8 @@ Maps: Leaflet with OpenStreetMap tiles.
 - Product resolution: fuzzy match against the catalog (name, code, synonyms). If more than one product scores within 10% of the best → return `candidates` and ask the user to choose. Never pick silently.
 - Relative dates ("by Friday", "in 72 hours") are resolved in the user's time zone and shown back for confirmation.
 - The UI shows a confirmation card; only the user's click calls `POST /shortages` (as the user, with source=CHAT).
+- As built (S17): `POST /chat/draft {message, user_tz, now?}` → `{draft, missing_fields, product_candidates, question, assumptions, tool_trace}`. The model only extracts (structured output: product phrases, figures with the words they came from, the kind of date); code checks every figure against the user's words, asks the hub's product search (`GET /ai/read/products/search`, as the user) and resolves dates. Unstated fields default to priority ROUTINE, the product's `min_shelf_life_days` and `qty_local_usable` 0, and are listed in `missing_fields`; an unstated time of day is 23:59. More than one product: the user is asked to send one message each.
+- hospital-web: the copilot panel's "Order" mode (users with `shortage.create`): every field editable, the required-by date in full, candidates as buttons, "Create shortage" (OPEN), "Save as draft" (DRAFT) and "Cancel". A saved draft is confirmed from its shortage page ("Confirm draft", `POST /shortages/{id}/confirm`).
 - Test set: 20 phrasings; at least 18 must produce a correct draft or a correct clarifying question.
 
 ### Forecasting (S18 — runs in the hub worker, not the AI service, so the AI service stays read-only)

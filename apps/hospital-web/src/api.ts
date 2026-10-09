@@ -265,8 +265,12 @@ export function useImportBatches() {
 export function useCreateShortage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: Schemas["ShortageCreate"]) =>
-      unwrap(client.POST("/api/v1/shortages", { body })),
+    // `source` and `status` have hub defaults (FORM, OPEN), which the generated type marks as
+    // required; the form leaves them out, a chat card sends CHAT and OPEN or DRAFT (S17).
+    mutationFn: (
+      body: Omit<Schemas["ShortageCreate"], "source" | "status"> &
+        Partial<Pick<Schemas["ShortageCreate"], "source" | "status">>,
+    ) => unwrap(client.POST("/api/v1/shortages", { body: body as Schemas["ShortageCreate"] })),
     onSuccess: (shortage) => {
       queryClient.setQueryData(keys.shortage(shortage.id), shortage);
       return queryClient.invalidateQueries({ queryKey: keys.shortages });
@@ -321,6 +325,21 @@ export function useCancelShortage(id: string) {
     mutationFn: (reason: string | undefined) =>
       unwrap(
         client.POST("/api/v1/shortages/{shortage_id}/cancel", {
+          params: { path: { shortage_id: id } },
+          body: reasonBody(reason),
+        }),
+      ),
+    onSuccess: refresh,
+  });
+}
+
+/** DRAFT -> OPEN (S17: the requester confirms a saved chat draft); the hub then matches it. */
+export function useConfirmDraft(id: string) {
+  const refresh = useRefreshShortage(id);
+  return useMutation({
+    mutationFn: (reason: string | undefined) =>
+      unwrap(
+        client.POST("/api/v1/shortages/{shortage_id}/confirm", {
           params: { path: { shortage_id: id } },
           body: reasonBody(reason),
         }),

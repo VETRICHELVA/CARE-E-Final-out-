@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     )
     # Copilot answers are short lookups over a few tool results.
     ai_effort: str = "medium"
+    # Chat ordering (S17) only extracts fields from one message; dates, products and checks
+    # are resolved in code.
+    ai_chat_effort: str = "medium"
     # Tool calls the model may make per question (S13 brief: the loop is capped at 6).
     ai_max_tool_calls: int = 6
     hub_timeout_seconds: float = 10.0

@@ -65,3 +65,25 @@ class AiColdChainOut(BaseModel):
     max_temp_c: float | None
     has_open_excursion: bool
     events: list[dict[str, object]]
+
+
+class ProductMatchOut(BaseModel):
+    """One catalog product the search phrase may name (S17), with how well it scored."""
+
+    product_id: uuid.UUID
+    code: str
+    name: str
+    category: str
+    unit: str
+    requires_cold_chain: bool
+    default_min_shelf_life_days: int
+    score: float = Field(description="0-1; 1.0 = the phrase is the name, code or a synonym.")
+    matched_on: str = Field(description="The name, code or synonym that scored best.")
+
+
+class ProductSearchOut(BaseModel):
+    """Best first; products scoring under the search's minimum are left out. The search ranks
+    and never picks: callers must ask the user when scores are close (apps-ai-iot.md)."""
+
+    q: str
+    items: list[ProductMatchOut]

@@ -12,6 +12,8 @@ export const RERUN_FROM = new Set(["OPEN", "MATCHING"]);
  *  `shortage.create` only. */
 export const SHORTAGE_READERS = ["shortage.create", "recommendation.approve"] as const;
 export const CANCEL_FROM = new Set(["OPEN", "MATCHING", "AWAITING_DECISION"]);
+/** A saved chat draft the requester may confirm (DRAFT -> OPEN, S17). */
+export const CONFIRM_FROM = new Set(["DRAFT"]);
 /** Shortage states that are still being worked on (the dashboard's "open" shortages). */
 export const OPEN_STATES = [
   "DRAFT",

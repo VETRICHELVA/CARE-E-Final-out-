@@ -70,7 +70,11 @@ e2e:
 	cd services/hub-api && uv run python ../../e2e/seed/scenario1.py
 	pnpm --filter e2e exec playwright test
 
-# The copilot eval (services/ai-service/evals): 15 Scenario 1 questions against the real model.
-# Skips (exit 0) without a key; otherwise needs `make up migrate seed` and the hub running.
+# The AI evals (services/ai-service/evals) against the real model: the copilot's 15 Scenario 1
+# questions, then chat ordering's 20 phrasings (S17; pass bar 18). Both run even if the first
+# fails. Skip (exit 0) without a key; otherwise need `make up migrate seed` and the hub running.
 eval-ai:
-	cd services/ai-service && uv run python -m app.evals
+	cd services/ai-service && status=0; \
+	uv run python -m app.evals || status=$$?; \
+	uv run python -m app.chat_evals || status=$$?; \
+	exit $$status

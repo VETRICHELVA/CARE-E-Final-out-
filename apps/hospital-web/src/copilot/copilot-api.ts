@@ -85,3 +85,59 @@ export function useAskCopilot() {
       })) as CopilotAnswer,
   });
 }
+
+// ---- Chat ordering (S17) ----
+
+/** The card's pre-filled fields. A draft only: nothing reaches the hub until the user clicks
+ *  "Create shortage" or "Save as draft", which send POST /shortages as the user. */
+export type ChatDraft = {
+  product_id: string | null;
+  product_code: string | null;
+  product_name: string | null;
+  unit: string | null;
+  qty_required: number | null;
+  qty_local_usable: number;
+  /** ISO 8601 with the user's offset. */
+  required_by: string | null;
+  /** e.g. "Friday 9 October 2026, 23:59 (Asia/Kolkata)". */
+  required_by_display: string | null;
+  required_by_text: string | null;
+  priority: "CRITICAL" | "ROUTINE";
+  min_shelf_life_days: number | null;
+  notes: string | null;
+};
+
+export type ProductCandidate = {
+  product_id: string;
+  code: string;
+  name: string;
+  unit: string;
+  default_min_shelf_life_days: number;
+  score: number;
+};
+
+export type ChatDraftReply = {
+  draft: ChatDraft | null;
+  /** Fields the message did not give, defaulted ones included; the card highlights them. */
+  missing_fields: string[];
+  /** Set when the product is ambiguous: the user picks; the service never does. */
+  product_candidates: ProductCandidate[];
+  question: string | null;
+  assumptions: string[];
+  tool_trace: TraceEntry[];
+};
+
+/** The browser's IANA zone, which relative dates ("by Friday") are resolved in. */
+export const userTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** POST /chat/draft: a pre-filled shortage card from one message. */
+export function useChatDraft() {
+  return useMutation({
+    mutationFn: async (message: string) =>
+      (await call("/chat/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, user_tz: userTimeZone() }),
+      })) as ChatDraftReply,
+  });
+}

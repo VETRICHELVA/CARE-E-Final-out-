@@ -196,6 +196,27 @@ describe("Shortage detail", () => {
     expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
   });
 
+  it("offers only Confirm draft on a saved chat draft, and confirms it as the user (S17)", async () => {
+    const fake = hub(
+      { "POST /api/v1/shortages/{id}/confirm": { ...shortage, status: "MATCHING" } },
+      { status: "DRAFT", source: "CHAT" },
+    );
+    show("REQUESTER");
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft" }));
+    expect(screen.queryByRole("button", { name: "Cancel shortage" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Confirm draft" }),
+    );
+    await waitFor(() => expect(fake.to("POST", `${base}/confirm`)).toHaveLength(1));
+    cleanup();
+
+    hub({}, { status: "MATCHING" });
+    show("REQUESTER");
+    await screen.findByRole("button", { name: "Re-run match" });
+    expect(screen.queryByRole("button", { name: "Confirm draft" })).toBeNull();
+  });
+
   it("re-runs the match with the typed reason and refreshes the run", async () => {
     let runs = 0;
     const fake = hub({

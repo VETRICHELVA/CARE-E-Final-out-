@@ -289,9 +289,31 @@ export interface paths {
         /**
          * Create Shortage
          * @description Create a shortage in the caller's org. The hub computes the shortfall and runs the
-         *     first match, so the shortage comes back MATCHING.
+         *     first match, so the shortage comes back MATCHING; with `status: DRAFT` it comes back
+         *     DRAFT and unmatched (a chat draft saved for later, S17).
          */
         post: operations["create_shortage_api_v1_shortages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Draft
+         * @description DRAFT -> OPEN (business-rules §8: the requester confirms a chat draft), then the first
+         *     match run, so it comes back MATCHING. 409 `invalid_transition` unless DRAFT.
+         */
+        post: operations["confirm_draft_api_v1_shortages__shortage_id__confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1261,6 +1283,29 @@ export interface paths {
          *     rows). Oldest first.
          */
         get: operations["ai_audit_api_v1_ai_read_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/products/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Product Search
+         * @description Chat ordering (S17): fuzzy match on product name, code and synonyms
+         *     (scripts/seed/synonyms.yaml), best first, each with its score; products under the
+         *     minimum score are left out. The catalog is the same for every user (GET /products), so
+         *     this reads nothing of any org. It ranks and never picks.
+         */
+        get: operations["ai_product_search_api_v1_ai_read_products_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2675,6 +2720,39 @@ export interface components {
          * @enum {string}
          */
         Priority: "CRITICAL" | "ROUTINE";
+        /**
+         * ProductMatchOut
+         * @description One catalog product the search phrase may name (S17), with how well it scored.
+         */
+        ProductMatchOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Unit */
+            unit: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** Default Min Shelf Life Days */
+            default_min_shelf_life_days: number;
+            /**
+             * Score
+             * @description 0-1; 1.0 = the phrase is the name, code or a synonym.
+             */
+            score: number;
+            /**
+             * Matched On
+             * @description The name, code or synonym that scored best.
+             */
+            matched_on: string;
+        };
         /** ProductOut */
         ProductOut: {
             /**
@@ -2698,6 +2776,17 @@ export interface components {
             temp_max_c: number | null;
             /** Default Min Shelf Life Days */
             default_min_shelf_life_days: number;
+        };
+        /**
+         * ProductSearchOut
+         * @description Best first; products scoring under the search's minimum are left out. The search ranks
+         *     and never picks: callers must ask the user when scores are close (apps-ai-iot.md).
+         */
+        ProductSearchOut: {
+            /** Q */
+            q: string;
+            /** Items */
+            items: components["schemas"]["ProductMatchOut"][];
         };
         /** PublicFacilityView */
         PublicFacilityView: {
@@ -3445,6 +3534,18 @@ export interface components {
             notes?: string | null;
             /** Reason */
             reason?: string | null;
+            /**
+             * @description Where the user filled it in: FORM, or CHAT for a chat draft the user checked and confirmed on its card (S17). The AI service never calls this.
+             * @default FORM
+             */
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Status
+             * @description OPEN (the default) starts matching at once. DRAFT saves it unmatched until the requester confirms it (POST /shortages/{id}/confirm; business-rules §8).
+             * @default OPEN
+             * @enum {string}
+             */
+            status: "OPEN" | "DRAFT";
         };
         /** ShortageOut */
         ShortageOut: {
@@ -4526,6 +4627,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_draft_api_v1_shortages__shortage_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6072,6 +6208,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_AuditOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_product_search_api_v1_ai_read_products_search_get: {
+        parameters: {
+            query: {
+                /** @description The words the user typed. */
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSearchOut"];
                 };
             };
             /** @description Validation Error */

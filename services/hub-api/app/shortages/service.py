@@ -42,7 +42,6 @@ from app.shortages.models import (
     MatchRun,
     Priority,
     Shortage,
-    ShortageSource,
     SourceType,
     Trigger,
 )
@@ -94,7 +93,9 @@ async def get_shortage(
 async def create_shortage(
     session: AsyncSession, user: User, body: ShortageCreate, *, now: datetime | None = None
 ) -> Shortage:
-    """OPEN with the hub-computed shortfall, then MATCHING with its first match run (§7)."""
+    """OPEN with the hub-computed shortfall, then MATCHING with its first match run (§7).
+    A DRAFT (a chat draft saved for later, S17) is stored with the same checks and shortfall
+    but does not match until the requester confirms it (`confirm_draft`)."""
     await own_facility(session, user, body.facility_id)
     product = await session.get(Product, body.product_id)
     if product is None:
@@ -118,10 +119,10 @@ async def create_shortage(
         required_by=body.required_by,
         priority=body.priority,
         min_shelf_life_days=product.default_min_shelf_life_days if min_days is None else min_days,
-        status=Status.OPEN,
+        status=body.status,
         notes=body.notes,
         created_by=user.id,
-        source=ShortageSource.FORM,
+        source=body.source,
     )
     session.add(shortage)
     await session.flush()
@@ -129,7 +130,24 @@ async def create_shortage(
     await audit.record(
         session, user, ENTITY, shortage.id, f"{ENTITY}.created", None, after, body.reason
     )
-    await run_match(session, shortage, Trigger.CREATE, reason="Shortage created.", now=now)
+    if shortage.status == Status.OPEN:
+        await run_match(session, shortage, Trigger.CREATE, reason="Shortage created.", now=now)
+    return shortage
+
+
+async def confirm_draft(
+    session: AsyncSession,
+    user: User,
+    shortage_id: uuid.UUID,
+    reason: str | None,
+    *,
+    now: datetime | None = None,
+) -> Shortage:
+    """DRAFT -> OPEN: the requester confirms a saved chat draft (§8), which then matches as a
+    new shortage does (OPEN -> MATCHING). Any other status is a 409 `invalid_transition`."""
+    shortage = await get_shortage(session, user, shortage_id, lock=True)
+    await move_shortage(session, shortage, Status.OPEN, user, reason)
+    await run_match(session, shortage, Trigger.CREATE, reason="Draft confirmed.", now=now)
     return shortage
 
 

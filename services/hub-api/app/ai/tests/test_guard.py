@@ -66,7 +66,7 @@ async def test_the_ai_token_cannot_write_even_under_ai_read(
 
 async def test_every_ai_read_endpoint_is_a_get(app: FastAPI) -> None:
     ai = [(m, p) for m, p in endpoints(app) if p.startswith(AI_READ)]
-    assert len(ai) == 7  # one per copilot tool (apps-ai-iot.md)
+    assert len(ai) == 8  # one per copilot tool, plus chat ordering's product search (S17)
     assert {m for m, _ in ai} == {"GET"}
 
 

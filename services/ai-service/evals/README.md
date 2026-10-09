@@ -76,5 +76,17 @@ Thursday 20:00 UTC but already Friday 01:30 in Asia/Kolkata (o12/o13 test that "
   is non-empty or every name in `fields` is in `missing_fields`. If `draft` is not null, the other
   listed fields (`product`, `priority`) must match as for `draft`.
 
+- Runner (S17): `make eval-ai` runs it after the copilot set (or
+  `cd services/ai-service && uv run python -m app.chat_evals [--only o01,o14]`). With no
+  `AI_API_KEY`/`ANTHROPIC_API_KEY` it prints why it is skipping and exits 0. Otherwise it needs
+  the hub at `HUB_API_URL` (same `AI_SERVICE_TOKEN`, after `make migrate seed`): it signs in as
+  `CHAT_EVAL_USER` (default `requester@hospital-a.demo`, password `SEED_PASSWORD`, default the
+  seed's), maps codes with `GET /products`, drafts each message through `app.chat` exactly as
+  `POST /chat/draft` does, prints PASS/FAIL per case and the score, and exits 1 under 18 of 20
+  (with `--only`, unless every listed case passes). `draft.required_by` is ISO 8601 with the
+  user's offset; candidates are matched by `code`.
+- `tests/test_chat_evals.py` replays all 20 offline with the extraction a correct model would
+  return, so the real run measures the model alone.
+
 Unlisted fields are not graded. Priority: "urgent" (or "urgently"), "critical" and "emergency" mean CRITICAL;
 anything else defaults to ROUTINE.
