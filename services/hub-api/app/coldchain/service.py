@@ -5,7 +5,11 @@ The hub evaluates the rules, never the firmware or the apps:
   EXCURSION after 2 consecutive readings outside the product's band, RECOVERED after 2
   consecutive readings back in range during an excursion;
 - every 30 s in the worker (`check_silent_devices`): DEVICE_SILENT when an IN_TRANSIT
-  shipment's device has sent no reading for 2 minutes.
+  shipment's device has sent no reading for 2 minutes since the later of its last reading
+  and the shipment going IN_TRANSIT.
+
+Events are append-only (CLAUDE.md rule 5): a late batch never revises or contradicts one
+already recorded (`app.domain.coldchain.on_arrival`).
 
 Each event is a ColdChainEvent row, a SYSTEM audit row stating the readings (or their
 absence) as received, and a `coldchain.*` event to the shipment's orgs only. Audit rows go
@@ -70,6 +74,9 @@ async def band_of(session: AsyncSession, shipment: Shipment) -> Band:
 
 
 async def _state(session: AsyncSession, shipment_id: uuid.UUID) -> State:
+    """The shipment's last EXCURSION or RECOVERED on record (any device: §11 runs per
+    shipment). They alternate and are recorded in timestamp order, so the newest by `ts` is
+    the last one recorded."""
     last = await session.scalar(
         select(ColdChainEvent)
         .where(
@@ -79,42 +86,52 @@ async def _state(session: AsyncSession, shipment_id: uuid.UUID) -> State:
         .order_by(ColdChainEvent.ts.desc(), ColdChainEvent.created_at.desc())
         .limit(1)
     )
-    if last is None or last.type != E.EXCURSION:
+    if last is None:
         return State()
-    return State(in_excursion=True, excursion_threshold=last.threshold)
+    if last.type != E.EXCURSION:
+        return State(as_of=last.ts)
+    return State(in_excursion=True, excursion_threshold=last.threshold, as_of=last.ts)
 
 
 async def evaluate_readings(
     session: AsyncSession, shipment: Shipment, device: Device, stored: Sequence[SensorReading]
 ) -> list[ColdChainEvent]:
-    """§11 over readings just linked to `shipment`, in timestamp order, carrying on from the
-    shipment's earlier readings and events. The caller holds the device's row lock, and a
-    shipment carries one device at a time, so batches for a shipment never interleave."""
+    """§11 over readings just linked to `shipment`: every reading of the shipment from
+    `rules.resume_from` on, merged with the new ones in timestamp order, carrying on from
+    the shipment's last EXCURSION or RECOVERED on record (`rules.on_arrival` states what a
+    late batch can and cannot change). Events on record are never revised.
+
+    Only EXCURSION and RECOVERED set where evaluation resumes: a DEVICE_SILENT does not, so
+    readings a box buffered while out of reach still count when they arrive. The caller
+    holds the device's row lock, and a shipment carries one device at a time, so batches
+    for a shipment never interleave."""
     if not stored:
         return []
     band = await band_of(session, shipment)
     if not band.defined:
         return []
-    new_ids = [r.id for r in stored]
-    first = min(r.ts for r in stored)
+    state = await _state(session, shipment.id)
+    start, inclusive = rules.resume_from(state, min(r.ts for r in stored))
+    pending = SensorReading.ts >= start if inclusive else SensorReading.ts > start
+    of_shipment = SensorReading.shipment_id == shipment.id
+    order = (SensorReading.ts, SensorReading.device_id)
+    tail = list(
+        await session.scalars(select(SensorReading).where(of_shipment, pending).order_by(*order))
+    )
     keep = max(config.COLDCHAIN_CONSECUTIVE_READINGS - 1, 0)
-    previous = list(
+    lead_in = list(
         await session.scalars(
             select(SensorReading)
-            .where(
-                SensorReading.shipment_id == shipment.id,
-                SensorReading.ts < first,
-                SensorReading.id.not_in(new_ids),
-            )
-            .order_by(SensorReading.ts.desc())
+            .where(of_shipment, ~pending)
+            .order_by(*(c.desc() for c in order))
             .limit(keep)
         )
     )
-    findings = rules.evaluate(
+    findings = rules.on_arrival(
         band,
-        [rules.Reading(r.ts, r.temp_c) for r in previous],
+        [rules.Reading(r.ts, r.temp_c) for r in [*reversed(lead_in), *tail]],
         [rules.Reading(r.ts, r.temp_c) for r in stored],
-        await _state(session, shipment.id),
+        state,
     )
     return [await record(session, shipment, device.device_id, f, band) for f in findings]
 
@@ -127,8 +144,12 @@ async def record(
     band: Band,
     *,
     since: datetime | None = None,
+    last_reading_at: datetime | None = None,
+    in_transit_at: datetime | None = None,
 ) -> ColdChainEvent:
-    """Store one cold-chain event, its SYSTEM audit rows and its `coldchain.*` event."""
+    """Store one cold-chain event, its SYSTEM audit rows and its `coldchain.*` event. A
+    DEVICE_SILENT takes `since` (when the silence counts from), the device's
+    `last_reading_at` and the shipment's `in_transit_at`."""
     event = ColdChainEvent(
         id=uuid.uuid4(),
         shipment_id=shipment.id,
@@ -152,7 +173,9 @@ async def record(
     }
     if finding.type == E.DEVICE_SILENT:
         after["unit"] = "s"
-        after["last_reading_at"] = since
+        after["silent_since"] = since
+        after["last_reading_at"] = last_reading_at
+        after["in_transit_at"] = in_transit_at
     else:
         after["unit"] = "°C"
         after["band"] = {"temp_min_c": band.min_c, "temp_max_c": band.max_c}
@@ -165,7 +188,7 @@ async def record(
         f"{ENTITY}.{finding.type.lower()}",
         None,
         after,
-        rules.describe(finding, band, device_id, since),
+        rules.describe(finding, band, device_id, since, in_transit_at=in_transit_at),
         org_id=shipment.to_org_id,
     )
     for org_id in {shipment.from_org_id, shipment.carrier_org_id} - {None, shipment.to_org_id}:
@@ -199,9 +222,10 @@ def _in_transit_at(shipment: Shipment) -> datetime | None:
 
 async def check_silent_devices(session: AsyncSession, *, now: datetime | None = None) -> int:
     """§11: DEVICE_SILENT for each IN_TRANSIT shipment whose device has sent no reading for
-    2 minutes (the device's `last_seen`; for a device that never sent one, since the
-    shipment went IN_TRANSIT). Once per silence: a device that sends again and then falls
-    silent again raises a new one. Commits; returns how many were raised."""
+    2 minutes while the shipment was IN_TRANSIT: counted from the later of the device's
+    `last_seen` and the recorded time the shipment went IN_TRANSIT (its status history).
+    Once per silence: a device that sends again and then falls silent again raises a new
+    one. Commits; returns how many were raised."""
     now = now or datetime.now(UTC)
     rows = (
         await session.execute(
@@ -214,7 +238,8 @@ async def check_silent_devices(session: AsyncSession, *, now: datetime | None = 
     ).all()
     raised = 0
     for shipment, device in rows:
-        since = rules.silence_start(device.last_seen, _in_transit_at(shipment))
+        in_transit_at = _in_transit_at(shipment)
+        since = rules.silence_start(device.last_seen, in_transit_at)
         last_silent = await session.scalar(
             select(ColdChainEvent.ts)
             .where(
@@ -229,7 +254,16 @@ async def check_silent_devices(session: AsyncSession, *, now: datetime | None = 
         if finding is None:
             continue
         band = await band_of(session, shipment)
-        await record(session, shipment, device.device_id, finding, band, since=since)
+        await record(
+            session,
+            shipment,
+            device.device_id,
+            finding,
+            band,
+            since=since,
+            last_reading_at=device.last_seen,
+            in_transit_at=in_transit_at,
+        )
         raised += 1
     await session.commit()
     return raised

@@ -313,10 +313,15 @@ export function ColdChainPanel({ shipmentId }: { shipmentId: string }) {
 const badge = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium";
 
 /** A list badge from the hub's summary: the newest event, and whether an excursion is on
- *  record. Nothing when the shipment has no cold-chain event. */
+ *  record. Nothing when the shipment has no cold-chain event. A DEVICE_SILENT is worded as
+ *  the event it is, with its time ("Device silent at …"), not as the device's state now. */
 export function ColdChainStateBadge({ summary }: { summary: ColdChainSummary | null }) {
   if (!summary) return null;
   const at = formatDateTime(summary.last_event_at);
+  const label =
+    summary.last_event_type === "DEVICE_SILENT"
+      ? `${COLDCHAIN_LABEL.DEVICE_SILENT} at ${at}`
+      : COLDCHAIN_LABEL[summary.last_event_type];
   const onRecord = summary.had_excursion && summary.last_event_type !== "EXCURSION";
   return (
     <>
@@ -326,7 +331,7 @@ export function ColdChainStateBadge({ summary }: { summary: ColdChainSummary | n
           title={at}
           data-testid="coldchain-badge"
         >
-          {COLDCHAIN_LABEL[summary.last_event_type]}
+          {label}
         </span>
       )}
       {onRecord && (

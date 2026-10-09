@@ -1,6 +1,7 @@
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invalidateFor } from "@care-e/api-client";
+import { formatDateTime } from "@care-e/ui";
 import type { Shipment } from "../api";
 import { deliveredToA, meAs, NOW, page, products, shipmentToA } from "../test/fixtures";
 import { fakeHub, hubError, renderAs } from "../test/hub";
@@ -122,7 +123,7 @@ describe("Deliveries", () => {
     );
     await waitFor(async () =>
       expect(within((await rows())[0]!).getByTestId("coldchain-badge").textContent).toBe(
-        "Device silent",
+        `Device silent at ${formatDateTime("2026-10-07T07:03:00Z")}`,
       ),
     );
   });

@@ -1072,7 +1072,8 @@ export interface paths {
          *     shipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or
          *     PARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other
          *     org; 409 unless DELIVERED; 400 if received > expected, accepted + rejected ≠ received,
-         *     an open cold-chain excursion has no inspection note, or accepted stock has no expiry.
+         *     a shipment with an excursion on record has no inspection note, or accepted stock has
+         *     no expiry.
          */
         post: operations["record_receipt_api_v1_shipments__shipment_id__receipt_post"];
         delete?: never;
@@ -2831,7 +2832,7 @@ export interface components {
             condition: components["schemas"]["Condition"];
             /**
              * Inspection Note
-             * @description Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment).
+             * @description Required (400) when a cold-chain EXCURSION is on record for the shipment, even one since RECOVERED (`inspection_note_required` on the shipment).
              */
             inspection_note?: string | null;
             /**

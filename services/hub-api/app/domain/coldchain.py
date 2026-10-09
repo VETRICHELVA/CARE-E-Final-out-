@@ -91,11 +91,13 @@ class Finding:
 
 @dataclass(frozen=True)
 class State:
-    """Where a shipment stands before new readings: whether an excursion is still running
-    (its last EXCURSION has no later RECOVERED) and the bound that excursion crossed."""
+    """Where a shipment stands, from its last EXCURSION or RECOVERED on record: whether an
+    excursion is still running (its last EXCURSION has no later RECOVERED), the bound that
+    excursion crossed, and `as_of`, that event's timestamp (None when there is none)."""
 
     in_excursion: bool = False
     excursion_threshold: float | None = None
+    as_of: datetime | None = None
 
 
 def evaluate(
@@ -106,9 +108,9 @@ def evaluate(
     *,
     consecutive: int | None = None,
 ) -> list[Finding]:
-    """Run §11 over a shipment's `new` readings in timestamp order. `previous` are the
-    shipment's readings just before them (already evaluated; only the last `consecutive - 1`
-    matter).
+    """Run §11 over a shipment's `new` readings in timestamp order, from `state`. `previous`
+    are the shipment's readings just before them (only the last `consecutive - 1` matter:
+    they start the run of consecutive readings). `on_arrival` picks both for a batch.
 
     - EXCURSION when `consecutive` readings in a row are outside the band and no excursion
       is running. A single out-of-range reading creates nothing.
@@ -144,15 +146,70 @@ def evaluate(
     return findings
 
 
+def resume_from(state: State, earliest_new: datetime) -> tuple[datetime, bool]:
+    """Where §11 picks up for a batch whose earliest reading is `earliest_new`: the readings
+    from `(ts, inclusive)` on, in timestamp order, are evaluated from `state`; the ones
+    before only fill the run of consecutive readings that leads into them.
+
+    - Usually the batch's earliest reading (inclusive). Everything before it was evaluated
+      when it arrived, and found nothing after the last event on record.
+    - When the batch reaches back to or before the last EXCURSION or RECOVERED on record
+      (`state.as_of`), just after that event (exclusive), re-reading every later reading
+      with the late ones merged in. Events on record are never revised (CLAUDE.md rule 5),
+      so a late reading dated at or before the last event changes nothing before it."""
+    if state.as_of is not None and earliest_new <= state.as_of:
+        return state.as_of, False
+    return earliest_new, True
+
+
+def on_arrival(
+    band: Band,
+    stored: Sequence[Reading],
+    new: Sequence[Reading],
+    state: State,
+    *,
+    consecutive: int | None = None,
+) -> list[Finding]:
+    """§11 for one ingested batch. `stored` is the shipment's readings (the new ones
+    included; any superset of the ones from `resume_from` on and the `consecutive - 1`
+    before them), `new` the batch's newly stored ones, `state` the shipment's last
+    EXCURSION or RECOVERED on record.
+
+    Every finding is dated after `state.as_of` and alternates with the events on record, so
+    recording them never contradicts what is already recorded. The events recorded are those
+    of the readings in timestamp order, whatever their arrival order or batching, as long as
+    no batch reaches back to or before the last EXCURSION or RECOVERED on record. A batch
+    that does is evaluated only after that event: an excursion or recovery its readings would
+    have shown before it is not recorded (the events on record stand), and its readings
+    count only as the run leading into later readings. Replays store nothing, so they find
+    nothing."""
+    if not new:
+        return []
+    start, inclusive = resume_from(state, min(r.ts for r in new))
+
+    def pending(r: Reading) -> bool:
+        return r.ts > start or (inclusive and r.ts == start)
+
+    return evaluate(
+        band,
+        [r for r in stored if not pending(r)],
+        [r for r in stored if pending(r)],
+        state,
+        consecutive=consecutive,
+    )
+
+
 def _nearest(band: Band, temp_c: float) -> float:
     bounds = [b for b in (band.min_c, band.max_c) if b is not None]
     return min(bounds, key=lambda b: abs(b - temp_c))
 
 
 def silence_start(last_seen: datetime | None, in_transit_at: datetime | None) -> datetime | None:
-    """Since when no reading has arrived: the device's last reading or, for a device that
-    has never sent one, the moment the shipment went IN_TRANSIT."""
-    return last_seen or in_transit_at
+    """§11 counts silence only while the shipment is IN_TRANSIT: from the later of the
+    device's last reading and the moment the shipment went IN_TRANSIT (a box last heard
+    from before the trip is silent from the start of the trip, not from then)."""
+    known = [t for t in (last_seen, in_transit_at) if t is not None]
+    return max(known) if known else None
 
 
 def silent_finding(
@@ -183,8 +240,17 @@ def _at(ts: datetime) -> str:
     return ts.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def describe(finding: Finding, band: Band, device_id: str, since: datetime | None = None) -> str:
-    """The audit row's reason: the readings (or their absence) as received, nothing more."""
+def describe(
+    finding: Finding,
+    band: Band,
+    device_id: str,
+    since: datetime | None = None,
+    *,
+    in_transit_at: datetime | None = None,
+) -> str:
+    """The audit row's reason: the readings (or their absence) as received, nothing more.
+    A DEVICE_SILENT counted from the moment the shipment went IN_TRANSIT (`since` is
+    `in_transit_at`) says so."""
     run = ", ".join(f"{r.temp_c:g} °C at {_at(r.ts)}" for r in finding.readings)
     n = len(finding.readings)
     if finding.type == ColdChainEventType.EXCURSION:
@@ -194,7 +260,10 @@ def describe(finding: Finding, band: Band, device_id: str, since: datetime | Non
             f"{n} consecutive readings from {device_id} back within {band.describe()}: {run}. "
             "The excursion stays on record."
         )
-    last = f"since {_at(since)}" if since else "yet"
+    if since is not None and since == in_transit_at:
+        last = f"since the shipment went IN_TRANSIT at {_at(since)}"
+    else:
+        last = f"since {_at(since)}" if since else "yet"
     return (
         f"No reading received from {device_id} {last} "
         f"({finding.observed_value:g} s; the limit is {finding.threshold:g} s)."
