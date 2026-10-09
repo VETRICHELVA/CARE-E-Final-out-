@@ -154,8 +154,9 @@ async def confirm_draft(
 async def cancel_shortage(
     session: AsyncSession, user: User, shortage_id: uuid.UUID, reason: str | None
 ) -> Shortage:
-    """From OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
-    Releases every tentative hold and supersedes every open source request (§8). The
+    """From DRAFT, OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
+    Releases every tentative hold and supersedes every open source request (§8); a DRAFT
+    (S17) was never matched, so it has none and nothing is released. The
     supersedes are the requester's (their org, their reason); the hold releases sit in the
     source orgs as SYSTEM with the factual cause, never the requester's id or text (§10)."""
     shortage = await get_shortage(session, user, shortage_id, lock=True)

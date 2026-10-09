@@ -307,14 +307,14 @@ async def test_cancel_from_matching(
     [
         (Status.OPEN, True),
         (Status.AWAITING_DECISION, True),
-        (Status.DRAFT, False),
+        (Status.DRAFT, True),
         (Status.IN_FULFILLMENT, False),
         (Status.RECEIVED, False),
         (Status.RESOLVED, False),
         (Status.PARTIALLY_RESOLVED, False),
     ],
 )
-async def test_cancel_only_from_open_matching_or_awaiting_decision(
+async def test_cancel_only_from_draft_open_matching_or_awaiting_decision(
     requester_a: httpx.AsyncClient,
     shortage_a: dict[str, Any],
     session: AsyncSession,

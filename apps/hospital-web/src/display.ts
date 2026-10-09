@@ -11,7 +11,8 @@ export const RERUN_FROM = new Set(["OPEN", "MATCHING"]);
 /** api-and-events.md (S05): who may list and read their org's shortages. Writes stay
  *  `shortage.create` only. */
 export const SHORTAGE_READERS = ["shortage.create", "recommendation.approve"] as const;
-export const CANCEL_FROM = new Set(["OPEN", "MATCHING", "AWAITING_DECISION"]);
+/** Shortage states the requester may cancel (business-rules §8; DRAFT since S17). */
+export const CANCEL_FROM = new Set(["DRAFT", "OPEN", "MATCHING", "AWAITING_DECISION"]);
 /** A saved chat draft the requester may confirm (DRAFT -> OPEN, S17). */
 export const CONFIRM_FROM = new Set(["DRAFT"]);
 /** Shortage states that are still being worked on (the dashboard's "open" shortages). */

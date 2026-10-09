@@ -348,7 +348,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel Shortage
-         * @description Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.
+         * @description Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409
+         *     `invalid_transition`.
          */
         post: operations["cancel_shortage_api_v1_shortages__shortage_id__cancel_post"];
         delete?: never;
@@ -3163,12 +3164,12 @@ export interface components {
             has_history: boolean;
             /**
              * Acceptance Rate
-             * @description Share of answered requests accepted.
+             * @description Share of answered source requests accepted; for a supplier, purchase orders acknowledged ÷ (acknowledged + rejected).
              */
             acceptance_rate: number | null;
             /**
              * Response Speed
-             * @description max(0, 1 - median response time ÷ the response limit).
+             * @description max(0, 1 - median(response time ÷ the response limit)); for a supplier, from purchase order SENT to its first answer.
              */
             response_speed: number | null;
             /** Median Response Minutes */

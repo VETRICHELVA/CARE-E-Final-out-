@@ -93,6 +93,7 @@ Any transition not listed returns 409 `invalid_transition`.
 | RECEIVED | RESOLVED | Accepted = shortfall |
 | RECEIVED | PARTIALLY_RESOLVED | Accepted < shortfall (residual created) |
 | OPEN, MATCHING, AWAITING_DECISION | CANCELLED | Requester cancels (releases holds) |
+| DRAFT | CANCELLED | Requester cancels a chat draft (S17). A draft was never matched, so it has no source requests or holds and nothing is released |
 
 A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or MATCHING (else 409 `invalid_transition`), and returns 409 `conflict` while any source request for the shortage is still open (REQUESTED or TENTATIVE_HOLD): matching re-runs on its own when those requests are declined or expire.
 
@@ -146,9 +147,19 @@ TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock 
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].
 - Device silent for 2 minutes while the shipment is IN_TRANSIT → DEVICE_SILENT event (warning).
 - Back in range for 2 consecutive readings → RECOVERED event; the excursion stays on record.
+- ColdChainEvents are append-only: an event on record is never revised or removed.
+- Late data: a reading that arrives dated at or before the shipment's last EXCURSION or RECOVERED on record never raises or changes an event dated at or before that event. Its batch is evaluated only after that event: an excursion or recovery its readings would have shown before it is not recorded (the events on record stand), and those readings count only as the run of consecutive readings leading into later readings.
+- Otherwise the events recorded are those of the readings in timestamp order, whatever their arrival order or batching.
 
 ## 12. Reliability and credits (S19)
-- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, where response_speed = max(0, 1 − median_response_minutes ÷ SLA minutes). Recomputed nightly and after each reconciliation.
+- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, rounded half up and clamped to 0–100. Recomputed nightly and after each reconciliation.
+- An org is scored from the components that apply to it. Its **answers** are:
+  - **Hospital** (unchanged since S19): its source requests. acceptance_rate = of the requests it answered or let expire unanswered, the share it accepted; a request still waiting, or superseded before the source answered, is not counted. Response time = minutes from the request's creation to the source's answer.
+  - **Supplier** (suppliers answer no source requests, so its purchase orders stand in for them): the purchase orders it has answered (moved out of SENT). acceptance_rate = acknowledged ÷ (acknowledged + rejected), where an order that ended REJECTED counts as rejected even if it was acknowledged first, and every other answered order as acknowledged; an order still SENT is not counted. Response time = minutes from the order being SENT to the supplier's first answer (ACKNOWLEDGED or REJECTED), as recorded in the audit log.
+- response_speed = max(0, 1 − median over the org's timed answers of (response minutes ÷ the §6 source response limit of that shortage's priority: 15 min CRITICAL, 4 h ROUTINE)). With one priority this is max(0, 1 − median_response_minutes ÷ that limit).
+- on_time_rate = of the org's shipments (as the `from` org) recorded DELIVERED, the share whose first recorded DELIVERED time is at or before the shortage's `required_by`.
+- discrepancy_rate = Σ discrepancy ÷ Σ expected over the org's reconciled shipments.
+- A hospital's score needs history in all four components; without history in any one of them it keeps the no-history default 70 (§5). A supplier is scored from the components that have history: the weighted average of those components with the same weights, scaled to 0–100 (e.g. only acceptance and on-time: (40 × acceptance_rate + 25 × on_time_rate) ÷ 65 × 100); it keeps 70 only while none of them has history.
 - Credits: +1 per 10 units transferred and reconciled, recorded in CreditLedger. They are not spendable in the MVP.
 
 ## 13. UI wording by resolution type

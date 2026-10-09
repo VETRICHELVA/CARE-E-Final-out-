@@ -14,9 +14,13 @@ class ReliabilityOut(BaseModel):
         description="False while the score is the no-history default (some component has "
         "no history yet)."
     )
-    acceptance_rate: float | None = Field(description="Share of answered requests accepted.")
+    acceptance_rate: float | None = Field(
+        description="Share of answered source requests accepted; for a supplier, purchase "
+        "orders acknowledged ÷ (acknowledged + rejected)."
+    )
     response_speed: float | None = Field(
-        description="max(0, 1 - median response time ÷ the response limit)."
+        description="max(0, 1 - median(response time ÷ the response limit)); for a supplier, "
+        "from purchase order SENT to its first answer."
     )
     median_response_minutes: float | None
     on_time_rate: float | None = Field(

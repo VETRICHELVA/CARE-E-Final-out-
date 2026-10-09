@@ -76,7 +76,8 @@ async def get_shortage(shortage_id: uuid.UUID, user: Reader, session: SessionDep
 async def cancel_shortage(
     shortage_id: uuid.UUID, user: Requester, session: SessionDep, body: ReasonIn | None = None
 ) -> ShortageOut:
-    """Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`."""
+    """Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409
+    `invalid_transition`."""
     reason = body.reason if body else None
     shortage = await service.cancel_shortage(session, user, shortage_id, reason)
     await session.commit()

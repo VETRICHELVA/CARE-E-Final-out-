@@ -176,3 +176,78 @@ async def test_the_ai_service_token_cannot_create_or_confirm_a_shortage(
     assert await session.scalar(select(func.count()).select_from(Shortage)) == 1
     stored = await session.get(Shortage, uuid.UUID(draft["id"]))
     assert stored is not None and stored.status == Status.DRAFT
+
+
+# --- cancelling a draft (decision: business-rules §8 DRAFT -> CANCELLED) ---------------------
+
+
+async def test_the_requester_cancels_a_draft_with_a_reason(
+    requester_a: httpx.AsyncClient,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+) -> None:
+    payload = await chat_body(session, world, products["SURG-KIT-A"], status="DRAFT")
+    draft = (await requester_a.post("/shortages", json=payload)).json()
+    r = await requester_a.post(f"/shortages/{draft['id']}/cancel", json={"reason": "Not needed"})
+    assert (r.status_code, r.json()["status"]) == (200, "CANCELLED")
+    assert await runs(session, draft["id"]) == 0  # never matched: nothing to release
+    rows = await audit_actions(session, draft["id"])
+    assert [x.action for x in rows] == ["shortage.created", "shortage.status_changed"]
+    cancelled = rows[1]
+    assert (cancelled.before, cancelled.after) == ({"status": "DRAFT"}, {"status": "CANCELLED"})
+    assert (cancelled.reason, cancelled.reason_source, cancelled.actor_id, cancelled.org_id) == (
+        "Not needed", "USER", world.users["a.REQUESTER"].id, world.hospital_a.id,
+    )  # fmt: skip
+
+
+async def test_cancelling_a_draft_without_a_reason_is_system(
+    requester_a: httpx.AsyncClient,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+) -> None:
+    payload = await chat_body(session, world, products["DIAG-RDK"], status="DRAFT")
+    draft = (await requester_a.post("/shortages", json=payload)).json()
+    r = await requester_a.post(f"/shortages/{draft['id']}/cancel")
+    assert r.status_code == 200, r.text
+    row = (await audit_actions(session, draft["id"]))[-1]
+    assert (row.before, row.after) == ({"status": "DRAFT"}, {"status": "CANCELLED"})
+    assert (row.reason, row.reason_source) == ("No reason was entered.", "SYSTEM")
+
+
+async def test_another_org_cannot_cancel_a_draft(
+    requester_a: httpx.AsyncClient,
+    client_for: ClientFor,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+) -> None:
+    payload = await chat_body(session, world, products["SURG-KIT-A"], status="DRAFT")
+    draft = (await requester_a.post("/shortages", json=payload)).json()
+    manager_b = await client_for(world.users["b.STORE_MANAGER"])
+    r = await manager_b.post(f"/shortages/{draft['id']}/cancel")
+    assert (r.status_code, r.json()["code"]) == (403, "forbidden")
+    receiver_a = await client_for(world.users["a.RECEIVER"])  # no shortage.create
+    assert (await receiver_a.post(f"/shortages/{draft['id']}/cancel")).status_code == 403
+    stored = await session.get(Shortage, uuid.UUID(draft["id"]))
+    assert stored is not None and stored.status == Status.DRAFT
+
+
+@pytest.mark.parametrize(
+    "status", [Status.IN_FULFILLMENT, Status.RECEIVED, Status.RESOLVED, Status.CANCELLED]
+)
+async def test_cancel_is_still_409_from_a_state_that_does_not_allow_it(
+    requester_a: httpx.AsyncClient,
+    session: AsyncSession,
+    world: World,
+    products: dict[str, Product],
+    status: Status,
+) -> None:
+    payload = await chat_body(session, world, products["SURG-KIT-A"], status="DRAFT")
+    draft = (await requester_a.post("/shortages", json=payload)).json()
+    await set_status(session, draft["id"], status)
+    r = await requester_a.post(f"/shortages/{draft['id']}/cancel")
+    assert (r.status_code, r.json()["code"]) == (409, "invalid_transition")
+    stored = await session.get(Shortage, uuid.UUID(draft["id"]), populate_existing=True)
+    assert stored is not None and stored.status == status
