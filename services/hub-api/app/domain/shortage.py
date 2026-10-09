@@ -18,7 +18,7 @@ class Status(StrEnum):
 S = Status
 # Any transition not listed is a 409 `invalid_transition`.
 TRANSITIONS: dict[str, set[str]] = {
-    S.DRAFT: {S.OPEN},
+    S.DRAFT: {S.OPEN, S.CANCELLED},
     S.OPEN: {S.MATCHING, S.CANCELLED},
     S.MATCHING: {S.AWAITING_DECISION, S.CANCELLED},
     S.AWAITING_DECISION: {S.MATCHING, S.IN_FULFILLMENT, S.CANCELLED},

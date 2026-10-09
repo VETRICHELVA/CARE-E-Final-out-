@@ -153,7 +153,11 @@ function Actions({ shortage }: { shortage: Shortage }) {
         <ConfirmDialog
           trigger="Cancel shortage"
           title="Cancel this shortage?"
-          description="The hub stops looking for sources for it."
+          description={
+            shortage.status === "DRAFT"
+              ? "The draft is closed without being matched."
+              : "The hub stops looking for sources for it."
+          }
           confirmLabel="Cancel shortage"
           destructive
           onConfirm={async (reason) => {

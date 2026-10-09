@@ -1152,7 +1152,7 @@
           "shortages"
         ],
         "summary": "Cancel Shortage",
-        "description": "Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.",
+        "description": "Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409\n`invalid_transition`.",
         "operationId": "cancel_shortage_api_v1_shortages__shortage_id__cancel_post",
         "security": [
           {

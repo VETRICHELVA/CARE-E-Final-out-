@@ -93,6 +93,7 @@ Any transition not listed returns 409 `invalid_transition`.
 | RECEIVED | RESOLVED | Accepted = shortfall |
 | RECEIVED | PARTIALLY_RESOLVED | Accepted < shortfall (residual created) |
 | OPEN, MATCHING, AWAITING_DECISION | CANCELLED | Requester cancels (releases holds) |
+| DRAFT | CANCELLED | Requester cancels a chat draft (S17). A draft was never matched, so it has no source requests or holds and nothing is released |
 
 A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or MATCHING (else 409 `invalid_transition`), and returns 409 `conflict` while any source request for the shortage is still open (REQUESTED or TENTATIVE_HOLD): matching re-runs on its own when those requests are declined or expire.
 

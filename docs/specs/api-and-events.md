@@ -24,7 +24,7 @@
 | S04 | GET/PUT /supplier-offers | `po.respond` for writes (SUPPLIER orgs only) | Own org's offers only. PUT upserts one offer `{product_id, unit_price_paise, lead_time_hours, available_qty, reason?}` and always refreshes `updated_at` |
 | S05 | POST /shortages | `shortage.create` | Hub computes the shortfall; 0 → 400 `validation` |
 | S05 | GET /shortages, GET /shortages/{id} | `shortage.create` or `recommendation.approve` | Own org only; approvers read the shortages they decide on (S12) |
-| S05 | POST /shortages/{id}/cancel | `shortage.create` | Releases tentative holds and supersedes open source requests (S06) |
+| S05 | POST /shortages/{id}/cancel | `shortage.create` | Body `{reason?}`. From DRAFT (S17), OPEN, MATCHING or AWAITING_DECISION (business-rules §8), otherwise 409 `invalid_transition`. Releases tentative holds and supersedes open source requests (S06); a DRAFT has none |
 | S05 | POST /shortages/{id}/match | `shortage.create` | Manual re-run while OPEN or MATCHING; 409 `conflict` while any source request is still open (S06) |
 | S05 | GET /shortages/{id}/match-runs/latest | requester's org | Candidates with gate results and reasons; landed cost for supplier sources only |
 | S06 | GET /source-requests?direction=incoming\|outgoing&status=&shortage_id= | any | `direction` required. incoming: requests to the caller's org; outgoing: requests for its shortages. Both sides see qty, status, deadlines, `held_qty`, `hold_expires_at` and any decline reason; only the source sees `holds` (its batch ids) and `responded_by` (null for the requester) |

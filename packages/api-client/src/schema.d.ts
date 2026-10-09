@@ -348,7 +348,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel Shortage
-         * @description Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.
+         * @description Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409
+         *     `invalid_transition`.
          */
         post: operations["cancel_shortage_api_v1_shortages__shortage_id__cancel_post"];
         delete?: never;

@@ -196,15 +196,16 @@ describe("Shortage detail", () => {
     expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
   });
 
-  it("offers only Confirm draft on a saved chat draft, and confirms it as the user (S17)", async () => {
+  it("offers Confirm draft and Cancel on a saved chat draft, and confirms it as the user (S17)", async () => {
     const fake = hub(
       { "POST /api/v1/shortages/{id}/confirm": { ...shortage, status: "MATCHING" } },
       { status: "DRAFT", source: "CHAT" },
     );
     show("REQUESTER");
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm draft" }));
-    expect(screen.queryByRole("button", { name: "Cancel shortage" })).toBeNull();
+    const confirmButton = await screen.findByRole("button", { name: "Confirm draft" });
+    expect(screen.getByRole("button", { name: "Cancel shortage" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
+    fireEvent.click(confirmButton);
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Confirm draft" }),
     );
@@ -214,6 +215,32 @@ describe("Shortage detail", () => {
     hub({}, { status: "MATCHING" });
     show("REQUESTER");
     await screen.findByRole("button", { name: "Re-run match" });
+    expect(screen.queryByRole("button", { name: "Confirm draft" })).toBeNull();
+  });
+
+  it("cancels a saved chat draft with the typed reason (business-rules §8, DRAFT → CANCELLED)", async () => {
+    const fake = hub(
+      { "POST /api/v1/shortages/{id}/cancel": { ...shortage, status: "CANCELLED" } },
+      { status: "DRAFT", source: "CHAT" },
+    );
+    show("REQUESTER");
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel shortage" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("The draft is closed without being matched.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Reason (optional)"), {
+      target: { value: "Ordered by mistake" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel shortage" }));
+    await waitFor(() => expect(fake.to("POST", `${base}/cancel`)).toHaveLength(1));
+    expect(JSON.parse(fake.to("POST", `${base}/cancel`)[0]!.body!)).toEqual({
+      reason: "Ordered by mistake",
+    });
+    cleanup();
+
+    hub({}, { status: "DRAFT", source: "CHAT" });
+    show("APPROVER"); // no shortage.create: neither action
+    await screen.findByTestId("shortfall");
+    expect(screen.queryByRole("button", { name: "Cancel shortage" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Confirm draft" })).toBeNull();
   });
 
