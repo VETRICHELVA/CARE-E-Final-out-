@@ -1,10 +1,12 @@
 """Reliability score and credits (business-rules.md §5, §12; S19)."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.domain import config
 from app.domain import reliability as r
-from app.domain.reliability import Answer, Components, History
+from app.domain.reliability import Answer, Components, History, OrderAnswer
 
 FULL = History(
     answers=[Answer(True, 3.0, 15.0), Answer(True, 6.0, 15.0), Answer(False, 9.0, 15.0)],
@@ -80,6 +82,68 @@ def test_scores_at_both_ends() -> None:
     worst = History(answers=[Answer(False, 30.0, 15.0)], on_time=[False], reconciled=[(10, 10)])
     assert r.score(r.components(best)) == 100
     assert r.score(r.components(worst)) == 0
+
+
+# --- a supplier is scored on its purchase orders (decision 2026-10-09) ---------------------------
+
+T0 = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+CRITICAL, ROUTINE = 15.0, 240.0  # §6 response limits, minutes
+
+
+def order(minutes: float, sla: float, *, rejected: bool = False) -> OrderAnswer:
+    return OrderAnswer(T0, T0 + timedelta(minutes=minutes), rejected, sla)
+
+
+def supplier(
+    orders: list[OrderAnswer], on_time: list[bool], reconciled: list[tuple[int, int]]
+) -> History:
+    return History(r.answers_for("SUPPLIER", [], orders), on_time, reconciled)
+
+
+def test_a_purchase_order_answer_is_acknowledged_or_rejected_timed_from_sent() -> None:
+    answers = r.order_answers([order(3, CRITICAL), order(90, ROUTINE, rejected=True)])
+    assert answers == [Answer(True, 3.0, CRITICAL), Answer(False, 90.0, ROUTINE)]
+
+
+def test_a_supplier_is_scored_on_purchase_orders_and_a_hospital_on_source_requests() -> None:
+    requests = [Answer(True, 5.0, CRITICAL)]
+    orders = [order(60, ROUTINE, rejected=True)]
+    assert r.answers_for("SUPPLIER", requests, orders) == [Answer(False, 60.0, ROUTINE)]
+    assert r.answers_for("HOSPITAL", requests, orders) == requests  # hospital formula unchanged
+
+
+def test_a_supplier_with_history_is_no_longer_70() -> None:
+    """Acceptance = acknowledged ÷ (acknowledged + rejected); response speed from each order's
+    SENT → answer minutes over its shortage's §6 limit, as for source requests."""
+    history = supplier(
+        [order(3, CRITICAL), order(60, ROUTINE), order(6, CRITICAL, rejected=True)],
+        on_time=[True, True],
+        reconciled=[(850, 60)],
+    )
+    c = r.components(history)
+    assert c.acceptance_rate == pytest.approx(2 / 3)
+    assert c.median_response_minutes == 6.0
+    assert c.response_speed == pytest.approx(1 - 0.25)  # ratios 0.2, 0.25, 0.4
+    assert c.on_time_rate == 1.0
+    assert c.discrepancy_rate == pytest.approx(60 / 850)
+    expected = 40 * (2 / 3) + 25 * 1.0 + 20 * (1 - 60 / 850) + 15 * 0.75
+    assert expected == pytest.approx(81.5049, abs=1e-4)
+    assert r.score(c) == 82 != config.DEFAULT_RELIABILITY
+
+
+def test_two_suppliers_with_different_histories_rank_differently() -> None:
+    prompt = supplier([order(3, CRITICAL), order(30, ROUTINE)], [True, True], [(850, 0)])
+    slow = supplier([order(200, ROUTINE)], [False], [(100, 30)])
+    prompt_score, slow_score = r.score(r.components(prompt)), r.score(r.components(slow))
+    assert slow_score == 57  # 40 × 1 + 25 × 0 + 20 × 0.7 + 15 × (1 − 200/240), half up
+    assert prompt_score == 98  # 40 + 25 + 20 + 15 × (1 − median(0.2, 0.125))
+    assert prompt_score > slow_score  # matching ranks the prompt supplier above the slow one
+
+
+def test_a_supplier_without_history_in_a_component_keeps_70() -> None:
+    assert r.score(r.components(supplier([], [], []))) == 70
+    # Delivered and reconciled, but no purchase order answered: no acceptance history.
+    assert r.score(r.components(supplier([], [True], [(850, 60)]))) == 70
 
 
 @pytest.mark.parametrize(("units", "credits"), [(0, 0), (9, 0), (10, 1), (805, 80), (850, 85)])

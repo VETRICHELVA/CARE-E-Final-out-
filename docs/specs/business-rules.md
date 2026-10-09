@@ -149,7 +149,14 @@ TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock 
 - Back in range for 2 consecutive readings → RECOVERED event; the excursion stays on record.
 
 ## 12. Reliability and credits (S19)
-- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, where response_speed = max(0, 1 − median_response_minutes ÷ SLA minutes). Recomputed nightly and after each reconciliation.
+- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, rounded half up and clamped to 0–100. Recomputed nightly and after each reconciliation.
+- An org is scored from the components that apply to it. Its **answers** are:
+  - **Hospital** (unchanged since S19): its source requests. acceptance_rate = of the requests it answered or let expire unanswered, the share it accepted; a request still waiting, or superseded before the source answered, is not counted. Response time = minutes from the request's creation to the source's answer.
+  - **Supplier** (suppliers answer no source requests, so its purchase orders stand in for them): the purchase orders it has answered (moved out of SENT). acceptance_rate = acknowledged ÷ (acknowledged + rejected), where an order that ended REJECTED counts as rejected even if it was acknowledged first, and every other answered order as acknowledged; an order still SENT is not counted. Response time = minutes from the order being SENT to the supplier's first answer (ACKNOWLEDGED or REJECTED), as recorded in the audit log.
+- response_speed = max(0, 1 − median over the org's timed answers of (response minutes ÷ the §6 source response limit of that shortage's priority: 15 min CRITICAL, 4 h ROUTINE)). With one priority this is max(0, 1 − median_response_minutes ÷ that limit).
+- on_time_rate = of the org's shipments (as the `from` org) recorded DELIVERED, the share whose first recorded DELIVERED time is at or before the shortage's `required_by`.
+- discrepancy_rate = Σ discrepancy ÷ Σ expected over the org's reconciled shipments.
+- The score needs history in all four components. An org without history in any one of them (e.g. no answered purchase order, or nothing reconciled yet) keeps the no-history default 70 (§5).
 - Credits: +1 per 10 units transferred and reconciled, recorded in CreditLedger. They are not spendable in the MVP.
 
 ## 13. UI wording by resolution type

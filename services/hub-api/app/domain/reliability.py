@@ -2,18 +2,26 @@
 
     score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate)
             + 15 × response_speed
-    response_speed = max(0, 1 − median_response_minutes ÷ SLA minutes)
+    response_speed = max(0, 1 − median(response minutes ÷ the §6 response limit))
 
 Every input is a recorded outcome (CLAUDE.md rule 5): what a source answered and when, when
 its shipments were recorded DELIVERED, and what the receiver accepted at reconciliation.
 
-- acceptance_rate: of the requests the source answered or let expire, the share it accepted.
-  A request still waiting, or superseded before the source answered, is not counted.
-- response_speed: each answer's minutes ÷ the response limit of its shortage's priority (§6),
-  the median of those, then max(0, 1 − median). With one priority this is exactly the formula.
-- on_time_rate: of the source's shipments recorded DELIVERED, the share delivered by the
+An org is scored from the components that apply to it (`answers_for`). Its answers are:
+- a hospital's source requests. Of the requests it answered or let expire, acceptance_rate
+  is the share it accepted. A request still waiting, or superseded before the source
+  answered, is not counted. Response time runs from the request's creation to the answer.
+- a supplier's purchase orders, since suppliers answer no source requests. Of the orders it
+  answered (SENT → ACKNOWLEDGED or REJECTED), acceptance_rate = acknowledged ÷
+  (acknowledged + rejected), where an order that ended REJECTED counts as rejected even if
+  it was acknowledged first. An order still SENT is not counted. Response time runs from the
+  order being SENT to the supplier's first answer.
+
+For both, response_speed takes each answer's minutes ÷ the response limit of its shortage's
+priority (§6), the median of those, then max(0, 1 − median); and
+- on_time_rate: of the org's shipments recorded DELIVERED, the share delivered by the
   shortage's `required_by`.
-- discrepancy_rate: Σ discrepancy ÷ Σ expected over the source's reconciled shipments.
+- discrepancy_rate: Σ discrepancy ÷ Σ expected over the org's reconciled shipments.
 
 The formula needs all four components. An org without the history for any of them scores
 the no-history default (§5: 70). The score is rounded half up and clamped to 0-100."""
@@ -21,16 +29,20 @@ the no-history default (§5: 70). The score is rounded half up and clamped to 0-
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from statistics import median
 
 from app.domain import config
+
+SUPPLIER = "SUPPLIER"  # OrgType.SUPPLIER: scored on its purchase orders
 
 WEIGHTS = {"acceptance": 40, "on_time": 25, "accuracy": 20, "speed": 15}
 
 
 @dataclass(frozen=True)
 class Answer:
-    """One request a source answered or let expire."""
+    """One answer: a source request answered or left to expire, or (`order_answers`) a
+    supplier's answered purchase order."""
 
     accepted: bool
     response_minutes: float | None  # None: no answer was recorded (the deadline passed)
@@ -38,8 +50,40 @@ class Answer:
 
 
 @dataclass(frozen=True)
+class OrderAnswer:
+    """One purchase order its supplier answered (§12, supplier)."""
+
+    sent_at: datetime  # the order was created SENT
+    answered_at: datetime  # the supplier's first answer: SENT → ACKNOWLEDGED or REJECTED
+    rejected: bool  # the order ended REJECTED (from SENT, or after acknowledging)
+    sla_minutes: float  # the response limit of the shortage's priority (§6)
+
+
+def order_answers(orders: Sequence[OrderAnswer]) -> list[Answer]:
+    """A supplier's purchase-order answers as §12 answers: acknowledged counts as accepted,
+    rejected as not, and the response time is SENT → first answer."""
+    return [
+        Answer(
+            accepted=not o.rejected,
+            response_minutes=max(0.0, (o.answered_at - o.sent_at).total_seconds() / 60),
+            sla_minutes=o.sla_minutes,
+        )
+        for o in orders
+    ]
+
+
+def answers_for(
+    org_type: str, requests: Sequence[Answer], orders: Sequence[OrderAnswer]
+) -> list[Answer]:
+    """The answers that apply to the org: a supplier's purchase orders in place of source
+    requests (which suppliers never answer), any other org's source requests. The hospital
+    formula is unchanged."""
+    return order_answers(orders) if org_type == SUPPLIER else list(requests)
+
+
+@dataclass(frozen=True)
 class History:
-    answers: Sequence[Answer] = ()
+    answers: Sequence[Answer] = ()  # from `answers_for`
     on_time: Sequence[bool] = ()  # one per shipment recorded DELIVERED
     reconciled: Sequence[tuple[int, int]] = ()  # (expected, discrepancy) per shipment
 

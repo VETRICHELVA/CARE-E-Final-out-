@@ -14,9 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.models import AuditLog
 from app.catalog.models import Product
 from app.conftest import ClientFor, World
+from app.domain import config
 from app.domain import reliability as rules
 from app.orgs.models import Organization, OrgType
 from app.receiving.tests.conftest import receipt
+from app.recommendations.tests.conftest import answer_b, open_rec
 from app.shipments.models import Shipment
 from app.shortages.models import Candidate, MatchRun, Priority, Shortage
 from app.source_requests.tests.conftest import (
@@ -184,14 +186,16 @@ async def test_reconciliation_recomputes_the_sources_score_from_its_history(
     assert 90 <= score.score <= 100  # 40 + 25 + 20 × (1 − 0.053) + ~15
 
 
-async def test_a_purchase_earns_no_credits_and_the_supplier_keeps_the_default_score(
+async def test_a_purchase_earns_no_credits_and_the_supplier_is_scored_on_its_orders(
     session: AsyncSession,
     s1: Orgs,
+    shortage: Shortage,
     po_delivered: Shipment,
     receiver: httpx.AsyncClient,
 ) -> None:
-    """A supplier answers no source requests, so its acceptance component has no history and
-    its score stays 70; its delivery and discrepancy are still recorded."""
+    """A supplier answers no source requests, so its acceptance and response speed come from
+    its purchase orders (§12): Supplier Y acknowledged its one order, delivered it on time,
+    and 790 of 850 arrived. Its score is no longer the default 70."""
     y = s1["Supplier Y"]
     body = receipt(790, 790, expiry_date="2027-03-31")
     assert (
@@ -200,9 +204,57 @@ async def test_a_purchase_earns_no_credits_and_the_supplier_keeps_the_default_sc
     assert await ledger_of(session, y.id) == []
     score = await score_of(session, y.id)
     assert score is not None
-    assert (score.acceptance_rate, score.on_time_rate) == (None, 1.0)
+    assert (score.acceptance_rate, score.on_time_rate) == (1.0, 1.0)
     assert score.discrepancy_rate == pytest.approx(60 / 850)  # Scenario 1: 790 of 850 arrived
-    assert score.score == 70
+    limit = config.SOURCE_RESPONSE_LIMIT[shortage.priority].total_seconds() / 60
+    assert score.median_response_minutes is not None and score.median_response_minutes >= 0
+    assert score.response_speed == pytest.approx(max(0, 1 - score.median_response_minutes / limit))
+    components = rules.Components(
+        score.acceptance_rate,
+        score.median_response_minutes,
+        score.response_speed,
+        score.on_time_rate,
+        score.discrepancy_rate,
+    )
+    assert score.score == rules.score(components)
+    assert score.score != config.DEFAULT_RELIABILITY
+    assert 90 <= score.score <= 100  # 40 + 25 + 20 × (1 − 0.071) + ~15
+
+
+async def test_a_suppliers_purchase_order_answers_are_timed_from_sent_to_its_first_answer(
+    session: AsyncSession,
+    world: World,
+    s1: Orgs,
+    shortage: Shortage,
+    client_for: ClientFor,
+    desk_y: httpx.AsyncClient,
+) -> None:
+    """An order still SENT is not counted; acknowledged counts as accepted; an order rejected
+    after acknowledging counts as rejected, still timed by its first answer."""
+    y = s1["Supplier Y"]
+    await answer_b(session, await client_for(world.users["b.STORE_MANAGER"]), shortage, "decline")
+    rec = await open_rec(session, shortage)
+    r = await (await client_for(world.users["a.APPROVER"])).post(
+        f"/recommendations/{rec.id}/approve", json={}
+    )
+    assert r.status_code == 200, r.text
+    po_id = r.json()["purchase_order_id"]
+    assert (await service.history(session, y.id)).answers == []  # SENT: no answer yet
+
+    assert (await desk_y.post(f"/purchase-orders/{po_id}/acknowledge", json={})).status_code == 200
+    (acknowledged,) = (await service.history(session, y.id)).answers
+    limit = config.SOURCE_RESPONSE_LIMIT[shortage.priority].total_seconds() / 60
+    assert acknowledged.accepted and acknowledged.sla_minutes == limit
+    assert acknowledged.response_minutes is not None and acknowledged.response_minutes >= 0
+
+    r = await desk_y.post(f"/purchase-orders/{po_id}/reject", json={"reason": "Stock spoiled"})
+    assert r.status_code == 200, r.text
+    (rejected,) = (await service.history(session, y.id)).answers
+    assert not rejected.accepted
+    assert rejected.response_minutes == acknowledged.response_minutes
+    # A hospital's history is still its source requests: B declined its one request.
+    (declined,) = (await service.history(session, world.hospital_b.id)).answers
+    assert not declined.accepted
 
 
 async def test_the_credit_ledger_is_append_only(

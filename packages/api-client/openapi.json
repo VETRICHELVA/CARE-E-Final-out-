@@ -8530,7 +8530,7 @@
               }
             ],
             "title": "Acceptance Rate",
-            "description": "Share of answered requests accepted."
+            "description": "Share of answered source requests accepted; for a supplier, purchase orders acknowledged \u00f7 (acknowledged + rejected)."
           },
           "response_speed": {
             "anyOf": [
@@ -8542,7 +8542,7 @@
               }
             ],
             "title": "Response Speed",
-            "description": "max(0, 1 - median response time \u00f7 the response limit)."
+            "description": "max(0, 1 - median(response time \u00f7 the response limit)); for a supplier, from purchase order SENT to its first answer."
           },
           "median_response_minutes": {
             "anyOf": [

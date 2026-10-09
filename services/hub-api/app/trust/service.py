@@ -6,7 +6,8 @@ orgs of a shortage's shipments, when the shortage is reconciled (`on_reconciled`
 written at reconciliation only, from what the receiver accepted on a transfer's shipment.
 
 Every figure comes from a recorded outcome (CLAUDE.md rule 5): source request answers and
-their times, shipments recorded DELIVERED, and Reconciliation rows.
+their times (a supplier: its purchase-order answers, timed by the append-only audit row of
+its first answer), shipments recorded DELIVERED, and Reconciliation rows.
 
 Lock order: a recompute locks only the org's score row (in org id order when there are
 several), after whatever its caller holds. The nightly job holds nothing else, so the two
@@ -23,11 +24,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
+from app.audit.models import AuditLog
 from app.domain import config
 from app.domain import reliability as rules
-from app.domain.fulfillment import ShipmentStatus
+from app.domain.fulfillment import PoStatus, ShipmentStatus
 from app.domain.source_request import RequestStatus
 from app.orgs.models import Organization, OrgType
+from app.purchase_orders.models import PurchaseOrder
 from app.receiving.models import Reconciliation
 from app.shipments.models import Shipment
 from app.shortages.models import Shortage
@@ -37,6 +40,7 @@ from app.trust.models import CreditLedger, ReliabilityScore
 log = logging.getLogger("app.trust")
 
 CREDIT = "credit_ledger"
+PURCHASE_ORDER = "purchase_order"  # app.purchase_orders.service.ENTITY
 SOURCE_TYPES = (OrgType.HOSPITAL, OrgType.SUPPLIER)
 
 
@@ -77,7 +81,20 @@ def _minutes(td_seconds: float) -> float:
 
 
 async def history(session: AsyncSession, org_id: uuid.UUID) -> rules.History:
-    """The org's recorded outcomes as a source (see app.domain.reliability)."""
+    """The org's recorded outcomes as a source (see app.domain.reliability): a supplier's
+    answers are its purchase orders', any other org's its source requests'."""
+    org_type = await session.scalar(select(Organization.type).where(Organization.id == org_id))
+    supplier = org_type == OrgType.SUPPLIER
+    requests = [] if supplier else await _request_answers(session, org_id)
+    orders = await _order_answers(session, org_id) if supplier else []
+    return rules.History(
+        answers=rules.answers_for(str(org_type), requests, orders),
+        on_time=await _on_time(session, org_id),
+        reconciled=await _reconciled(session, org_id),
+    )
+
+
+async def _request_answers(session: AsyncSession, org_id: uuid.UUID) -> list[rules.Answer]:
     requests = await session.execute(
         select(
             SourceRequest.status,
@@ -102,7 +119,40 @@ async def history(session: AsyncSession, org_id: uuid.UUID) -> rules.History:
             continue
         minutes = _minutes((responded_at - created_at).total_seconds())
         answers.append(rules.Answer(status != RequestStatus.DECLINED, minutes, limit))
+    return answers
 
+
+async def _order_answers(session: AsyncSession, org_id: uuid.UUID) -> list[rules.OrderAnswer]:
+    """The supplier's answered purchase orders. The answer's time is the audit row of its
+    first move out of SENT (ACKNOWLEDGED or REJECTED), in the supplier's own org: the
+    supplier's recorded action. An order still SENT has no such row and is not counted."""
+    first_answer = func.min(AuditLog.ts)
+    rows = await session.execute(
+        select(PurchaseOrder.created_at, PurchaseOrder.status, Shortage.priority, first_answer)
+        .join(Shortage, Shortage.id == PurchaseOrder.shortage_id)
+        .join(
+            AuditLog,
+            (AuditLog.entity == PURCHASE_ORDER)
+            & (AuditLog.entity_id == PurchaseOrder.id)
+            & (AuditLog.org_id == org_id)
+            & (AuditLog.action == f"{PURCHASE_ORDER}.status_changed")
+            & (AuditLog.before["status"].astext == PoStatus.SENT),
+        )
+        .where(PurchaseOrder.supplier_org_id == org_id)
+        .group_by(PurchaseOrder.id, Shortage.priority)
+    )
+    return [
+        rules.OrderAnswer(
+            sent_at=created_at,
+            answered_at=answered_at,
+            rejected=status == PoStatus.REJECTED,
+            sla_minutes=config.SOURCE_RESPONSE_LIMIT[priority].total_seconds() / 60,
+        )
+        for created_at, status, priority, answered_at in rows
+    ]
+
+
+async def _on_time(session: AsyncSession, org_id: uuid.UUID) -> list[bool]:
     on_time = []
     shipments = await session.execute(
         select(Shipment.status_history, Shortage.required_by)
@@ -120,17 +170,16 @@ async def history(session: AsyncSession, org_id: uuid.UUID) -> rules.History:
         ]
         if delivered:  # only a recorded delivery time counts
             on_time.append(min(delivered) <= required_by)
+    return on_time
 
+
+async def _reconciled(session: AsyncSession, org_id: uuid.UUID) -> list[tuple[int, int]]:
     reconciled = await session.execute(
         select(Reconciliation.expected, Reconciliation.discrepancy)
         .join(Shipment, Shipment.id == Reconciliation.shipment_id)
         .where(Shipment.from_org_id == org_id)
     )
-    return rules.History(
-        answers=answers,
-        on_time=on_time,
-        reconciled=[(expected, discrepancy) for expected, discrepancy in reconciled],
-    )
+    return [(expected, discrepancy) for expected, discrepancy in reconciled]
 
 
 # --- writes ----------------------------------------------------------------------------------
