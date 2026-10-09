@@ -3322,7 +3322,7 @@
           "receiving"
         ],
         "summary": "Record Receipt",
-        "description": "The receiving org records what arrived (business-rules.md \u00a79): DELIVERED ->\nRECONCILED, the accepted stock becomes a new batch in its inventory, and once every\nshipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or\nPARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other\norg; 409 unless DELIVERED; 400 if received > expected, accepted + rejected \u2260 received,\nan open cold-chain excursion has no inspection note, or accepted stock has no expiry.",
+        "description": "The receiving org records what arrived (business-rules.md \u00a79): DELIVERED ->\nRECONCILED, the accepted stock becomes a new batch in its inventory, and once every\nshipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or\nPARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other\norg; 409 unless DELIVERED; 400 if received > expected, accepted + rejected \u2260 received,\na shipment with an excursion on record has no inspection note, or accepted stock has\nno expiry.",
         "operationId": "record_receipt_api_v1_shipments__shipment_id__receipt_post",
         "security": [
           {
@@ -7801,7 +7801,7 @@
               }
             ],
             "title": "Inspection Note",
-            "description": "Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment)."
+            "description": "Required (400) when a cold-chain EXCURSION is on record for the shipment, even one since RECOVERED (`inspection_note_required` on the shipment)."
           },
           "expiry_date": {
             "anyOf": [

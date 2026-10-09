@@ -19,6 +19,7 @@ from app.coldchain import service as coldchain
 from app.coldchain.models import ColdChainEvent
 from app.conftest import ClientFor, World
 from app.domain.events import EventType
+from app.domain.fulfillment import ShipmentStatus
 from app.iot import service as iot
 from app.iot.models import Device
 from app.iot.schemas import ReadingIn, TelemetryBatch
@@ -43,6 +44,7 @@ other_dispatcher = s11.other_dispatcher
 ravi = s11.ravi
 
 T0 = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=30)
+S = ShipmentStatus
 COLD_EVENTS = (
     EventType.COLDCHAIN_EXCURSION,
     EventType.COLDCHAIN_RECOVERED,
@@ -66,6 +68,18 @@ async def box(session: AsyncSession, swiftmed: Fleet) -> Device:
     return device
 
 
+DEPARTED = T0 - timedelta(minutes=1)
+
+
+async def drive(
+    session: AsyncSession, fleet: Fleet, shipment: Shipment, *statuses: ShipmentStatus, at: datetime
+) -> None:
+    """Ravi moves the shipment, the move recorded at `at`."""
+    for status in statuses:
+        await shipments.move(session, fleet.users["Ravi"], shipment.id, status, reason=None, now=at)
+    await session.refresh(shipment)
+
+
 @pytest.fixture
 async def on_the_road(
     session: AsyncSession,
@@ -73,14 +87,13 @@ async def on_the_road(
     band: Product,
     box: Device,
     dispatcher: httpx.AsyncClient,
-    ravi: httpx.AsyncClient,
+    swiftmed: Fleet,
 ) -> Shipment:
-    """Scenario 2 step 3 onwards: cb-01 rides with the shipment, now IN_TRANSIT."""
+    """Scenario 2 step 3 onwards: cb-01 rides with the shipment, IN_TRANSIT since a minute
+    before the box's first reading (T0)."""
     r = await dispatcher.post(f"/devices/{box.id}/assign", json={"shipment_id": str(assigned.id)})
     assert r.status_code == 200, r.text
-    for status in ("PICKED_UP", "IN_TRANSIT"):
-        assert (await step(ravi, assigned, status)).status_code == 200
-    await session.refresh(assigned)
+    await drive(session, swiftmed, assigned, S.PICKED_UP, S.IN_TRANSIT, at=DEPARTED)
     return assigned
 
 
@@ -91,22 +104,25 @@ class Box:
         self.session, self.name, self.n = session, name, 0
 
     async def send(self, *temps: float) -> list[ColdChainEvent]:
+        found = await self.send_at(*((self.n + i, t) for i, t in enumerate(temps)))
+        self.n += len(temps)
+        return found
+
+    async def send_at(self, *readings: tuple[int, float]) -> list[ColdChainEvent]:
+        """One batch of (i, temp_c): the reading dated T0 + 10 s * i, in the order given."""
         batch = TelemetryBatch(
             readings=[
-                ReadingIn(
-                    device_id=self.name,
-                    ts=T0 + timedelta(seconds=10 * (self.n + i)),
-                    temp_c=t,
-                    battery=80,
-                )
-                for i, t in enumerate(temps)
+                ReadingIn(device_id=self.name, ts=at(i), temp_c=t, battery=80) for i, t in readings
             ]
         )
-        self.n += len(temps)
         before = set(await self.session.scalars(select(ColdChainEvent.id)))
-        assert (await iot.ingest(self.session, batch)).stored == len(temps)
+        assert (await iot.ingest(self.session, batch)).stored == len(readings)
         rows = await self.session.scalars(select(ColdChainEvent).order_by(ColdChainEvent.ts))
         return [e for e in rows if e.id not in before]
+
+
+def at(i: int) -> datetime:
+    return T0 + timedelta(seconds=10 * i)
 
 
 async def events_of(session: AsyncSession, shipment: Shipment) -> list[ColdChainEvent]:
@@ -242,6 +258,105 @@ async def test_the_shortage_trail_lists_the_cold_chain_events(
     assert "coldchain_event.excursion" in actions
 
 
+# --- late and out-of-order batches (append-only events, CLAUDE.md rule 5) ---------------------
+
+
+async def audit_count(session: AsyncSession) -> int:
+    stmt = select(AuditLog.id).where(AuditLog.entity == "coldchain_event")
+    return len((await session.scalars(stmt)).all())
+
+
+async def test_a_late_batch_completes_an_excursion(
+    session: AsyncSession, on_the_road: Shipment
+) -> None:
+    """Review input (a): t3 = 9.4 first, then t1 = 4.0 and t2 = 9.1 late. In timestamp order
+    t2 and t3 are an excursion, dated t3."""
+    cb = Box(session)
+    assert await cb.send_at((3, 9.4)) == []
+    (excursion,) = await cb.send_at((1, 4.0), (2, 9.1))
+    assert (excursion.type, excursion.ts, excursion.observed_value) == ("EXCURSION", at(3), 9.4)
+    (row, *_) = await rows_of(session, excursion)
+    assert row.after is not None
+    assert [r["temp_c"] for r in row.after["readings"]] == [9.1, 9.4]
+
+
+async def test_late_in_range_readings_before_an_excursion_do_not_recover_it(
+    session: AsyncSession, on_the_road: Shipment
+) -> None:
+    """Review input (b): EXCURSION at t5, then in-range readings dated t1 and t2. No
+    RECOVERED dated before the excursion; the real recovery (t6, t7) is recorded once."""
+    cb = Box(session)
+    assert [e.type for e in await cb.send_at((4, 9.1), (5, 9.4))] == ["EXCURSION"]
+    assert await cb.send_at((1, 4.0), (2, 4.1)) == []
+    (recovered,) = await cb.send_at((6, 5.0), (7, 4.6))
+    assert (recovered.type, recovered.ts) == ("RECOVERED", at(7))
+    assert [(e.type, e.ts) for e in await events_of(session, on_the_road)] == [
+        ("EXCURSION", at(5)),
+        ("RECOVERED", at(7)),
+    ]
+
+
+async def test_a_late_excursion_before_the_events_on_record_is_not_raised(
+    session: AsyncSession, on_the_road: Shipment
+) -> None:
+    """Review input (c): after EXCURSION and RECOVERED, two out-of-range readings dated
+    before both arrive. The events and their audit rows on record stand, and nothing new is
+    recorded."""
+    cb = Box(session)
+    await cb.send_at((4, 9.1), (5, 9.4), (6, 5.0), (7, 4.6))
+    on_record = [(e.id, e.type, e.ts) for e in await events_of(session, on_the_road)]
+    assert [(t, ts) for _, t, ts in on_record] == [("EXCURSION", at(5)), ("RECOVERED", at(7))]
+    rows = await audit_count(session)
+    assert await cb.send_at((1, 9.2), (2, 9.5)) == []
+    assert [(e.id, e.type, e.ts) for e in await events_of(session, on_the_road)] == on_record
+    assert await audit_count(session) == rows
+
+
+# Scenario 2 and then some: EXCURSION at t3, RECOVERED at t6, a single spike at t8, an
+# excursion below the band at t11 and RECOVERED at t13.
+TEMPS = [4.1, 4.3, 9.1, 9.4, 9.6, 5.0, 4.6, 4.4, 9.0, 4.2, 1.5, 0.8, 4.0, 4.1]
+N = len(TEMPS)
+
+
+@pytest.mark.parametrize(
+    "batches",
+    [
+        [list(range(N))],
+        [[i] for i in range(N)],
+        [list(reversed(range(N)))],
+        [[i + 1, i] for i in range(0, N, 2)],
+        [[1, 0], [3], [2], [6], [4], [5], [9, 8, 7], [12], [10, 11], [13]],
+    ],
+    ids=["one-batch", "one-by-one", "reversed-batch", "pairs-reversed", "out-of-order"],
+)
+async def test_the_same_readings_in_any_batching_and_order_give_the_same_events(
+    session: AsyncSession, on_the_road: Shipment, batches: list[list[int]]
+) -> None:
+    """The same readings, batched and ordered differently (none reaching back to or before
+    an event already on record): the same events, with the same values, and a replay of
+    every batch adds nothing."""
+    cb = Box(session)
+    for batch in batches:
+        await cb.send_at(*((i, TEMPS[i]) for i in batch))
+    found = await events_of(session, on_the_road)
+    assert [(e.type, e.ts, e.observed_value, e.threshold) for e in found] == [
+        ("EXCURSION", at(3), 9.4, 8.0),
+        ("RECOVERED", at(6), 4.6, 8.0),
+        ("EXCURSION", at(11), 0.8, 2.0),
+        ("RECOVERED", at(13), 4.1, 2.0),
+    ]
+    rows = await audit_count(session)
+    for batch in batches:
+        replay = TelemetryBatch(
+            readings=[
+                ReadingIn(device_id="cb-01", ts=at(i), temp_c=TEMPS[i], battery=80) for i in batch
+            ]
+        )
+        assert (await iot.ingest(session, replay)).stored == 0
+    assert len(await events_of(session, on_the_road)) == len(found)
+    assert await audit_count(session) == rows
+
+
 # --- DEVICE_SILENT (worker) --------------------------------------------------------------------
 
 
@@ -311,7 +426,8 @@ async def test_device_silent_only_while_in_transit(
     r = await dispatcher.post(f"/devices/{box.id}/assign", json={"shipment_id": str(assigned.id)})
     assert r.status_code == 200
     await Box(session).send(4.2)
-    later = T0 + timedelta(minutes=10)
+    # The moves below are recorded at the real time, after T0: count from the trip's start.
+    later = datetime.now(UTC) + timedelta(minutes=10)
     assert await coldchain.check_silent_devices(session, now=later) == 0  # ASSIGNED
     assert (await step(ravi, assigned, "PICKED_UP")).status_code == 200
     assert await coldchain.check_silent_devices(session, now=later) == 0
@@ -331,6 +447,41 @@ async def test_a_device_that_never_sent_is_silent_from_the_in_transit_time(
     assert await coldchain.check_silent_devices(session, now=since + timedelta(seconds=125)) == 1
     (silent,) = await events_of(session, on_the_road)
     assert silent.observed_value == 125.0
+
+
+async def test_silence_counts_from_the_in_transit_time_not_an_earlier_reading(
+    session: AsyncSession,
+    assigned: Shipment,
+    band: Product,
+    box: Device,
+    dispatcher: httpx.AsyncClient,
+    swiftmed: Fleet,
+) -> None:
+    """§11 "silent for 2 minutes while IN_TRANSIT": the box was last seen yesterday and the
+    shipment went IN_TRANSIT at 10:00:00, so no DEVICE_SILENT at 10:00:30, one at 10:02:00."""
+    departed = T0.replace(hour=10, minute=0, second=0)
+    r = await dispatcher.post(f"/devices/{box.id}/assign", json={"shipment_id": str(assigned.id)})
+    assert r.status_code == 200, r.text
+    box.last_seen = departed - timedelta(days=1)
+    await session.flush()
+    await drive(session, swiftmed, assigned, S.PICKED_UP, S.IN_TRANSIT, at=departed)
+    half_minute = departed + timedelta(seconds=30)
+    assert await coldchain.check_silent_devices(session, now=half_minute) == 0
+    assert await coldchain.check_silent_devices(session, now=departed + timedelta(seconds=119)) == 0
+    two_minutes = departed + timedelta(minutes=2)
+    assert await coldchain.check_silent_devices(session, now=two_minutes) == 1
+    (silent,) = await events_of(session, assigned)
+    assert (silent.type, silent.ts, silent.observed_value) == ("DEVICE_SILENT", two_minutes, 120.0)
+    assert await coldchain.check_silent_devices(session, now=two_minutes + timedelta(hours=1)) == 0
+    (row, *_) = await rows_of(session, silent)
+    assert row.reason == (
+        "No reading received from cb-01 since the shipment went IN_TRANSIT at "
+        f"{departed:%Y-%m-%d %H:%M:%S} UTC (120 s; the limit is 120 s)."
+    )
+    assert row.after is not None
+    assert row.after["silent_since"] == departed.isoformat()
+    assert row.after["in_transit_at"] == departed.isoformat()
+    assert row.after["last_reading_at"] == (departed - timedelta(days=1)).isoformat()
 
 
 async def test_a_shipment_without_a_device_is_never_silent(

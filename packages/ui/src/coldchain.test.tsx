@@ -14,6 +14,7 @@ import {
   isColdChainAlert,
 } from "./coldchain";
 import { Toaster } from "./components/ui/sonner";
+import { formatDateTime } from "./format";
 import { fakeHub, renderAs } from "./testing";
 
 afterEach(() => {
@@ -176,10 +177,10 @@ describe("ColdChainStateBadge", () => {
     ).toEqual(["Excursion on record"]);
     expect(
       badges({ last_event_type: "DEVICE_SILENT", last_event_at: last, had_excursion: false }),
-    ).toEqual(["Device silent"]);
+    ).toEqual([`Device silent at ${formatDateTime(last)}`]);
     expect(
       badges({ last_event_type: "DEVICE_SILENT", last_event_at: last, had_excursion: true }),
-    ).toEqual(["Device silent", "Excursion on record"]);
+    ).toEqual([`Device silent at ${formatDateTime(last)}`, "Excursion on record"]);
   });
 });
 

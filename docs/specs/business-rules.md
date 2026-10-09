@@ -127,7 +127,7 @@ TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock 
 
 ## 9. Receipt and reconciliation
 - Receipt records expected, received, accepted, rejected, and condition. Invariants: accepted + rejected = received; received ≤ expected.
-- If the shipment has an open cold-chain excursion, `inspection_note` is required before accepting.
+- If any cold-chain EXCURSION is on record for the shipment, even one that has since RECOVERED (§11: the excursion stays on record), `inspection_note` is required before accepting.
 - When every shipment for a shortage has a receipt: total accepted = shortfall → RESOLVED. Total accepted < shortfall → PARTIALLY_RESOLVED, and a residual Shortage is created with `qty_required = shortfall − accepted`, `qty_local_usable = 0`, the same product, priority and shelf-life minimum, `parent_shortage_id` set; it starts matching automatically.
 - The residual inherits its parent's excluded sources (`excluded_org_ids`): sources that declined, had a recommendation rejected, or had a purchase order rejected for the parent are not asked again for the residual (§7 step 6).
 - Accepted stock is added to the receiver's inventory as a new batch. The source's on_hand and the FIRM hold are reduced at pickup: `on_hand` drops by the hold's qty and the hold becomes CONSUMED.
