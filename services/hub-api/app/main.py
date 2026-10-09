@@ -6,6 +6,7 @@ from app.ai.router import router as ai_router
 from app.audit.router import router as audit_router
 from app.auth.router import router as auth_router
 from app.catalog.router import router as catalog_router
+from app.coldchain.router import router as coldchain_router
 from app.events.router import router as events_router
 from app.inventory.router import router as inventory_router
 from app.iot.router import router as iot_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
         receiving_router,
         notifications_router,
         ai_router,
+        coldchain_router,
     ):
         app.include_router(router, prefix=API)
 

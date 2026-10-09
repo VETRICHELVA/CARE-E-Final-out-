@@ -1,6 +1,6 @@
 // What every shipment card shows: product, quantity, pickup → drop, deadline and flags.
 import type { ReactNode } from "react";
-import { Badge, formatDateTime, type Product, StatusChip } from "@care-e/ui";
+import { Badge, ColdChainStateBadge, formatDateTime, type Product, StatusChip } from "@care-e/ui";
 import type { Shipment } from "../api";
 import { place, qty } from "../display";
 
@@ -12,15 +12,18 @@ export function ColdChainBadge() {
   );
 }
 
+/** Cold chain, priority and, once the hub has recorded one, the newest cold-chain event (S15). */
 export function Flags({
   shipment,
 }: {
-  shipment: Pick<Shipment, "requires_cold_chain" | "priority">;
+  shipment: Pick<Shipment, "requires_cold_chain" | "priority"> &
+    Partial<Pick<Shipment, "coldchain">>;
 }) {
   return (
     <>
       {shipment.requires_cold_chain && <ColdChainBadge />}
       {shipment.priority === "CRITICAL" && <Badge variant="destructive">Critical</Badge>}
+      <ColdChainStateBadge summary={shipment.coldchain ?? null} />
     </>
   );
 }

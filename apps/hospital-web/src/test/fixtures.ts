@@ -1,5 +1,5 @@
 // Scenario 1 data (demo-scenarios.md) as the hub would return it.
-import type { Me } from "@care-e/api-client";
+import type { Me, Schemas } from "@care-e/api-client";
 import type {
   AuditRow,
   Batch,
@@ -424,6 +424,7 @@ export const shipmentToA: ShipmentDetail = {
   route_provider: "OSRM",
   pickup: null,
   drop: null,
+  coldchain: null,
   created_at: "2026-10-07T06:00:25Z",
   updated_at: "2026-10-07T06:00:29Z",
   route_geometry: null,
@@ -540,4 +541,40 @@ export const escalation = (
     created_at: "2026-10-07T06:01:00Z",
     ...rest,
   };
+};
+
+/** Scenario 2's readings on `shipmentToA`: near 4 °C, 9.1 and 9.4 °C, then back in range. */
+export const excursionColdChain: Schemas["ColdChainOut"] = {
+  shipment_id: shipmentToA.id,
+  requires_cold_chain: true,
+  band: { temp_min_c: 2, temp_max_c: 8 },
+  device: { device_id: "cb-01", battery_level: 82, last_seen: "2026-10-07T07:01:00Z" },
+  silent_after_seconds: 120,
+  readings: [4.1, 4.3, 9.1, 9.4, 5.0, 4.6].map((temp_c, i) => ({
+    device_id: "cb-01",
+    ts: `2026-10-07T07:00:${i}0Z`,
+    temp_c,
+    battery: 82,
+  })),
+  events: [
+    {
+      id: "cc000000-0000-4000-8000-000000000001",
+      type: "EXCURSION",
+      severity: "ALERT",
+      device_id: "cb-01",
+      observed_value: 9.4,
+      threshold: 8,
+      ts: "2026-10-07T07:00:30Z",
+    },
+    {
+      id: "cc000000-0000-4000-8000-000000000002",
+      type: "RECOVERED",
+      severity: "INFO",
+      device_id: "cb-01",
+      observed_value: 4.6,
+      threshold: 8,
+      ts: "2026-10-07T07:00:50Z",
+    },
+  ],
+  has_excursion: true,
 };

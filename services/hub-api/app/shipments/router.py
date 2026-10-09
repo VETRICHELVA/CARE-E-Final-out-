@@ -10,6 +10,7 @@ from app.auth.capabilities import Capability
 from app.auth.deps import CurrentUser, org_scoped, require
 from app.auth.models import User
 from app.catalog.models import Product
+from app.coldchain import service as coldchain_service
 from app.db import SessionDep
 from app.domain.fulfillment import RouteProvider, ShipmentStatus, StopType
 from app.orgs.models import Organization
@@ -41,9 +42,12 @@ Dispatcher = Annotated[User, Depends(require(Capability.SHIPMENT_ASSIGN))]
 DriverUser = Annotated[User, Depends(require(Capability.SHIPMENT_UPDATE_STATUS))]
 
 
-async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[ShipmentOut]:
+async def _present(
+    session: AsyncSession, user: User, rows: Sequence[Shipment]
+) -> list[ShipmentOut]:
     if not rows:
         return []
+    coldchain = await coldchain_service.summaries(session, user, rows)
     org_ids = {o for s in rows for o in (s.from_org_id, s.to_org_id, s.carrier_org_id) if o}
     names: dict[uuid.UUID, str] = {
         org_id: name
@@ -115,6 +119,7 @@ async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[Ship
                 route_provider=RouteProvider(s.route_provider) if s.route_provider else None,
                 pickup=stops.get((s.id, StopType.PICKUP)),
                 drop=stops.get((s.id, StopType.DROP)),
+                coldchain=coldchain.get(s.id),
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )
@@ -125,7 +130,7 @@ async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[Ship
 async def _detail(session: AsyncSession, user: User, shipment: Shipment) -> ShipmentDetailOut:
     await session.flush()
     await session.refresh(shipment)  # updated_at is set by the database
-    (base,) = await _present(session, [shipment])
+    (base,) = await _present(session, user, [shipment])
     last = await service.last_location(session, shipment)
     receipt = None
     if user.org_id == shipment.to_org_id:  # the receiver's record (CLAUDE.md rule 6)
@@ -179,7 +184,7 @@ async def list_shipments(
     rows, next_cursor = await paginate(
         session, stmt, Shipment.created_at, Shipment.id, limit, cursor, newest_first=True
     )
-    return Page[ShipmentOut](items=await _present(session, rows), next_cursor=next_cursor)
+    return Page[ShipmentOut](items=await _present(session, user, rows), next_cursor=next_cursor)
 
 
 @router.get("/shipments/{shipment_id}")

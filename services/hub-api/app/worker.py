@@ -1,6 +1,7 @@
 """arq worker for the hub's timers (business-rules.md §6: response, hold and recommendation
-deadlines), the event publisher and webhook deliveries (api-and-events.md, Events and
-Webhooks). Run it with `make worker`; the apps get live updates only while it runs.
+deadlines; §11: silent cold-chain devices), the event publisher and webhook deliveries
+(api-and-events.md, Events and Webhooks). Run it with `make worker`; the apps get live
+updates only while it runs.
 
 Deadlines, unpublished events and due deliveries are all stored in the database, so a
 restarted worker loses nothing. Every job is idempotent and safe with several workers: the
@@ -15,6 +16,7 @@ from arq.connections import RedisSettings
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.coldchain import service as coldchain
 from app.config import settings
 from app.db import SessionLocal
 from app.domain import config
@@ -60,6 +62,13 @@ async def expire_recommendations(ctx: dict[str, Any]) -> int:
         return await recommendations.expire_overdue(session)
 
 
+async def check_silent_devices(ctx: dict[str, Any]) -> int:
+    """Raise DEVICE_SILENT for IN_TRANSIT shipments whose cold box went quiet (§11)."""
+    sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
+    async with sessionmaker() as session:
+        return await coldchain.check_silent_devices(session)
+
+
 async def publish_events(ctx: dict[str, Any]) -> int:
     """Publish committed outbox rows to Redis (SSE) and schedule their webhooks."""
     sessionmaker: async_sessionmaker[AsyncSession] = ctx["sessionmaker"]
@@ -91,6 +100,12 @@ class WorkerSettings:
         ),
         cron(
             expire_recommendations,
+            second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
+            run_at_startup=True,
+            unique=True,
+        ),
+        cron(
+            check_silent_devices,
             second=set(range(0, 60, config.TIMER_INTERVAL_SECONDS)),
             run_at_startup=True,
             unique=True,

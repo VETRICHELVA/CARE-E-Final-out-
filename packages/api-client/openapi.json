@@ -4010,6 +4010,69 @@
           }
         }
       }
+    },
+    "/api/v1/shipments/{shipment_id}/coldchain": {
+      "get": {
+        "tags": [
+          "coldchain"
+        ],
+        "summary": "Get Coldchain",
+        "description": "The shipment's readings and cold-chain events (business-rules.md \u00a711), with the\nproduct's band and the cold box's battery and last seen. Only the shipment's from, to\nand carrier orgs (403 otherwise); the carrier sees its own devices' data only.",
+        "operationId": "get_coldchain_api_v1_shipments__shipment_id__coldchain_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "shipment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Shipment Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10000,
+              "minimum": 1,
+              "description": "How many of the newest readings to return.",
+              "default": 2000,
+              "title": "Limit"
+            },
+            "description": "How many of the newest readings to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ColdChainOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4590,6 +4653,38 @@
         ],
         "title": "AuditOut"
       },
+      "BandOut": {
+        "properties": {
+          "temp_min_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp Min C"
+          },
+          "temp_max_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp Max C"
+          }
+        },
+        "type": "object",
+        "required": [
+          "temp_min_c",
+          "temp_max_c"
+        ],
+        "title": "BandOut"
+      },
       "BatchCreate": {
         "properties": {
           "batch_no": {
@@ -5015,6 +5110,189 @@
         ],
         "title": "CandidateOut",
         "description": "What the requester's org sees of a source: no batch ids, raw stock figures or, for a\nhospital source, cost (it would reveal that hospital's unit cost; CLAUDE.md rule 6)."
+      },
+      "ColdChainDeviceOut": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "battery_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery Level"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "battery_level",
+          "last_seen"
+        ],
+        "title": "ColdChainDeviceOut"
+      },
+      "ColdChainEventOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ColdChainEventType"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "observed_value": {
+            "type": "number",
+            "title": "Observed Value",
+            "description": "EXCURSION / RECOVERED: the reading (\u00b0C) that completed the run of consecutive readings. DEVICE_SILENT: seconds without a reading when it was noticed."
+          },
+          "threshold": {
+            "type": "number",
+            "title": "Threshold",
+            "description": "EXCURSION / RECOVERED: the band's bound (\u00b0C) the excursion crossed. DEVICE_SILENT: the silence limit in seconds."
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts",
+            "description": "The reading that completed the run, or when the silence was noticed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "severity",
+          "device_id",
+          "observed_value",
+          "threshold",
+          "ts"
+        ],
+        "title": "ColdChainEventOut"
+      },
+      "ColdChainEventType": {
+        "type": "string",
+        "enum": [
+          "EXCURSION",
+          "DEVICE_SILENT",
+          "RECOVERED"
+        ],
+        "title": "ColdChainEventType"
+      },
+      "ColdChainOut": {
+        "properties": {
+          "shipment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Shipment Id"
+          },
+          "requires_cold_chain": {
+            "type": "boolean",
+            "title": "Requires Cold Chain"
+          },
+          "band": {
+            "$ref": "#/components/schemas/BandOut",
+            "description": "The product's allowed range; both null: no rule."
+          },
+          "device": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColdChainDeviceOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cold box on the shipment, or the one that sent its newest reading."
+          },
+          "silent_after_seconds": {
+            "type": "integer",
+            "title": "Silent After Seconds",
+            "description": "A device silent this long while IN_TRANSIT raises DEVICE_SILENT."
+          },
+          "readings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingOut"
+            },
+            "type": "array",
+            "title": "Readings",
+            "description": "The newest readings, oldest first."
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ColdChainEventOut"
+            },
+            "type": "array",
+            "title": "Events",
+            "description": "Every cold-chain event, oldest first."
+          },
+          "has_excursion": {
+            "type": "boolean",
+            "title": "Has Excursion",
+            "description": "An EXCURSION is on record (it stays after RECOVERED)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "shipment_id",
+          "requires_cold_chain",
+          "band",
+          "device",
+          "silent_after_seconds",
+          "readings",
+          "events",
+          "has_excursion"
+        ],
+        "title": "ColdChainOut"
+      },
+      "ColdChainSummary": {
+        "properties": {
+          "last_event_type": {
+            "$ref": "#/components/schemas/ColdChainEventType"
+          },
+          "last_event_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Event At"
+          },
+          "had_excursion": {
+            "type": "boolean",
+            "title": "Had Excursion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "last_event_type",
+          "last_event_at",
+          "had_excursion"
+        ],
+        "title": "ColdChainSummary",
+        "description": "A shipment's cold-chain state for lists (the dispatch board and Deliveries badges)."
       },
       "Condition": {
         "type": "string",
@@ -6628,6 +6906,42 @@
         "title": "ReadingIn",
         "description": "One reading as the cold box publishes it (apps-ai-iot.md, Firmware)."
       },
+      "ReadingOut": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "temp_c": {
+            "type": "number",
+            "title": "Temp C"
+          },
+          "battery": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battery"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "ts",
+          "temp_c",
+          "battery"
+        ],
+        "title": "ReadingOut"
+      },
       "ReasonIn": {
         "properties": {
           "reason": {
@@ -7345,6 +7659,15 @@
         ],
         "title": "RowError"
       },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "ALERT",
+          "WARNING",
+          "INFO"
+        ],
+        "title": "Severity"
+      },
       "ShipmentDetailOut": {
         "properties": {
           "id": {
@@ -7552,6 +7875,17 @@
               }
             ]
           },
+          "coldchain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColdChainSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -7595,7 +7929,7 @@
           "inspection_note_required": {
             "type": "boolean",
             "title": "Inspection Note Required",
-            "description": "True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md \u00a79). Always false until S15."
+            "description": "True when a cold-chain excursion is on record for the shipment, even one that has since recovered: its receipt then needs an inspection note (business-rules.md \u00a79, \u00a711)."
           },
           "receipt": {
             "anyOf": [
@@ -7638,6 +7972,7 @@
           "route_provider",
           "pickup",
           "drop",
+          "coldchain",
           "created_at",
           "updated_at",
           "route_geometry",
@@ -7855,6 +8190,17 @@
               }
             ]
           },
+          "coldchain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ColdChainSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -7895,6 +8241,7 @@
           "route_provider",
           "pickup",
           "drop",
+          "coldchain",
           "created_at",
           "updated_at"
         ],

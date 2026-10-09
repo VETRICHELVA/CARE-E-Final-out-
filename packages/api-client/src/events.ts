@@ -35,7 +35,10 @@ const SURPLUS = `${API}/surplus`;
 const SHORTAGE_VIEWS = [SHORTAGES, SHORTAGE, LATEST_RUN, AUDIT, SHORTAGE_AUDIT] as const;
 const RECOMMENDATION_VIEWS = [RECOMMENDATION, LATEST_RECOMMENDATION] as const;
 const SHIPMENT_VIEWS = [SHIPMENTS, SHIPMENT, AUDIT, SHORTAGE_AUDIT] as const;
+// A reading refreshes the chart only; a cold-chain event also changes the list badges, the
+// detail's `inspection_note_required` and the audit trails.
 const COLDCHAIN_VIEWS = [SHIPMENT, COLDCHAIN] as const;
+const COLDCHAIN_EVENT_VIEWS = [...COLDCHAIN_VIEWS, SHIPMENTS, AUDIT, SHORTAGE_AUDIT] as const;
 
 /**
  * Which queries each event type makes stale. Every query key starts with the API path
@@ -66,9 +69,9 @@ export const EVENT_QUERIES: Record<string, readonly string[]> = {
   "shipment.status_changed": [...SHIPMENT_VIEWS, SHORTAGE],
   "shipment.location": [SHIPMENT],
   "coldchain.reading": COLDCHAIN_VIEWS,
-  "coldchain.excursion": COLDCHAIN_VIEWS,
-  "coldchain.device_silent": COLDCHAIN_VIEWS,
-  "coldchain.recovered": COLDCHAIN_VIEWS,
+  "coldchain.excursion": COLDCHAIN_EVENT_VIEWS,
+  "coldchain.device_silent": COLDCHAIN_EVENT_VIEWS,
+  "coldchain.recovered": COLDCHAIN_EVENT_VIEWS,
   "reconciliation.completed": [...SHORTAGE_VIEWS, ...SHIPMENT_VIEWS, BATCHES],
   "surplus.matched": [SURPLUS],
 };
@@ -96,6 +99,18 @@ export function invalidateFor(queryClient: QueryClient, event: EventEnvelope): P
   return queryClient.invalidateQueries({
     predicate: (query) => isStale(query.queryKey, paths, event.data),
   });
+}
+
+const listeners = new Set<(event: EventEnvelope) => void>();
+
+/**
+ * Calls `listener` with each event the open stream receives, after its queries are marked
+ * stale (e.g. to raise a cold-chain alert toast). Returns a function that removes it. The
+ * screens still read what they show from the hub, not from the event.
+ */
+export function onHubEvent(listener: (event: EventEnvelope) => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
 }
 
 type EventSourceLike = Pick<EventSource, "close" | "addEventListener"> & {
@@ -155,7 +170,9 @@ export function connectEventStream(
     };
     es.onmessage = (message) => {
       if (message.lastEventId) lastId = message.lastEventId;
-      void invalidateFor(queryClient, JSON.parse(message.data as string) as EventEnvelope);
+      const event = JSON.parse(message.data as string) as EventEnvelope;
+      void invalidateFor(queryClient, event);
+      for (const listener of listeners) listener(event);
     };
     // Too much was missed to replay: refetch everything on screen.
     es.addEventListener("reset", () => void queryClient.invalidateQueries());

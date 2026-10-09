@@ -263,4 +263,52 @@ describe("Shipment detail: cold box (S14)", () => {
     await screen.findByTestId("cold-box");
     expect(screen.queryByRole("button", { name: "Attach cold box" })).toBeNull();
   });
+
+  it("shows the carrier the live cold-chain panel: band, readings and the hub's events", async () => {
+    const s = { ...onRoad, device_id: coldBox.id };
+    const fake = hub(detail(s), {
+      "GET /api/v1/shipments/{id}/coldchain": {
+        shipment_id: s.id,
+        requires_cold_chain: true,
+        band: { temp_min_c: 2, temp_max_c: 8 },
+        device: { device_id: "cb-01", battery_level: 81, last_seen: "2026-10-08T06:30:20Z" },
+        silent_after_seconds: 120,
+        readings: [4.2, 9.1, 9.4].map((temp_c, i) => ({
+          device_id: "cb-01",
+          ts: `2026-10-08T06:30:${i}0Z`,
+          temp_c,
+          battery: 81,
+        })),
+        events: [
+          {
+            id: "ev1",
+            type: "EXCURSION",
+            severity: "ALERT",
+            device_id: "cb-01",
+            observed_value: 9.4,
+            threshold: 8,
+            ts: "2026-10-08T06:30:20Z",
+          },
+        ],
+        has_excursion: true,
+      },
+    });
+    show(s);
+    const panel = await screen.findByTestId("coldchain-panel");
+    expect(await within(panel).findByTestId("temperature-chart")).toBeTruthy();
+    expect(within(panel).getByText("2–8 °C")).toBeTruthy();
+    expect(within(panel).getByTestId("latest-reading").textContent).toBe("9.4 °C");
+    expect(within(panel).getAllByTestId("out-of-range")).toHaveLength(2);
+    expect(
+      within(panel).getByText("Readings out of range: 9.4 °C, above the maximum of 8 °C."),
+    ).toBeTruthy();
+    expect(fake.to("GET", `/api/v1/shipments/${s.id}/coldchain`)).toHaveLength(1);
+  });
+
+  it("shows no cold-chain panel to a logistics org that is not the carrier", async () => {
+    hub(detail(coldShipment));
+    show(coldShipment);
+    await screen.findByTestId("cold-box");
+    expect(screen.queryByTestId("coldchain-panel")).toBeNull();
+  });
 });

@@ -133,6 +133,7 @@ export {
   type EventEnvelope,
   invalidateFor,
   isStale,
+  onHubEvent,
   type StreamOptions,
   useEventStream,
 } from "./events";

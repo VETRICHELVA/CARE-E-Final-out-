@@ -1,6 +1,7 @@
 // Shipment detail (apps-ai-iot.md, delivery-web `/shipments/:id`): the hub's route on a map,
 // ETA, status history and the driver's live position (refreshed by `shipment.location`
-// events), plus the cold box riding with it. Actions appear only for who may take them.
+// events), plus the cold box riding with it and its live cold-chain panel (S15: readings,
+// the product's band and the hub's cold-chain events). Actions appear only for who may take them.
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { ApiError } from "@care-e/api-client";
@@ -9,6 +10,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  ColdChainPanel,
   ConfirmDialog,
   EmptyState,
   ErrorState,
@@ -133,6 +135,9 @@ export function ShipmentDetailPage() {
   const product = products.data?.byId.get(s.product_id);
   const mine = jobs.data?.some((j) => j.id === s.id) ?? false;
   const carrierIsUs = s.carrier_org_id !== null && s.carrier_org_id === me?.org.id;
+  // Only the shipment's own orgs read its cold chain (the hub answers 403 to the others).
+  const showColdChain =
+    carrierIsUs && (s.requires_cold_chain || s.device_id !== null || s.coldchain !== null);
   const actions = (
     <>
       {canAssign && s.status === "CREATED" && <AssignDialog shipment={s} />}
@@ -202,6 +207,11 @@ export function ShipmentDetailPage() {
           </CardContent>
         </Card>
       </div>
+      {showColdChain && (
+        <div className="mt-4">
+          <ColdChainPanel shipmentId={s.id} />
+        </div>
+      )}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>

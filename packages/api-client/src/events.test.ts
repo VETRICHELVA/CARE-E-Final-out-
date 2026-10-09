@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { QueryClient, type QueryKey } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { backoffMs, connectEventStream, EVENT_QUERIES, type EventEnvelope } from "./events";
+import {
+  backoffMs,
+  connectEventStream,
+  EVENT_QUERIES,
+  type EventEnvelope,
+  onHubEvent,
+} from "./events";
 
 /** A mocked EventSource: records every instance; tests drive its handlers. */
 class FakeEventSource {
@@ -190,6 +196,51 @@ describe("useEventStream's connection", () => {
       "2",
     );
     await vi.waitFor(() => expect(staleExtra().sort()).toEqual(["inbound", "trail1"]));
+  });
+
+  it("refreshes the cold-chain chart on a reading, and the badges and trails on an event", async () => {
+    const extra = {
+      chart1: ["/api/v1/shipments/{shipment_id}/coldchain", { shipment_id: "x" }],
+      chart2: ["/api/v1/shipments/{shipment_id}/coldchain", { shipment_id: "y" }],
+      detail1: ["/api/v1/shipments/{shipment_id}", { shipment_id: "x" }],
+      inbound: ["/api/v1/shipments", { direction: "inbound" }],
+      trail1: ["/api/v1/shortages/{shortage_id}/audit", { shortage_id: "s1" }],
+    } satisfies Record<string, QueryKey>;
+    const reset = () => {
+      for (const key of Object.values(extra)) queryClient.setQueryData(key, {});
+    };
+    const staleExtra = () =>
+      (Object.keys(extra) as (keyof typeof extra)[]).filter(
+        (name) => queryClient.getQueryState(extra[name])?.isInvalidated,
+      );
+    reset();
+    start();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    latest().emit({ type: "coldchain.reading", data: { shipment_id: "x", temp_c: 4, ts: "" } });
+    await vi.waitFor(() => expect(staleExtra().sort()).toEqual(["chart1", "detail1"]));
+    reset();
+    latest().emit(
+      {
+        type: "coldchain.excursion",
+        data: { shipment_id: "x", observed_value: 9.4, threshold: 8 },
+      },
+      "2",
+    );
+    await vi.waitFor(() =>
+      expect(staleExtra().sort()).toEqual(["chart1", "detail1", "inbound", "trail1"]),
+    );
+    expect(stale()).toEqual(["audit1"]);
+  });
+
+  it("hands each event to the listeners until they are removed", async () => {
+    const seen: string[] = [];
+    const off = onHubEvent((event) => seen.push(event.type));
+    start();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    latest().emit({ type: "coldchain.excursion", data: { shipment_id: "x" } });
+    off();
+    latest().emit({ type: "coldchain.recovered", data: { shipment_id: "x" } }, "2");
+    expect(seen).toEqual(["coldchain.excursion"]);
   });
 
   it("maps every event type in the spec", () => {

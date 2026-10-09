@@ -31,6 +31,8 @@ from app.audit import service as audit
 from app.audit.models import AuditLog
 from app.auth.models import User
 from app.catalog.models import Product
+from app.coldchain.models import ColdChainEvent
+from app.domain.coldchain import ColdChainEventType
 from app.domain.costing import Point, geojson_line, transport_eta_hours
 from app.domain.events import EventType
 from app.domain.fulfillment import (
@@ -615,10 +617,18 @@ async def mark_reconciled(
 
 
 async def has_open_excursion(session: AsyncSession, shipment: Shipment) -> bool:
-    """Whether the shipment has a cold-chain excursion on record that is still open
-    (business-rules.md §9, §11): its receipt then needs an inspection note. Always False
-    until S15 records cold-chain events."""
-    return False
+    """Whether the shipment's receipt needs an inspection note (business-rules.md §9, §11):
+    true if any EXCURSION is on record for it, even one that has since RECOVERED (the
+    excursion stays on record)."""
+    found = await session.scalar(
+        select(ColdChainEvent.id)
+        .where(
+            ColdChainEvent.shipment_id == shipment.id,
+            ColdChainEvent.type == ColdChainEventType.EXCURSION,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 # --- location pings ---------------------------------------------------------------------------

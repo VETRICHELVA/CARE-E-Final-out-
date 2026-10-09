@@ -18,8 +18,9 @@
 | Shortage detail | /shortages/:id | Status timeline; latest match run: eligible candidates ranked, rejected ones with reasons; source requests and their state; audit trail | S08, extended S12 |
 | Recommendation | /shortages/:id (decision panel) | Type badge, lines, cost, ETA, explanation, alternatives; buttons worded by type (business-rules §13); reject or escalate with optional reason | S12 |
 | Incoming requests | /requests | Requests addressed to this hospital: product, qty, deadline countdown; Accept (places hold) or Decline (optional reason) | S08 |
-| Deliveries | /deliveries | Inbound shipments with live status, ETA, cold-chain badge | S12 |
-| Receive | /deliveries/:id/receive | Expected, received, accepted, rejected, condition, inspection note (required if excursion) | S12 |
+| Deliveries | /deliveries | Inbound shipments with live status, ETA, cold-chain badge (and the newest cold-chain event) | S12, extended S15 |
+| Delivery detail | /deliveries/:id | Status, ETA, carrier, status history, cold-chain panel; alert toast for cold-chain events on inbound shipments | S15 |
+| Receive | /deliveries/:id/receive | Expected, received, accepted, rejected, condition, inspection note (required if excursion: a red notice and the cold-chain panel are shown) | S12, extended S15 |
 | Chat | panel on every page | Chat ordering and copilot (see AI) | S13, S17 |
 | Forecasts and surplus | /forecasts | Predicted stock-outs, reorder suggestions, expiry-risk batches with "Offer to network" | S18 |
 
@@ -34,7 +35,7 @@
 ## delivery-web (responsive down to 360 px)
 | Screen | Route | Content | Section |
 |---|---|---|---|
-| Dispatch board | / | Unassigned shipments: pickup, drop, deadline, qty, cold-chain flag; assign driver and vehicle | S11 |
+| Dispatch board | / | Unassigned shipments: pickup, drop, deadline, qty, cold-chain flag (and, for shipments on the road, the newest cold-chain event); assign driver and vehicle | S11, extended S15 |
 | Shipment detail | /shipments/:id | Map with route (OSRM), ETA, status history, live position, cold-chain panel | S11, S15 |
 | Route planner | /plan | Choose a driver and several shipments → optimized stop order with time windows | S16 |
 | Fleet | /fleet | Drivers and vehicles; device assignment for cold boxes | S11, S14 |
