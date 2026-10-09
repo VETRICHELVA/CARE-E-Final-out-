@@ -59,8 +59,11 @@ describe(config.name, () => {
     expect(await screen.findByText(`Test ${orgType} org`)).toBeTruthy();
     expect(screen.getByText("Test User")).toBeTruthy();
     expect(screen.getByText(orgType)).toBeTruthy();
-    for (const { label } of config.nav)
-      expect(screen.getByRole("link", { name: label })).toBeTruthy();
+    for (const { label, orgTypes } of config.nav) {
+      const link = screen.queryByRole("link", { name: label });
+      if (!orgTypes || orgTypes.includes(orgType)) expect(link).toBeTruthy();
+      else expect(link).toBeNull();
+    }
   });
 
   it("hides nav entries the user lacks the capability for", async () => {
@@ -84,6 +87,25 @@ describe(config.name, () => {
     await screen.findByText("Test HOSPITAL org");
     expect(navLabels()).toContain("Shortages");
     expect(navLabels()).not.toContain("Requests");
+  });
+
+  it("shows Admin only to a PLATFORM user with audit.read", async () => {
+    signInAs("PLATFORM", ["audit.read"]);
+    render(<App />);
+    await screen.findByText("Test PLATFORM org");
+    expect(navLabels()).toContain("Admin");
+    cleanup();
+
+    signInAs("PLATFORM", []);
+    render(<App />);
+    await screen.findByText("Test PLATFORM org");
+    expect(navLabels()).not.toContain("Admin");
+    cleanup();
+
+    signInAs("HOSPITAL", ALL_CAPS);
+    render(<App />);
+    await screen.findByText("Test HOSPITAL org");
+    expect(navLabels()).not.toContain("Admin");
   });
 
   it.each(ORG_TYPES.filter((t) => !config.allow.includes(t)))(

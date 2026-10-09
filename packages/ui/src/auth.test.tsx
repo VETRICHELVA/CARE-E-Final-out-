@@ -3,11 +3,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Me, useAuth } from "@care-e/api-client";
+import { showNavItem } from "./app";
 import { can, useCan } from "./auth";
 
 afterEach(cleanup);
 
-const me = (capabilities: string[]): Me => ({
+const me = (capabilities: string[], type = "HOSPITAL"): Me => ({
   user: {
     id: "u1",
     email: "requester@hospital-a.demo",
@@ -18,7 +19,7 @@ const me = (capabilities: string[]): Me => ({
   org: {
     id: "o1",
     name: "Hospital A",
-    type: "HOSPITAL",
+    type,
     status: "ACTIVE",
     location: { lat: 0, lng: 0 },
   },
@@ -64,5 +65,22 @@ describe("can()", () => {
   it("shows the action to a user with the capability", () => {
     renderAs(me(["recommendation.approve"]));
     expect(screen.getByRole("button", { name: "Approve transfer" })).toBeTruthy();
+  });
+});
+
+describe("showNavItem()", () => {
+  const admin = { capability: "audit.read", orgTypes: ["PLATFORM"] };
+
+  it("needs both the capability and one of the org types", () => {
+    expect(showNavItem(me(["audit.read"], "PLATFORM"), admin)).toBe(true);
+    expect(showNavItem(me(["audit.read"], "HOSPITAL"), admin)).toBe(false);
+    expect(showNavItem(me([], "PLATFORM"), admin)).toBe(false);
+    expect(showNavItem(undefined, admin)).toBe(false);
+  });
+
+  it("shows an entry with neither gate to everyone", () => {
+    expect(showNavItem(me([]), {})).toBe(true);
+    expect(showNavItem(me([], "PLATFORM"), { capability: "audit.read" })).toBe(false);
+    expect(showNavItem(me([], "SUPPLIER"), { orgTypes: ["SUPPLIER"] })).toBe(true);
   });
 });
