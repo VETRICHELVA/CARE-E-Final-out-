@@ -125,8 +125,40 @@ async def update_batch(
     await audit.record(
         session, user, ENTITY, batch.id, f"{ENTITY}.updated", before, changes, body.reason
     )
+    if "expiry_date" in changes:
+        await _follow_expiry(session, batch, before.get("expiry_date"))
     await _changed(session, user, [batch])
     return batch
+
+
+EXPIRY_CORRECTED = "The batch's expiry date was changed."
+
+
+async def _follow_expiry(session: AsyncSession, batch: InventoryBatch, old: Any) -> None:
+    """A live surplus post carries its batch's expiry date (its band, its expiry day and its
+    matches use it), so it follows a corrected date. SYSTEM row per post, in the batch's org."""
+    from app.domain.surplus import LIVE
+    from app.surplus.models import SurplusPost
+
+    posts = await session.scalars(
+        select(SurplusPost)
+        .where(SurplusPost.batch_id == batch.id, SurplusPost.status.in_(LIVE))
+        .with_for_update()
+    )
+    for post in list(posts):
+        post.expiry_date = batch.expiry_date
+        await audit.record(
+            session,
+            None,
+            "surplus_post",
+            post.id,
+            "surplus_post.updated",
+            {"expiry_date": old},
+            {"expiry_date": batch.expiry_date},
+            EXPIRY_CORRECTED,
+            org_id=batch.org_id,
+        )
+    await session.flush()
 
 
 async def verify_batch(

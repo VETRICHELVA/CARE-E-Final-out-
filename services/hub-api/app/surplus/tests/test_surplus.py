@@ -228,3 +228,31 @@ async def test_posts_expire_at_batch_expiry(
     assert (row.reason, row.reason_source) == ("The batch reached its expiry date.", "SYSTEM")
     await add_shortage(session, world.hospital_a, world.users["a.REQUESTER"], iv)
     assert await service.match_open(session, today()) == 0
+
+
+async def test_a_corrected_batch_expiry_moves_its_live_post(
+    session: AsyncSession, world: World, iv: Product, client_for: ClientFor
+) -> None:
+    """From the S18 review: the band other orgs see, the post's expiry day and its matches
+    follow the batch's current expiry date, not the one it had when posted."""
+    await add_shortage(session, world.hospital_a, world.users["a.REQUESTER"], iv)
+    batch = await add_batch(session, world.hospital_b, iv, on_hand=1000, safety_stock=200,
+                            expiry_days=55)  # fmt: skip
+    b = await client_for(world.users["b.STORE_MANAGER"])
+    post = (await b.post("/surplus", json={"batch_id": str(batch.id), "qty": 300})).json()
+    corrected = today() + timedelta(days=20)
+    r = await b.patch(f"/inventory/batches/{batch.id}", json={"expiry_date": str(corrected)})
+    assert r.status_code == 200, r.text
+
+    a = await client_for(world.users["a.STORE_MANAGER"])
+    (offer,) = (await a.get("/surplus/incoming")).json()["items"]
+    assert offer["expiry_band"] == "UNDER_30_DAYS"
+    stored = await session.get_one(SurplusPost, uuid.UUID(post["id"]))
+    assert stored.expiry_date == corrected
+    row = await session.scalar(
+        select(AuditLog).where(
+            AuditLog.entity_id == stored.id, AuditLog.action == "surplus_post.updated"
+        )
+    )
+    assert row is not None
+    assert (row.reason_source, row.org_id, row.actor_id) == ("SYSTEM", world.hospital_b.id, None)
