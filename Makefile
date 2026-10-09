@@ -70,13 +70,15 @@ test-hub:
 test-web:
 	pnpm test
 
-# Starts the hub and the three apps unless already running; needs `make up migrate seed` first.
-# Resets Scenario 1 first (the demo seed's numbers, Hospital A's open Surgical Kit A shortages
-# cancelled). A hub Playwright starts allows E2E_LOGIN_RATE_LIMIT logins per minute per IP
-# (a hub you started yourself keeps its own LOGIN_RATE_LIMIT, default 5).
+# Starts the hub and the three apps unless already running; needs `make up migrate seed` first,
+# and `make worker` for live updates (`make ingest` and an MQTT broker are optional: Scenario 2
+# then runs scripts/simulate_telemetry.py, else posts the same readings to the hub). Resets the
+# three demo scenarios first (e2e/seed/scenarios.py), so it can run again on the same database.
+# A hub Playwright starts allows E2E_LOGIN_RATE_LIMIT logins per minute per IP (a hub you
+# started yourself keeps its own LOGIN_RATE_LIMIT, default 5: start it with this one).
 E2E_LOGIN_RATE_LIMIT ?= 100
 e2e:
-	cd services/hub-api && uv run python ../../e2e/seed/scenario1.py
+	cd services/hub-api && uv run python ../../e2e/seed/scenarios.py
 	LOGIN_RATE_LIMIT=$(E2E_LOGIN_RATE_LIMIT) pnpm --filter e2e exec playwright test
 
 # The AI evals (services/ai-service/evals) against the real model: the copilot's 15 Scenario 1
