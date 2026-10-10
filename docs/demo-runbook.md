@@ -105,7 +105,7 @@ The scripted demo does not wait for any timer: every step is a click. Shorten th
 
 **Expect** on the Overview tab:
 - "Latest match run #1" and "Planned: Transfer — 850 kit from Hospital B".
-- Eligible table: Hospital B ranked first with **1,000 kit transferable**; Supplier Y and Supplier X follow with their offered quantities. Hospital B's ETA in the seed is about 6 h according to demo-scenarios.md, but the hub computes distance ÷ 40 km/h + 1 h, which gives a shorter figure for hospitals in one city **(check before the demo)**. Supplier Y about 24 h, Supplier X about 68 h. Hospital landed cost shows "—" (rule 6: hospital costs are never shown to the requester).
+- Eligible table: Hospital B ranked first with **1,000 kit transferable**; Supplier Y and Supplier X follow with their offered quantities. Hospital B's ETA is about 1.3 h (10.9 km ÷ 40 km/h + 1 h handover, demo-scenarios.md; with OSRM set it follows the road distance). Supplier Y about 24 h, Supplier X about 68 h. Hospital landed cost shows "—" (rule 6: hospital costs are never shown to the requester).
 - "Not eligible (3)":
   - Hospital C — Quantity: "Only 100 transferable; 850 needed"
   - Hospital D — Shelf life: "Expires in 12 days; 30 required" (reads "11 days" if the delivery estimate crosses midnight UTC, i.e. after about 05:30 IST minus the ETA; run the demo in the Indian daytime)
@@ -312,4 +312,4 @@ Record a full dry run of all three scenarios (screen plus voice-over from this s
 
 ### Automated check
 
-`make e2e` drives the Playwright tests in `e2e/` against the seeded system (it starts the hub and the apps unless they are running; it does not start `make worker`, which live updates need). Run it the day before to catch regressions. It changes the data and counts against the sign-in limit, so run `make demo-reset` afterwards.
+`make e2e` drives the Playwright tests in `e2e/` against the seeded system (it starts the hub and the apps unless they are running; it does not start `make worker`, which live updates need). Run it the day before to catch regressions. It expects freshly seeded data (the seeds only add what is missing and never reset stock), changes the data and counts against the sign-in limit, so run `make demo-reset` before and after it.

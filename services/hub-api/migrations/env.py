@@ -31,7 +31,9 @@ if config.config_file_name is not None and config.attributes.get("configure_logg
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-url = config.get_main_option("sqlalchemy.url") or settings.database_url
+# Migrations run as the owner of the tables: MIGRATION_DATABASE_URL, else DATABASE_URL (the hub
+# itself connects as the least-privilege role `care_app` outside dev, see 0017_s20fix).
+url = config.get_main_option("sqlalchemy.url") or settings.migration_url
 
 
 def do_run_migrations(connection: Connection) -> None:

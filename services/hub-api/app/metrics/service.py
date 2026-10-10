@@ -1,8 +1,9 @@
 """GET /metrics/network (S20): network-wide figures from recorded rows only (CLAUDE.md rule
 5). Definitions: api-and-events.md "Network metrics"; arithmetic: app/domain/metrics.py.
 
-No hospital's unit cost is read: cost avoided is priced at supplier prices the match runs
-recorded (`Candidate.unit_price_paise`, supplier candidates only)."""
+No hospital's unit cost is read: cost avoided is priced at the cheapest eligible supplier's
+price the match run recorded (`Candidate.unit_price_paise`); a supplier the run rejected could
+not have been bought from, so its price never counts."""
 
 import uuid
 from collections import defaultdict
@@ -116,7 +117,8 @@ async def _resolution_mix(session: AsyncSession) -> ResolutionMixOut:
 
 async def _transfers_received(session: AsyncSession) -> tuple[CostAvoidedOut, ExpirySavedOut]:
     """Every receipt on a hospital-to-hospital shipment (one with a source request), with
-    the units accepted."""
+    the units accepted, priced at the cheapest ELIGIBLE supplier in the match run that chose
+    the source; with no eligible supplier the units are unpriced (left out)."""
     received = (
         await session.execute(
             select(
@@ -142,6 +144,7 @@ async def _transfers_received(session: AsyncSession) -> tuple[CostAvoidedOut, Ex
             .where(
                 Candidate.match_run_id.in_(runs),
                 Candidate.source_type == SourceType.SUPPLIER,
+                Candidate.eligible.is_(True),
                 Candidate.unit_price_paise.is_not(None),
             )
             .group_by(Candidate.match_run_id)

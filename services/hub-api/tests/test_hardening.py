@@ -6,11 +6,12 @@ import logging
 
 import httpx
 import pytest
-from app import log, net
+from app import config, log, net
 from app.config import DEV_AI_SERVICE_TOKEN, DEV_INGEST_TOKEN, DEV_JWT_SECRET, Settings
 from app.demo_reset import refusal
 from app.main import create_app
 from sqlalchemy.engine import make_url
+from starlette.requests import Request
 
 pytestmark = pytest.mark.anyio
 
@@ -54,6 +55,40 @@ def test_outside_dev_real_secrets_start() -> None:
     assert not s.is_dev
 
 
+def test_an_unset_app_env_is_not_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail closed: without APP_ENV=dev the committed defaults are refused."""
+    monkeypatch.delenv("APP_ENV", raising=False)
+    with pytest.raises(ValueError) as e:
+        settings()
+    assert "APP_ENV is unset" in str(e.value)
+    for name in ("JWT_SECRET", "INGEST_TOKEN", "AI_SERVICE_TOKEN"):
+        assert name in str(e.value)
+    s = settings(jwt_secret=REAL, ingest_token=REAL, ai_service_token=REAL)
+    assert not s.is_dev
+    for env in ("", "Dev", "development", " dev"):
+        assert not settings(app_env=env, jwt_secret=REAL, ingest_token=REAL,
+                            ai_service_token=REAL).is_dev  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("env", "limit", "window", "allowed"),
+    [
+        ("dev", "100", "60", (100, 60)),
+        ("dev", "5", "1", (5, 1)),
+        ("production", "100", "60", (5, 60)),  # a raise is ignored outside dev
+        ("production", "5", "1", (5, 60)),  # so is a shorter window
+        ("production", "3", "120", (3, 120)),  # stricter values apply
+        ("", "100", "10", (5, 60)),  # unset is not dev
+    ],
+)
+def test_the_login_rate_limit_is_loosened_only_in_dev(
+    env: str, limit: str, window: str, allowed: tuple[int, int]
+) -> None:
+    s = settings(app_env=env, jwt_secret=REAL, ingest_token=REAL, ai_service_token=REAL,
+                 login_rate_limit=limit, login_rate_window_seconds=window)  # fmt: skip
+    assert (s.login_attempts_allowed, s.login_window_seconds) == allowed
+
+
 async def test_cors_allows_only_the_three_apps() -> None:
     transport = httpx.ASGITransport(create_app())
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -95,11 +130,30 @@ def test_client_ip(peer: str, forwarded: str | None, client: str) -> None:
     assert net.client_ip(peer, forwarded, TRUSTED) == client
 
 
+def test_every_x_forwarded_for_line_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A client-supplied line before the proxy's own must not become the client address."""
+    monkeypatch.setattr(config.settings, "trusted_proxies", "10.0.0.0/8")
+    scope = {
+        "type": "http",
+        "client": ("10.0.0.5", 1),
+        "headers": [
+            (b"x-forwarded-for", b"1.1.1.1"),
+            (b"x-forwarded-for", b"198.51.100.1, 10.0.0.9"),
+        ],
+    }
+    request = Request(scope)
+    assert net.forwarded_for(request) == "1.1.1.1,198.51.100.1, 10.0.0.9"
+    assert net.request_client_ip(request) == "198.51.100.1"
+    assert net.request_client_ip(Request({**scope, "headers": []})) == "10.0.0.5"
+
+
 @pytest.mark.parametrize(
     ("value", "public"),
     [("93.184.216.34", True), ("10.0.0.1", False), ("100.64.0.1", False),
      ("169.254.169.254", False), ("::1", False), ("::ffff:127.0.0.1", False),
-     ("2606:4700::1111", True), ("224.0.0.1", False)],
+     ("2606:4700::1111", True), ("224.0.0.1", False),
+     # NAT64 (RFC 6052 well-known and RFC 8215 local-use prefixes) reaches any IPv4 address.
+     ("64:ff9b::a00:1", False), ("64:ff9b::5db8:d822", False), ("64:ff9b:1::1", False)],
 )  # fmt: skip
 def test_is_public(value: str, public: bool) -> None:
     assert net.is_public(ipaddress.ip_address(value)) is public
@@ -138,6 +192,7 @@ def test_stream_tickets_never_reach_the_access_log() -> None:
         ("postgresql+asyncpg://care:care@127.0.0.1:5434/care", "dev", True),
         ("postgresql+asyncpg://care:care@localhost/care", "dev", True),
         ("postgresql+asyncpg://care:care@127.0.0.1:5434/care", "production", False),
+        ("postgresql+asyncpg://care:care@127.0.0.1:5434/care", "", False),  # unset: not dev
         ("postgresql+asyncpg://care:care@db.internal:5432/care", "dev", False),
         ("postgresql+asyncpg://care:care@127.0.0.1:5434/care_test", "dev", False),
         ("postgresql+asyncpg://care:care@127.0.0.1:5434/postgres", "dev", False),

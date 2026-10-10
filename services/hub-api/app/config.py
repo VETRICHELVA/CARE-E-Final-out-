@@ -2,6 +2,9 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV = "dev"
+# api-and-events.md: 5 login attempts per minute per client IP. Only a dev hub may raise it.
+DEFAULT_LOGIN_RATE_LIMIT = 5
+DEFAULT_LOGIN_RATE_WINDOW_SECONDS = 60
 # The committed dev defaults. Outside dev the hub refuses to start with any of them (S20).
 DEV_JWT_SECRET = "dev-only-change-me-dev-only-change-me"
 DEV_INGEST_TOKEN = "dev-only-ingest-token-change-me"
@@ -16,11 +19,18 @@ DEV_APP_ORIGINS = ",".join(
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # `dev` (local development, the default) or anything else, e.g. `production`. Outside dev
-    # the hub refuses to start with a dev default or short secret, webhooks must be https, and
-    # private webhook targets are always refused.
-    app_env: str = DEV
+    # `dev` for local development, anything else (e.g. `production`) outside it. Unset counts as
+    # outside dev (fail closed): the hub then refuses to start with a dev default or short
+    # secret, webhooks must be https, private webhook targets are always refused and
+    # LOGIN_RATE_LIMIT cannot be raised. The Makefile, CI, Playwright and the tests set `dev`.
+    app_env: str = ""
+    # The hub and worker connect with this URL. Outside dev it must be the least-privilege role
+    # `care_app` (migration 0017_s20fix), not the owner of the tables: the hub refuses to start
+    # as an owner or superuser, which could disable the audit_log trigger (README, Configuration).
     database_url: str = "postgresql+asyncpg://care:care@127.0.0.1:5434/care"
+    # Migrations (and `make demo-reset`) run as the owner of the tables. Empty: DATABASE_URL,
+    # as in local dev where both are the owner `care`.
+    migration_database_url: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
     jwt_secret: str = DEV_JWT_SECRET
     # Bearer token for services/iot-ingest; grants scope `telemetry.write` only.
@@ -41,10 +51,12 @@ class Settings(BaseSettings):
     # the hub through their Vite `/api` proxy (same origin), so this matters for a deployment
     # that serves them from their own origins.
     cors_origins: str = DEV_APP_ORIGINS
-    # Login attempts per client IP per window (api-and-events.md: 5 per minute). Raise it for
-    # e2e runs that sign in many times a minute.
-    login_rate_limit: int = Field(default=5, ge=1)
-    login_rate_window_seconds: int = Field(default=60, ge=1)
+    # Login attempts per client IP per window (api-and-events.md: 5 per minute). A dev hub may
+    # raise it for e2e runs that sign in many times a minute; outside dev a value above 5 is
+    # ignored (`login_attempts_allowed`), lower values apply; likewise a window shorter than
+    # 60 s (`login_window_seconds`).
+    login_rate_limit: int = Field(default=DEFAULT_LOGIN_RATE_LIMIT, ge=1)
+    login_rate_window_seconds: int = Field(default=DEFAULT_LOGIN_RATE_WINDOW_SECONDS, ge=1)
     # Reverse proxies whose X-Forwarded-For the hub trusts, comma-separated IPs or CIDRs (e.g.
     # `10.0.0.0/8`). The login rate limit then keys on the client address the nearest trusted
     # proxy saw; from anyone else the header is ignored. Empty: the TCP peer is the client.
@@ -60,7 +72,26 @@ class Settings(BaseSettings):
 
     @property
     def is_dev(self) -> bool:
+        """Only an explicit APP_ENV=dev; unset or anything else is treated as production."""
         return self.app_env == DEV
+
+    @property
+    def login_attempts_allowed(self) -> int:
+        """LOGIN_RATE_LIMIT, but never above the default outside dev."""
+        if self.is_dev:
+            return self.login_rate_limit
+        return min(self.login_rate_limit, DEFAULT_LOGIN_RATE_LIMIT)
+
+    @property
+    def login_window_seconds(self) -> int:
+        """LOGIN_RATE_WINDOW_SECONDS, but never shorter than the default outside dev."""
+        if self.is_dev:
+            return self.login_rate_window_seconds
+        return max(self.login_rate_window_seconds, DEFAULT_LOGIN_RATE_WINDOW_SECONDS)
+
+    @property
+    def migration_url(self) -> str:
+        return self.migration_database_url or self.database_url
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -84,8 +115,9 @@ class Settings(BaseSettings):
             if value == default or len(value) < MIN_SECRET_LENGTH
         ]
         if bad:
+            env = f"APP_ENV={self.app_env}" if self.app_env else "APP_ENV is unset (not dev)"
             raise ValueError(
-                f"APP_ENV={self.app_env}: set {', '.join(bad)} to a random value of at least "
+                f"{env}: set {', '.join(bad)} to a random value of at least "
                 f"{MIN_SECRET_LENGTH} characters (the dev defaults are only for APP_ENV=dev)."
             )
         return self

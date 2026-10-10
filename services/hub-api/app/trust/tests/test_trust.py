@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog
 from app.catalog.models import Product
-from app.conftest import ClientFor, World
+from app.conftest import ClientFor, World, as_owner
 from app.domain import config
 from app.domain import reliability as rules
 from app.orgs.models import Organization, OrgType
@@ -264,6 +264,8 @@ async def test_the_credit_ledger_is_append_only(
     assert (await receiver.post(f"/shipments/{delivered.id}/receipt", json=body)).status_code == 201
     (entry,) = await ledger_of(session, world.hospital_b.id)
     assert entry.delta == 85
+    # The trigger stops even the owner; the hub's own role has no such privilege at all.
+    await as_owner(session)
     for sql in (
         "UPDATE credit_ledger SET delta = 1000 WHERE id = :id",
         "DELETE FROM credit_ledger WHERE id = :id",

@@ -21,7 +21,7 @@ Seed state for Surgical Kit A:
 
 | Source | Stock | Expiry | Last verified | Expected result |
 |---|---|---|---|---|
-| Hospital B | on hand 2,500, reserved 800, allocated 200, safety 500 → **1,000 transferable** | +180 days | 2 h ago | Eligible, ranked first (ETA about 6 h) |
+| Hospital B | on hand 2,500, reserved 800, allocated 200, safety 500 → **1,000 transferable** | +180 days | 2 h ago | Eligible, ranked first (ETA about 1.3 h: 10.9 km by the §4 estimate from Hospital A, ÷ 40 km/h + 1 h handover) |
 | Hospital C | on hand 1,400, reserved 800, safety 500 → **100 transferable** | +200 days | 3 h ago | Fails quantity: "Only 100 transferable; 850 needed" |
 | Hospital D | 900 transferable | **+12 days** | 1 h ago | Fails shelf life: "Expires in 12 days; 30 required" |
 | Hospital E | 1,200 transferable | +150 days | 1 h ago | Fails authorization |

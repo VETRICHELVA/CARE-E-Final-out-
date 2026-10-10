@@ -15,7 +15,7 @@ from app.catalog.models import Product, ProductAuthorization, SupplierOffer
 from app.conftest import ClientFor
 from app.inventory.models import InventoryBatch
 from app.iot.models import Device
-from app.orgs.models import Facility, Organization, OrgType
+from app.orgs.models import Facility, Organization, OrgStatus, OrgType
 from app.shipments.models import Driver, Vehicle
 from app.shortages import service as shortages
 from app.shortages.models import Priority, Shortage
@@ -101,11 +101,64 @@ async def test_the_seed_creates_every_org_and_a_second_run_changes_nothing(
     assert not stocked & seed.E2E_PRODUCTS
 
 
-async def test_a_later_run_re_times_the_scenario_and_fixes_an_older_seed(
-    session: AsyncSession,
-) -> None:
-    """An S02-era DB: Hospital A with cold storage. A run a day later moves every
-    "verified" and "updated" time with it."""
+async def test_a_later_run_creates_only_what_is_missing(session: AsyncSession) -> None:
+    """Re-seeding never changes existing stock, offers, orgs or authorizations: that would be a
+    state change with no audit row (CLAUDE.md rule 5). `make demo-reset` resets instead."""
+    await seed.seed(session, MORNING)
+    names = {o.name: o for o in await session.scalars(select(Organization))}
+    kit = await session.scalar(select(Product).where(Product.code == "SURG-KIT-A"))
+    assert kit is not None
+    b_batch = await session.scalar(
+        select(InventoryBatch).where(
+            InventoryBatch.org_id == names["Hospital B"].id, InventoryBatch.product_id == kit.id
+        )
+    )
+    assert b_batch is not None
+    # What the demo did since: B counted its stock, Y repriced, C was suspended, E authorized,
+    # D's batch was removed from the seed's view (here: deleted).
+    counted = MORNING + timedelta(hours=3)
+    b_batch.on_hand, b_batch.reserved, b_batch.last_verified_at = 1_234, 17, counted
+    y_offer = await session.scalar(
+        select(SupplierOffer).where(
+            SupplierOffer.org_id == names["Supplier Y"].id, SupplierOffer.product_id == kit.id
+        )
+    )
+    assert y_offer is not None
+    y_offer.unit_price_paise, y_offer.available_qty = 3_100, 7
+    names["Hospital C"].status = OrgStatus.SUSPENDED
+    session.add(ProductAuthorization(org_id=names["Hospital E"].id, product_id=kit.id))
+    d_batch = await session.scalar(
+        select(InventoryBatch).where(
+            InventoryBatch.org_id == names["Hospital D"].id, InventoryBatch.product_id == kit.id
+        )
+    )
+    await session.delete(d_batch)
+    await session.flush()
+    before = await snapshot(session)
+
+    later = MORNING + timedelta(days=1)
+    assert await seed.seed(session, later) == []
+    after = await snapshot(session)
+    b_kit = next(b for b in after["batches"] if b[:2] == ("Hospital B", "SURG-KIT-A"))
+    assert (b_kit[3], b_kit[4], b_kit[10]) == (1_234, 17, counted)
+    y_kit = next(o for o in after["offers"] if o[:2] == ("Supplier Y", "SURG-KIT-A"))
+    assert (y_kit[2], y_kit[4]) == (3_100, 7)
+    assert ("Hospital C", OrgType.HOSPITAL, OrgStatus.SUSPENDED) in {o[:3] for o in after["orgs"]}
+    assert ("Hospital E", "SURG-KIT-A") in after["authorizations"]
+    # Only the missing batch came back, with the spec's numbers as of the later run.
+    added = [b for b in after["batches"] if b not in before["batches"]]
+    assert [(b[0], b[1], b[3], b[10]) for b in added] == [
+        ("Hospital D", "SURG-KIT-A", 900, later - timedelta(hours=1))
+    ]
+    assert {k: v for k, v in after.items() if k != "batches"} == {
+        k: v for k, v in before.items() if k != "batches"
+    }
+    assert [b for b in after["batches"] if b not in added] == before["batches"]
+
+
+async def test_an_older_database_keeps_its_own_rows(session: AsyncSession) -> None:
+    """An S02-era DB: Hospital A elsewhere, with a cold store. The seed adds the other orgs
+    and leaves A and its facility as they are."""
     a = Organization(name="Hospital A", type=OrgType.HOSPITAL, lat=1.0, lng=1.0)
     session.add(a)
     await session.flush()
@@ -114,17 +167,9 @@ async def test_a_later_run_re_times_the_scenario_and_fixes_an_older_seed(
     await session.flush()
     created = await seed.seed(session, MORNING)
     assert "Hospital A" not in created and len(created) == len(seed.ORGS) - 1
-    later = MORNING + timedelta(days=1)
-    await seed.seed(session, later)
     rows = await snapshot(session)
-    assert ("Hospital A", "old", False, 12.9592, 77.6974) in rows["facilities"]
-    b_kit = next(b for b in rows["batches"] if b[:2] == ("Hospital B", "SURG-KIT-A"))
-    assert (b_kit[3:8], b_kit[8], b_kit[10]) == (
-        (2500, 800, 200, 500, 0),
-        later.date() + timedelta(days=180),
-        later - timedelta(hours=2),
-    )
-    assert {o[5] for o in rows["offers"]} == {later}
+    assert ("Hospital A", "old", True, 1, 1) in rows["facilities"]
+    assert ("Hospital A", OrgType.HOSPITAL, OrgStatus.ACTIVE, 1.0, 1.0) in rows["orgs"]
 
 
 def km(a: Organization, b: Organization) -> float:

@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# Local-dev settings: an unset APP_ENV counts as production, which refuses the committed dev
+# secrets (hub, ai-service, iot-ingest) and the e2e hub's raised login rate limit.
+env:
+  APP_ENV: dev
+
 jobs:
   python:
     runs-on: ubuntu-latest

@@ -15,7 +15,8 @@ from app.iot.models import Device, SensorReading
 from app.receiving.tests.conftest import receipt
 from app.shipments.models import Shipment
 from app.shipments.tests.conftest import Fleet
-from app.source_requests.models import Hold
+from app.shortages.models import Candidate, SourceType
+from app.source_requests.models import Hold, SourceRequest
 from app.surplus.models import SurplusPost
 
 pytestmark = pytest.mark.anyio
@@ -116,6 +117,80 @@ async def test_a_received_transfer_from_posted_surplus(
         "compliance_rate": 0.0,
     }  # fmt: skip
     assert "unit_cost" not in r.text and "1500" not in str(body)
+
+
+async def supplier_candidates(session: AsyncSession, delivered: Shipment) -> list[Candidate]:
+    """The supplier candidates of the match run that chose the transfer's source."""
+    request = await session.get(SourceRequest, delivered.source_request_id)
+    assert request is not None
+    chosen = await session.get(Candidate, request.candidate_id)
+    assert chosen is not None
+    return list(
+        await session.scalars(
+            select(Candidate).where(
+                Candidate.match_run_id == chosen.match_run_id,
+                Candidate.source_type == SourceType.SUPPLIER,
+            )
+        )
+    )
+
+
+async def test_cost_avoided_ignores_a_cheaper_supplier_the_run_rejected(
+    session: AsyncSession,
+    world: World,
+    client_for: ClientFor,
+    delivered: Shipment,
+    receiver: httpx.AsyncClient,
+) -> None:
+    """A supplier at 9.00 that failed a gate could not have been bought from: the 805 units
+    are priced at the cheapest eligible supplier, X at 14.00."""
+    suppliers = await supplier_candidates(session, delivered)
+    assert {(c.eligible, c.unit_price_paise) for c in suppliers} >= {(True, 1400)}
+    cheaper = suppliers[0]
+    session.add(
+        Candidate(
+            match_run_id=cheaper.match_run_id,
+            source_org_id=world.supplier.id,
+            source_type=SourceType.SUPPLIER,
+            offered_qty=5000,
+            unit_price_paise=900,
+            gate_results=[{"gate": "authorization", "passed": False, "reason": "Not authorized"}],
+            eligible=False,
+            eta_hours=10.0,
+            reliability=100,
+        )
+    )
+    await session.flush()
+    r = await receiver.post(f"/shipments/{delivered.id}/receipt", json=receipt(850, 805, 45))
+    assert r.status_code in (200, 201), r.text
+    body = await metrics(client_for, world)
+    assert body["procurement_cost_avoided"] == {
+        "paise": 805 * 1400, "units_priced": 805, "units_unpriced": 0,
+    }  # fmt: skip
+
+
+async def test_a_transfer_with_no_eligible_supplier_is_not_counted(
+    session: AsyncSession,
+    world: World,
+    client_for: ClientFor,
+    delivered: Shipment,
+    receiver: httpx.AsyncClient,
+) -> None:
+    """Every supplier in the run failed a gate: no purchase was possible, so the transfer
+    avoided no recorded purchase price and its units are unpriced, never guessed."""
+    suppliers = await supplier_candidates(session, delivered)
+    assert suppliers and all(c.unit_price_paise is not None for c in suppliers)
+    for c in suppliers:
+        c.eligible, c.rank = False, None
+    await session.flush()
+    r = await receiver.post(f"/shipments/{delivered.id}/receipt", json=receipt(850, 805, 45))
+    assert r.status_code in (200, 201), r.text
+    body = await metrics(client_for, world)
+    assert body["procurement_cost_avoided"] == {
+        "paise": 0,
+        "units_priced": 0,
+        "units_unpriced": 805,
+    }
 
 
 async def test_a_purchase_counts_as_a_purchase_and_avoids_nothing(

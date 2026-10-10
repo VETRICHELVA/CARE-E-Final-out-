@@ -41,7 +41,8 @@ DELIVERY_TIMEOUT_SECONDS = 10.0
 def check_url(url: str) -> None:
     """S20: outside dev a webhook must be https; and unless a dev hub allows it
     (WEBHOOK_ALLOW_PRIVATE_TARGETS), its host may not be a local name or an internal IP. Names
-    are resolved and checked again before every delivery (`net.target_refusal`)."""
+    are resolved and checked again before every delivery, which connects to the checked
+    address (`net.check_target`, `net.pin`)."""
     if not settings.is_dev and urlsplit(url).scheme != "https":
         raise AppError(
             400, "validation", "Webhook URLs must use https.", {"reason": "https_required"}
@@ -128,23 +129,27 @@ async def _post(
     resolver: net.Resolver | None = None,
 ) -> int | None:
     """The response status, or None if there was none (connection error, timeout, or a
-    target that now resolves to an internal address, S20)."""
-    if not net.private_targets_allowed():
-        refusal = await net.target_refusal(sub.url, resolver or net.resolve)
-        if refusal is not None:
-            log.warning(
-                "webhook target refused", extra={"subscription_id": str(sub.id), "error": refusal}
-            )
-            return None
+    target that now resolves to an internal address, S20). The host is resolved once, every
+    address checked, and the request connects to the checked address (`net.pin`)."""
     body = body_of(event)
     headers = {
         "Content-Type": "application/json",
         SIGNATURE_HEADER: rules.signature(sub.secret, body),
     }
+    request = http.build_request(
+        "POST", sub.url, content=body, headers=headers, timeout=DELIVERY_TIMEOUT_SECONDS
+    )
+    if not net.private_targets_allowed():
+        target = await net.check_target(sub.url, resolver or net.resolve)
+        if target.ip is None:
+            log.warning(
+                "webhook target refused",
+                extra={"subscription_id": str(sub.id), "error": target.refusal},
+            )
+            return None
+        net.pin(request, target.ip)
     try:
-        response = await http.post(
-            sub.url, content=body, headers=headers, timeout=DELIVERY_TIMEOUT_SECONDS
-        )
+        response = await http.send(request)
     except httpx.HTTPError as e:
         log.warning(
             "webhook delivery failed", extra={"subscription_id": str(sub.id), "error": str(e)}

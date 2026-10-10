@@ -37,9 +37,36 @@ make migrate    # Alembic migrations
 make seed       # demo orgs, users, catalog, fleet and cold box (docs/specs/demo-scenarios.md)
 ```
 
-To start again from a clean, freshly seeded database, use `make demo-reset` (wipes the database
-and seeds again). Every service has working local defaults, so no `.env` file is needed for a
-local demo; the `.env.example` files list what can be overridden.
+`make seed` only adds what is missing: it never changes existing stock, offers or orgs, since
+that would be a change with no audit row. To start again from a clean, freshly seeded database,
+use `make demo-reset` (wipes the local `care` database and seeds again). Every service has
+working local defaults, so no `.env` file is needed for a local demo; the `.env.example` files
+list what can be overridden.
+
+### Configuration notes
+
+- **`APP_ENV`.** Set `APP_ENV=dev` for local development; the Makefile, CI, Playwright and the
+  tests do this for you. An unset `APP_ENV` counts as production: the hub, ai-service and
+  iot-ingest then refuse to start with the committed dev secrets (`JWT_SECRET`, `INGEST_TOKEN`,
+  `AI_SERVICE_TOKEN`) or any shorter than 32 characters, webhooks must use https and may never
+  target internal addresses, a `LOGIN_RATE_LIMIT` above 5 is ignored, and `make demo-reset`
+  refuses to run. Running a service outside `make`, export `APP_ENV=dev` first.
+- **Database roles.** Migration `0017_s20fix` creates `care_app`, a role with ordinary
+  read/write access to the app tables but no `UPDATE`, `DELETE` or `TRUNCATE` on the append-only
+  `audit_log` and `credit_ledger`, and no ownership, so it cannot disable their triggers. Locally
+  everything connects as the owner `care` (`DATABASE_URL`, the default). Outside dev:
+  - migrations connect as the owner: `MIGRATION_DATABASE_URL` (falls back to `DATABASE_URL`);
+  - give `care_app` a login, e.g. `ALTER ROLE care_app LOGIN PASSWORD '<random>'`, and point the
+    hub's and worker's `DATABASE_URL` at it
+    (`postgresql+asyncpg://care_app:<password>@<host>:5432/care`);
+  - the hub and worker refuse to start outside dev if `DATABASE_URL` is a superuser, owns
+    `audit_log` (or is a member of its owner) or may rewrite it;
+  - if the migrating role may not create roles, create it first as an administrator:
+    `CREATE ROLE care_app NOLOGIN`; the migration then only grants its privileges. Tables later
+    migrations create (as the same owner) get the same grants through default privileges.
+
+  The hub's tests run every session as `care_app`, so the app is exercised with exactly these
+  privileges.
 
 ### Run
 
@@ -135,15 +162,15 @@ The click-by-click demo script for all three scenarios is in
 
 ## Common commands
 
-| Command                      | What it does                                                    |
-| ---------------------------- | --------------------------------------------------------------- |
-| `make test`                  | All tests (`make test-hub`, `make test-web` for one side)       |
-| `make lint`                  | ruff, mypy, eslint, prettier, tsc                               |
-| `make e2e`                   | Playwright tests in `e2e/` (needs `make up migrate seed`)       |
-| `make client`                | Regenerate `packages/api-client` from the hub's OpenAPI         |
-| `make migration m="message"` | New Alembic migration                                           |
-| `make eval-ai`               | AI evals against the real model (needs a key and a running hub) |
-| `make down`                  | Stop the infrastructure containers                              |
+| Command                      | What it does                                                       |
+| ---------------------------- | ------------------------------------------------------------------ |
+| `make test`                  | All tests (`make test-hub`, `make test-web` for one side)          |
+| `make lint`                  | ruff, mypy, eslint, prettier, tsc                                  |
+| `make e2e`                   | Playwright tests in `e2e/` (needs `make up` and `make demo-reset`) |
+| `make client`                | Regenerate `packages/api-client` from the hub's OpenAPI            |
+| `make migration m="message"` | New Alembic migration                                              |
+| `make eval-ai`               | AI evals against the real model (needs a key and a running hub)    |
+| `make down`                  | Stop the infrastructure containers                                 |
 
 The full, current list is under "Commands" in [`CLAUDE.md`](CLAUDE.md).
 

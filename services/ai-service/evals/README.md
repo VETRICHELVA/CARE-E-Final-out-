@@ -32,8 +32,9 @@ Before matching, lowercase the text and remove commas between digits (`1,000` â†
 - Refs: `$s1.shortage` (Hospital A's `SURG-KIT-A` shortage), `$s1.recommendation` (the BUY
   recommendation after step 4), `$s1.shipment` (the Supplier Y shipment).
 - `scenario1_steps.py` drives the hub there through its own services (run in the hub's
-  environment against the hub's database): `--to 2` resets Scenario 1 (`e2e/seed/scenario1.py`)
-  and reports the shortage; `--to 4` declines B's request **without** a reason (so B's decline
+  environment against the hub's database): `--to 2` prepares Scenario 1 (`e2e/seed/scenario1.py`,
+  which adds missing seed rows but never resets stock: start from `make demo-reset`) and reports
+  the shortage; `--to 4` declines B's request **without** a reason (so B's decline
   has `reason_source=SYSTEM` and c08 sees "No reason was entered.") and waits for the BUY;
   `--to 7` approves it, Supplier Y acknowledges and dispatches, SwiftMed delivers, and Hospital A
   receives and accepts 790 (residual 60). Each prints `{step, refs, tokens}`, the tokens being

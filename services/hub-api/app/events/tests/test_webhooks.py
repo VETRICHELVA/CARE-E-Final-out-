@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import net
 from app.audit.models import AuditLog
 from app.conftest import ClientFor, World
 from app.domain import webhooks as rules
@@ -25,6 +26,25 @@ pytestmark = pytest.mark.anyio
 T0 = datetime(2026, 10, 7, 6, 0, tzinfo=UTC)
 STATUS = EventType.SHORTAGE_STATUS_CHANGED
 HOOK = {"url": "https://hooks.example.test/care-e", "event_types": [STATUS]}
+PUBLIC_IP = "93.184.216.34"
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every receiver's name resolves to one public address (`.test` names never resolve in
+    real DNS, and a target that does not resolve is not called, S20)."""
+
+    async def resolve(host: str, port: int) -> list[str]:
+        return [PUBLIC_IP]
+
+    monkeypatch.setattr(net, "resolve", resolve)
+
+
+def sent_to(request: httpx.Request) -> str:
+    """The URL a delivery was addressed to: it connects to the checked IP (`net.pin`) and
+    names the receiver in the Host header."""
+    assert request.url.host == PUBLIC_IP
+    return f"{request.url.scheme}://{request.headers['host']}{request.url.raw_path.decode()}"
 
 
 class Receiver:
@@ -163,7 +183,7 @@ async def test_an_event_goes_only_to_subscriptions_of_addressed_orgs_and_wanted_
     receiver = Receiver(200)
     async with receiver.client() as http:
         assert await webhooks.deliver_due(session, http, now=T0) == 1
-    assert [str(r.url) for r in receiver.requests] == [a_hook["url"]]
+    assert [sent_to(r) for r in receiver.requests] == [a_hook["url"]]
     (delivered,) = await deliveries(session, a_hook["id"])
     assert (delivered.event_id, delivered.status, delivered.response_code) == (
         event.id,
