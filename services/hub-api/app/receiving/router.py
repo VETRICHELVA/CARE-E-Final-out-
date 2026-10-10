@@ -34,7 +34,8 @@ async def record_receipt(
     shipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or
     PARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other
     org; 409 unless DELIVERED; 400 if received > expected, accepted + rejected ≠ received,
-    an open cold-chain excursion has no inspection note, or accepted stock has no expiry."""
+    a shipment with an excursion on record has no inspection note, or accepted stock has
+    no expiry."""
     receipt = await service.record(session, user, shipment_id, body)
     out = await receipt_out(session, receipt)
     await session.commit()

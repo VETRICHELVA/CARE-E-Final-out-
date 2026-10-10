@@ -31,7 +31,8 @@ def receipt_problem(expected: int, received: int, accepted: int, rejected: int) 
 
 
 def inspection_note_missing(open_excursion: bool, note: str | None) -> bool:
-    """§9: a shipment with an open cold-chain excursion needs an inspection note."""
+    """§9: a shipment with any cold-chain EXCURSION on record (even one since RECOVERED)
+    needs an inspection note."""
     return open_excursion and not (note or "").strip()
 
 

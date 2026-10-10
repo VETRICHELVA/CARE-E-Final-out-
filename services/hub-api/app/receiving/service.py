@@ -6,7 +6,8 @@ inspection note. That moves the shipment DELIVERED -> RECONCILED, adds the accep
 the receiver's inventory as a new batch, and, for a purchase order's shipment, moves the
 order DISPATCHED -> DELIVERED. Once every shipment of the shortage has a receipt, the
 shortage is reconciled: IN_FULFILLMENT -> RECEIVED -> RESOLVED, or PARTIALLY_RESOLVED with a
-residual shortage for what was not accepted, which starts matching at once.
+residual shortage for what was not accepted, which starts matching at once without the
+parent's excluded sources.
 
 Lock order, as everywhere: the shortage, then the shipment (then the purchase order). Taking
 the shortage first also serializes the receipts of a split's shipments, so exactly one of
@@ -45,6 +46,7 @@ from app.shipments import service as shipments
 from app.shipments.models import Shipment
 from app.shortages import service as shortages
 from app.shortages.models import Shortage, Trigger
+from app.trust import service as trust
 
 RECEIPT = "receipt"
 RECONCILIATION = "reconciliation"
@@ -260,6 +262,9 @@ async def _reconcile(session: AsyncSession, shortage: Shortage, now: datetime) -
     ]
     session.add_all(rows)
     await session.flush()
+    # §12 (S19): credits for what the receiver accepted on each transfer, and every source's
+    # score recomputed, before the residual (if any) is matched with the new scores.
+    await trust.on_reconciled(session, shortage, now)
     cause = rules.reconciled_reason(shortage.shortfall, accepted, result.residual_qty)
     for row in rows:
         await audit.record(
@@ -285,8 +290,21 @@ async def _reconcile(session: AsyncSession, shortage: Shortage, now: datetime) -
         },
     )
     if residual is not None:
+        # §9: the residual inherits the parent's exclusions (sources that declined, had a
+        # recommendation rejected or rejected a purchase order for it).
+        # A CRITICAL run's parallel request that declined (S19) is excluded too.
+        parent_run = await shortages.latest_run(session, shortage.id)
+        excluded = {
+            *(parent_run.excluded_org_ids if parent_run else ()),
+            *await shortages.declined_org_ids(session, shortage.id),
+        }
         await shortages.run_match(
-            session, residual, Trigger.CREATE, reason=rules.RESIDUAL_CREATED, now=now
+            session,
+            residual,
+            Trigger.CREATE,
+            reason=rules.RESIDUAL_CREATED,
+            exclude=sorted(excluded),
+            now=now,
         )
 
 

@@ -7,10 +7,12 @@ from app.domain.costing import HaversineProvider, Point
 from app.domain.fulfillment import (
     ACTIVE_SHIPMENT,
     DRIVER_TRANSITIONS,
+    PICKUP_RECORDED,
     SHIPMENT_TRANSITIONS,
     ShipmentStatus,
     cold_chain_vehicle_refusal,
     driver_may_move,
+    short_pickup,
 )
 
 S = ShipmentStatus
@@ -53,6 +55,21 @@ def test_a_cold_chain_shipment_needs_a_cold_chain_vehicle() -> None:
     assert cold_chain_vehicle_refusal(True, False, "KA-1") == (
         "This shipment needs a cold-chain vehicle; vehicle KA-1 has no cold chain."
     )
+
+
+def test_pickup_draws_down_the_held_qty_when_the_batch_records_it() -> None:
+    assert short_pickup(2500, 850) == (850, PICKUP_RECORDED)
+    assert short_pickup(850, 850) == (850, PICKUP_RECORDED)
+
+
+def test_a_short_pickup_draws_down_only_what_the_batch_records_and_says_so() -> None:
+    assert short_pickup(800, 850) == (
+        800,
+        "The driver recorded the pickup of this shipment. The batch recorded 800 on hand, "
+        "less than the 850 held, so 800 was drawn down.",
+    )
+    assert short_pickup(0, 850)[0] == 0
+    assert short_pickup(-5, 850)[0] == 0  # never below 0
 
 
 @pytest.mark.anyio

@@ -134,35 +134,69 @@ def _source(line: dict[str, Any]) -> rules.Source:
 async def _left_out(
     session: AsyncSession, shortage: Shortage, run: MatchRun, names: dict[uuid.UUID, str]
 ) -> list[tuple[str, str]]:
-    """Why each org excluded from this shortage's matching was left out (§7 step 6)."""
+    """Why each org excluded from this shortage's matching was left out (§7 step 6). A
+    residual inherits its parent's exclusions (§9), so the reason may come from an earlier
+    shortage it continues."""
+    lineage = await _lineage(session, shortage)
     out = []
     for org_id in run.excluded_org_ids:
-        rejected_po = await session.scalar(
-            select(PurchaseOrder.id).where(
-                PurchaseOrder.shortage_id == shortage.id,
-                PurchaseOrder.supplier_org_id == org_id,
-                PurchaseOrder.status == "REJECTED",
-            )
-        )
-        statuses = set(
-            await session.scalars(
-                select(SourceRequest.status).where(
-                    SourceRequest.shortage_id == shortage.id,
-                    SourceRequest.source_org_id == org_id,
-                    SourceRequest.responded_at.is_(None) | (SourceRequest.status == "DECLINED"),
-                )
-            )
-        )
-        if rejected_po:
-            why = "rejected the purchase order"
-        elif RequestStatus.DECLINED in statuses:
-            why = "declined the request"
-        elif RequestStatus.EXPIRED in statuses:
-            why = "did not answer the request in time"
-        else:
-            why = "left out after an earlier request"
-        out.append((names.get(org_id, str(org_id)), why))
+        why = None
+        for shortage_id in lineage:
+            why = await _why_excluded(session, shortage_id, org_id)
+            if why is not None:
+                if shortage_id != shortage.id:
+                    why += " for the earlier shortage"
+                break
+        out.append((names.get(org_id, str(org_id)), why or "left out after an earlier request"))
     return out
+
+
+async def _lineage(session: AsyncSession, shortage: Shortage) -> list[uuid.UUID]:
+    """The shortage, then its parent, grandparent and so on (residuals, §9)."""
+    ids = [shortage.id]
+    parent = shortage.parent_shortage_id
+    while parent is not None and parent not in ids:
+        ids.append(parent)
+        parent = await session.scalar(
+            select(Shortage.parent_shortage_id).where(Shortage.id == parent)
+        )
+    return ids
+
+
+async def _why_excluded(
+    session: AsyncSession, shortage_id: uuid.UUID, org_id: uuid.UUID
+) -> str | None:
+    rejected_po = await session.scalar(
+        select(PurchaseOrder.id).where(
+            PurchaseOrder.shortage_id == shortage_id,
+            PurchaseOrder.supplier_org_id == org_id,
+            PurchaseOrder.status == "REJECTED",
+        )
+    )
+    if rejected_po:
+        return "rejected the purchase order"
+    statuses = set(
+        await session.scalars(
+            select(SourceRequest.status).where(
+                SourceRequest.shortage_id == shortage_id,
+                SourceRequest.source_org_id == org_id,
+                SourceRequest.responded_at.is_(None) | (SourceRequest.status == "DECLINED"),
+            )
+        )
+    )
+    if RequestStatus.DECLINED in statuses:
+        return "declined the request"
+    rejected = await session.scalars(
+        select(Recommendation.lines).where(
+            Recommendation.shortage_id == shortage_id,
+            Recommendation.status == RecStatus.REJECTED,
+        )
+    )
+    if any(str(line["source_org_id"]) == str(org_id) for lines in rejected for line in lines):
+        return "was in a recommendation the requester rejected"
+    if RequestStatus.EXPIRED in statuses:
+        return "did not answer the request in time"
+    return None
 
 
 async def create(
@@ -187,9 +221,22 @@ async def create(
         )
     )
     names = await _names(session, {c.source_org_id for c in candidates} | set(run.excluded_org_ids))
-    lines = [await _line(session, shortage, x, names, now) for x in plan["lines"]]
+    planned, asked = plan["lines"], plan.get("parallel") or []
+    if asked:
+        # CRITICAL parallel requests (S19): the line is the source that accepted first.
+        holding = {
+            str(c)
+            for c in await session.scalars(
+                select(SourceRequest.candidate_id).where(
+                    SourceRequest.shortage_id == shortage.id,
+                    SourceRequest.status == RequestStatus.TENTATIVE_HOLD,
+                )
+            )
+        }
+        planned = [x for x in asked if str(x["candidate_id"]) in holding]
+    lines = [await _line(session, shortage, x, names, now) for x in planned]
     alternatives = [await _line(session, shortage, x, names, now) for x in plan["alternatives"]]
-    used = {x["candidate_id"] for x in (*lines, *alternatives)}
+    used = {str(x["candidate_id"]) for x in (*lines, *alternatives, *asked)}
     rejected = sorted(
         (
             rules.Rejected(
@@ -210,6 +257,7 @@ async def create(
         other_eligible=sum(c.eligible and str(c.id) not in used for c in candidates),
         rejected=rejected,
         left_out=await _left_out(session, shortage, run, names),
+        asked_at_once=len(asked),
     )
     rec = Recommendation(
         id=uuid.uuid4(),
@@ -480,7 +528,9 @@ async def reject(
     now: datetime | None = None,
 ) -> Recommendation:
     """REJECTED (reason optional), then end the requests, release every hold and re-run
-    matching (§7 step 6). The shortage goes AWAITING_DECISION -> MATCHING."""
+    matching (§7 step 6) without the rejected plan's sources (its hospital lines, or the
+    supplier of a BUY), which stay out of this shortage's later runs as a decline does.
+    The shortage goes AWAITING_DECISION -> MATCHING."""
     now = now or datetime.now(UTC)
     rec, shortage = await _decidable(session, user, rec_id, RecStatus.REJECTED, now)
     typed = _typed(reason)
@@ -489,9 +539,19 @@ async def reject(
     )
     await _end_requests(session, shortage, rules.REJECTED)
     await source_requests.release_and_rematch(
-        session, shortage, rules.REJECTED, trigger=Trigger.MANUAL, now=now
+        session,
+        shortage,
+        rules.REJECTED,
+        trigger=Trigger.MANUAL,
+        exclude=rejected_sources(rec),
+        now=now,
     )
     return rec
+
+
+def rejected_sources(rec: Recommendation) -> list[uuid.UUID]:
+    """The orgs of a rejected recommendation's lines (§7 step 6)."""
+    return sorted({uuid.UUID(str(line["source_org_id"])) for line in rec.lines}, key=str)
 
 
 async def escalate(

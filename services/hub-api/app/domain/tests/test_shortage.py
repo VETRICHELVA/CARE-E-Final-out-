@@ -15,11 +15,12 @@ def test_shortfall_is_never_negative(required: int, local: int) -> None:
     assert shortfall(required, local) == 0
 
 
-CANCELLABLE = {Status.OPEN, Status.MATCHING, Status.AWAITING_DECISION}
+# S17 decision: a chat DRAFT may be cancelled too (business-rules.md §8).
+CANCELLABLE = {Status.DRAFT, Status.OPEN, Status.MATCHING, Status.AWAITING_DECISION}
 
 
 @pytest.mark.parametrize("status", list(Status))
-def test_cancel_only_from_open_matching_or_awaiting_decision(status: Status) -> None:
+def test_cancel_only_from_draft_open_matching_or_awaiting_decision(status: Status) -> None:
     shortage = SimpleNamespace(status=status.value)
     if status in CANCELLABLE:
         assert transition(shortage, Status.CANCELLED, TRANSITIONS) == status

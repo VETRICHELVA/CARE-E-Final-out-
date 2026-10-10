@@ -1,6 +1,19 @@
-import { act, cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { incoming, meAs, NOW, page, products, shortage } from "../test/fixtures";
+import {
+  forecastB,
+  forecastE,
+  incoming,
+  meAs,
+  NOW,
+  offerFromB,
+  ORG_A,
+  ownReliability,
+  page,
+  products,
+  productsWithIv,
+  shortage,
+} from "../test/fixtures";
 import { fakeHub, hubError, renderAs } from "../test/hub";
 import { DashboardPage } from "./dashboard";
 
@@ -57,11 +70,15 @@ describe("Dashboard", () => {
   });
 
   describe("incoming requests awaiting response", () => {
+    // A store manager also keeps the stock, so the S18 cards ask for forecasts and surplus.
     const hub = (requests: unknown) =>
       fakeHub({
         "GET /api/v1/shortages": page([]),
         "GET /api/v1/products": products,
         "GET /api/v1/source-requests": requests,
+        "GET /api/v1/forecasts": page([]),
+        "GET /api/v1/surplus/incoming": page([]),
+        "GET /api/v1/orgs/{id}/reliability": ownReliability,
       });
 
     it("lists each request with product, qty, requester and a countdown", async () => {
@@ -109,6 +126,112 @@ describe("Dashboard", () => {
       await screen.findByText("No open shortages");
       expect(screen.queryByText("Incoming requests awaiting response")).toBeNull();
       expect(fake.to("GET", "/api/v1/source-requests")).toHaveLength(0);
+    });
+  });
+
+  describe("forecasts and surplus (S18)", () => {
+    const hub = (routes: Record<string, unknown>) =>
+      fakeHub({
+        "GET /api/v1/shortages": page([]),
+        "GET /api/v1/products": productsWithIv,
+        "GET /api/v1/source-requests": page([]),
+        "GET /api/v1/forecasts": page([]),
+        "GET /api/v1/surplus/incoming": page([]),
+        ...routes,
+      });
+
+    it("suggests offering an expiry-risk batch's excess and counts the risks", async () => {
+      hub({ "GET /api/v1/forecasts": page([forecastB]) });
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      expect((await screen.findByTestId("expiry-risk-count")).textContent).toBe("1");
+      const list = screen.getByRole("list", { name: "Expiry-risk suggestions" });
+      expect(list.textContent).toContain("Offer 300 each to the network: IV Cannula 20G");
+      expect(within(list).getByTestId("synthetic").textContent).toBe("Synthetic history");
+    });
+
+    it("shows the predicted stock-out and the surplus matched to this hospital", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.parse("2026-10-08T06:00:00Z"));
+      hub({
+        "GET /api/v1/forecasts": page([forecastE]),
+        "GET /api/v1/surplus/incoming": page([offerFromB]),
+      });
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      const stockouts = await screen.findByRole("list", { name: "Predicted stock-outs" });
+      expect(within(stockouts).getByTestId("stockout").textContent).toContain("(in 4 days)");
+      const offers = await screen.findByRole("list", { name: "Surplus offered to you" });
+      expect(offers.textContent).toContain("Hospital B offers 300 each IV Cannula 20G");
+      expect(offers.textContent).toContain("Expires in 30–59 days");
+      expect(offers.textContent).toContain("Matches your predicted stock-out on");
+    });
+
+    it("isn't shown without inventory.edit", async () => {
+      const fake = hub({});
+      renderAs(meAs("REQUESTER"), <DashboardPage />);
+      await screen.findByText("No open shortages");
+      expect(fake.to("GET", "/api/v1/forecasts")).toHaveLength(0);
+      expect(fake.to("GET", "/api/v1/surplus/incoming")).toHaveLength(0);
+    });
+  });
+
+  describe("own reliability (S19)", () => {
+    const hub = (reliability: unknown) =>
+      fakeHub({
+        "GET /api/v1/shortages": page([]),
+        "GET /api/v1/products": products,
+        "GET /api/v1/source-requests": page([]),
+        "GET /api/v1/orgs/{id}/reliability": reliability,
+      });
+
+    it("shows the hub's score with its components on hover, and the credits", async () => {
+      const fake = hub(ownReliability);
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      const badge = await screen.findByTestId("reliability");
+      expect(badge.textContent).toBe("93");
+      expect(screen.getByTestId("credits").textContent).toBe("80");
+      expect(fake.to("GET", `/api/v1/orgs/${ORG_A}/reliability`).length).toBeGreaterThan(0);
+      fireEvent.mouseEnter(badge);
+      const tip = await screen.findByRole("tooltip");
+      expect(within(tip).getByText("Acceptance rate: 100%")).toBeTruthy();
+      expect(within(tip).getByText("On-time delivery: 100%")).toBeTruthy();
+      expect(within(tip).getByText("Discrepancy rate: 5.3%")).toBeTruthy();
+      expect(within(tip).getByText("Response speed: 80% (median answer in 3 min)")).toBeTruthy();
+      fireEvent.mouseLeave(badge.parentElement!);
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    });
+
+    it("says when the default score applies", async () => {
+      hub({
+        ...ownReliability,
+        score: 70,
+        has_history: false,
+        acceptance_rate: null,
+        response_speed: null,
+        median_response_minutes: null,
+        on_time_rate: null,
+        discrepancy_rate: null,
+        computed_at: null,
+        credits: 0,
+      });
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      expect((await screen.findByTestId("reliability")).textContent).toBe("70");
+      expect(
+        screen.getByText("Not enough history yet, so the default score applies."),
+      ).toBeTruthy();
+      expect(screen.getByTestId("credits").textContent).toBe("0");
+    });
+
+    it("shows the hub's error", async () => {
+      hub(hubError(500, "internal_error", "Scores are down."));
+      renderAs(meAs("STORE_MANAGER"), <DashboardPage />);
+      expect((await screen.findByRole("alert")).textContent).toContain("Scores are down.");
+    });
+
+    it("isn't asked for without source_request.respond", async () => {
+      const fake = hub(ownReliability);
+      renderAs(meAs("REQUESTER"), <DashboardPage />);
+      await screen.findByText("No open shortages");
+      expect(fake.to("GET", `/api/v1/orgs/${ORG_A}/reliability`)).toHaveLength(0);
     });
   });
 });

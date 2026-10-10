@@ -9,10 +9,12 @@ dependencies = [
     "asyncpg>=0.31.0",
     "fastapi>=0.142.2",
     "httpx>=0.28.1",
+    "ortools==9.15.6755",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.3",
+    "statsmodels==0.15.0",
     "uvicorn>=0.54.0",
 ]
 
@@ -32,3 +34,9 @@ strict = true
 [tool.pytest.ini_options]
 testpaths = ["tests", "app"]
 pythonpath = ["."]
+
+[[tool.mypy.overrides]]
+# OR-Tools ships untyped .pyi files without a py.typed marker; statsmodels and pandas (S18)
+# ship no stubs: treat them as Any.
+module = ["ortools.*", "statsmodels.*", "pandas.*"]
+ignore_missing_imports = true

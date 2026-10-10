@@ -1,6 +1,7 @@
 // Audit tab on shortage detail (apps-ai-iot.md, hospital-web; S12): the org's own audit rows
-// for the shortage and the records made for it (source requests, the current recommendation,
-// purchase orders, shipments), newest first. Shown as recorded: a USER reason is the user's own
+// for the shortage and every record the hub made for it (`GET /shortages/{id}/audit`: match
+// runs, source requests, recommendations, purchase orders, shipments, receipts,
+// reconciliations and received batches), newest first. Shown as recorded: a USER reason is the user's own
 // words, a SYSTEM one the hub's; a row mirrored from another org (business-rules.md §10) is that
 // org's action, not the system's. Needs `audit.read`.
 import type { ReactNode } from "react";
@@ -10,12 +11,9 @@ import {
   type Shortage,
   type ShipmentDetail,
   type SourceRequest,
-  useAuditTrail,
-  useCurrentRecommendationId,
-  useLatestRun,
-  useRecommendation,
+  useLatestRecommendation,
   useShipmentDetails,
-  useShortageRecordRows,
+  useShortageAudit,
 } from "../api";
 import { RecordedReason } from "../components/page";
 import { ENTITY_LABELS, isMirrored, statusLabel } from "../display";
@@ -32,7 +30,11 @@ function describe(row: AuditRow) {
     return to ? `${what} created (${statusLabel(to)})` : `${what} created`;
   if (row.action === `${row.entity}.status_changed` && from && to)
     return `${what}: ${statusLabel(from)} → ${statusLabel(to)}`;
-  return `${what}: ${row.action}`;
+  // e.g. "receipt.recorded" → "Receipt recorded"
+  const verb = row.action.startsWith(`${row.entity}.`)
+    ? row.action.slice(row.entity.length + 1).replaceAll("_", " ")
+    : null;
+  return verb ? `${what} ${verb}` : `${what}: ${row.action}`;
 }
 
 type Context = {
@@ -79,34 +81,20 @@ function Who({ row, ctx }: { row: AuditRow; ctx: Context }) {
 }
 
 export function ShortageAudit({ shortage }: { shortage: Shortage }) {
+  const trail = useShortageAudit(shortage.id);
   const requests = useShortageRequests(shortage.id);
-  const run = useLatestRun(shortage.id);
-  const current = useCurrentRecommendationId(shortage.id, run.data?.id);
-  const rec = useRecommendation(current.id);
-  const related = useShortageRecordRows(shortage.id);
-  const shipmentIds = related.shipments.map((row) => row.entity_id);
+  const rec = useLatestRecommendation(shortage.id);
+  const rows = trail.data ?? [];
+  const shipmentIds = [
+    ...new Set(rows.filter((r) => r.entity === "shipment").map((r) => r.entity_id)),
+  ];
   const shipments = useShipmentDetails(shipmentIds);
   const requestRows = requests.data?.pages.flatMap((p) => p.items) ?? [];
 
-  const trail = useAuditTrail([
-    { entity: "shortage", id: shortage.id },
-    ...requestRows.map((r) => ({ entity: "source_request", id: r.id })),
-    ...(current.id ? [{ entity: "recommendation", id: current.id }] : []),
-    ...related.orders.map((row) => ({ entity: "purchase_order", id: row.entity_id })),
-    ...shipmentIds.map((id) => ({ entity: "shipment", id })),
-  ]);
-
-  const error = requests.error ?? run.error ?? current.error ?? related.error ?? trail.error;
+  const error = trail.error ?? requests.error;
   if (error) return <ErrorState error={error} />;
-  if (
-    requests.isPending ||
-    run.isPending ||
-    current.isPending ||
-    related.isPending ||
-    trail.isPending
-  )
-    return <Loading label="Loading audit trail…" />;
-  if (trail.rows.length === 0) return <EmptyState title="No audit rows yet" />;
+  if (trail.isPending || requests.isPending) return <Loading label="Loading audit trail…" />;
+  if (rows.length === 0) return <EmptyState title="No audit rows yet" />;
 
   // Names of the other orgs involved, from what the hub already showed this org.
   const orgNames = new Map<string, string>();
@@ -121,8 +109,9 @@ export function ShortageAudit({ shortage }: { shortage: Shortage }) {
     requests: new Map(requestRows.map((r) => [r.id, r])),
     shipments: new Map(shipments.map((s) => [s.id, s])),
     orderSupplier: new Map(
-      related.orders.flatMap((row) => {
-        const supplier = str(row.after?.supplier_org_id);
+      rows.flatMap((row) => {
+        const supplier =
+          row.action === "purchase_order.created" ? str(row.after?.supplier_org_id) : undefined;
         return supplier ? [[row.entity_id, supplier] as const] : [];
       }),
     ),
@@ -131,7 +120,7 @@ export function ShortageAudit({ shortage }: { shortage: Shortage }) {
 
   return (
     <ol aria-label="Audit trail" className="divide-y rounded-md border">
-      {trail.rows.map((row) => (
+      {rows.map((row) => (
         <li
           key={row.id}
           data-testid="audit-row"

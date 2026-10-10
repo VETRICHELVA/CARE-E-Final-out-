@@ -10,6 +10,7 @@ from app.auth.capabilities import Capability
 from app.auth.deps import CurrentUser, org_scoped, require
 from app.auth.models import User
 from app.catalog.models import Product
+from app.coldchain import service as coldchain_service
 from app.db import SessionDep
 from app.domain.fulfillment import RouteProvider, ShipmentStatus, StopType
 from app.orgs.models import Organization
@@ -41,9 +42,12 @@ Dispatcher = Annotated[User, Depends(require(Capability.SHIPMENT_ASSIGN))]
 DriverUser = Annotated[User, Depends(require(Capability.SHIPMENT_UPDATE_STATUS))]
 
 
-async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[ShipmentOut]:
+async def _present(
+    session: AsyncSession, user: User, rows: Sequence[Shipment]
+) -> list[ShipmentOut]:
     if not rows:
         return []
+    coldchain = await coldchain_service.summaries(session, user, rows)
     org_ids = {o for s in rows for o in (s.from_org_id, s.to_org_id, s.carrier_org_id) if o}
     names: dict[uuid.UUID, str] = {
         org_id: name
@@ -115,6 +119,7 @@ async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[Ship
                 route_provider=RouteProvider(s.route_provider) if s.route_provider else None,
                 pickup=stops.get((s.id, StopType.PICKUP)),
                 drop=stops.get((s.id, StopType.DROP)),
+                coldchain=coldchain.get(s.id),
                 created_at=s.created_at,
                 updated_at=s.updated_at,
             )
@@ -125,8 +130,8 @@ async def _present(session: AsyncSession, rows: Sequence[Shipment]) -> list[Ship
 async def _detail(session: AsyncSession, user: User, shipment: Shipment) -> ShipmentDetailOut:
     await session.flush()
     await session.refresh(shipment)  # updated_at is set by the database
-    (base,) = await _present(session, [shipment])
-    last = await service.last_location(session, shipment.id)
+    (base,) = await _present(session, user, [shipment])
+    last = await service.last_location(session, shipment)
     receipt = None
     if user.org_id == shipment.to_org_id:  # the receiver's record (CLAUDE.md rule 6)
         row = await receiving_service.receipt_for(session, shipment.id)
@@ -173,20 +178,22 @@ async def list_shipments(
         stmt = stmt.where(Shipment.from_org_id == user.org_id)
     if assigned_to_me:
         driver = await service.driver_of(session, user)
-        stmt = stmt.where(Shipment.driver_id == (driver.id if driver else None))
+        if driver is None:  # never `driver_id IS NULL`: that would list unassigned shipments
+            return Page[ShipmentOut](items=[], next_cursor=None)
+        stmt = stmt.where(Shipment.driver_id == driver.id)
     rows, next_cursor = await paginate(
         session, stmt, Shipment.created_at, Shipment.id, limit, cursor, newest_first=True
     )
-    return Page[ShipmentOut](items=await _present(session, rows), next_cursor=next_cursor)
+    return Page[ShipmentOut](items=await _present(session, user, rows), next_cursor=next_cursor)
 
 
 @router.get("/shipments/{shipment_id}")
 async def get_shipment(
     shipment_id: uuid.UUID, user: CurrentUser, session: SessionDep
 ) -> ShipmentDetailOut:
-    """One shipment with its route geometry, status history and last driver location.
-    403 unless the caller's org is involved (or it is unassigned and the caller is a
-    logistics org)."""
+    """One shipment with its route geometry, status history and last driver location (only
+    a ping recorded since the current assignment; none while CREATED). 403 unless the
+    caller's org is involved (or it is unassigned and the caller is a logistics org)."""
     return await _detail(session, user, await service.get_visible(session, user, shipment_id))
 
 
@@ -197,7 +204,8 @@ async def assign_shipment(
     """CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for
     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
-    409 unless CREATED."""
+    409 unless CREATED, and 409 `conflict` when the held stock is at more than one of the
+    source's facilities (one pickup per shipment). Any device on it comes off."""
     shipment = await service.assign(
         session,
         user,
@@ -215,7 +223,8 @@ async def assign_shipment(
 async def unassign_shipment(
     shipment_id: uuid.UUID, user: Dispatcher, session: SessionDep, body: ReasonIn | None = None
 ) -> ShipmentDetailOut:
-    """ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED."""
+    """ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED. Any
+    device on it comes off."""
     shipment = await service.unassign(
         session, user, shipment_id, reason=body.reason if body else None
     )
@@ -230,7 +239,8 @@ async def update_shipment_status(
 ) -> ShipmentDetailOut:
     """The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->
     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
-    on_hand and consumes its FIRM hold."""
+    on_hand and consumes its FIRM hold; a batch recording less than its hold is drawn down
+    only by what it records (never below 0)."""
     shipment = await service.move(session, user, shipment_id, body.status, reason=body.reason)
     out = await _detail(session, user, shipment)
     await session.commit()

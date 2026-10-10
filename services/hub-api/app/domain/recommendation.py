@@ -116,10 +116,13 @@ def explain(
     other_eligible: int,
     rejected: Sequence[Rejected],
     left_out: Sequence[tuple[str, str]] = (),
+    asked_at_once: int = 0,
 ) -> str:
     """The deterministic explanation of a recommendation. It always names the BUY
     alternative (or says there is none). `left_out` is (name, why) for orgs excluded from
-    this shortage's matching after an earlier request ended."""
+    this shortage's matching after an earlier request ended. `asked_at_once` is how many
+    sources a CRITICAL TRANSFER asked in parallel (S19); the line is the one that accepted
+    first, and the others asked are not counted in `other_eligible`."""
     parts: list[str] = []
     if rec_type == TRANSFER:
         parts.append(f"{_hospital(lines[0])}.")
@@ -138,6 +141,11 @@ def explain(
     else:
         raise ValueError(f"Unknown recommendation type {rec_type}.")
 
+    if rec_type == TRANSFER and asked_at_once > 1:
+        parts.append(
+            f"{asked_at_once} sources were asked at once because the shortage is CRITICAL; "
+            f"{lines[0].name} accepted first."
+        )
     basis = "earliest arrival" if critical else "lowest landed cost"
     priority = "CRITICAL" if critical else "ROUTINE"
     parts.append(f"Sources are ranked by {basis} because the shortage is {priority}.")

@@ -99,3 +99,14 @@ def test_all_ready() -> None:
     assert sr.all_ready([held, held])
     assert not sr.all_ready([held, asked])
     assert not sr.all_ready([])
+
+
+def test_all_ready_for_critical_parallel_requests() -> None:
+    """§7 step 2 (S19): the plan needs the one source that accepted first."""
+    R = RequestStatus
+    assert sr.all_ready([R.TENTATIVE_HOLD, R.SUPERSEDED, R.SUPERSEDED], parallel=True)
+    assert sr.all_ready([R.DECLINED, R.TENTATIVE_HOLD, R.EXPIRED], parallel=True)
+    assert not sr.all_ready([R.TENTATIVE_HOLD, R.REQUESTED], parallel=True)
+    assert not sr.all_ready([R.DECLINED, R.EXPIRED, R.SUPERSEDED], parallel=True)
+    assert not sr.all_ready([], parallel=True)
+    assert sr.ANOTHER_SOURCE_FIRST == "Another source confirmed first."

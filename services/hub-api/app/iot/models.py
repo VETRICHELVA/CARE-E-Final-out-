@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Entity
@@ -44,6 +44,8 @@ class SensorReading(Entity):
     __table_args__ = (
         UniqueConstraint("device_id", "ts"),
         CheckConstraint("battery BETWEEN 0 AND 100", name="battery"),
+        # A shipment's readings by time: the cold-chain rules and GET /shipments/{id}/coldchain.
+        Index("ix_sensor_reading_shipment_ts", "shipment_id", "ts"),
     )
 
     device_id: Mapped[str] = mapped_column(ForeignKey("device.device_id"))

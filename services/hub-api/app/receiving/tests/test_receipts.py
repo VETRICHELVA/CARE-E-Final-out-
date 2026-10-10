@@ -134,6 +134,39 @@ async def test_scenario_1_short_delivery_opens_a_residual_of_60_that_is_matching
     }
 
 
+async def test_a_residual_inherits_the_parents_excluded_sources(
+    session: AsyncSession,
+    world: World,
+    shortage: Shortage,
+    s1: Orgs,
+    po_delivered: Shipment,
+    receiver: httpx.AsyncClient,
+    client_for: ClientFor,
+) -> None:
+    """§9: Hospital B declined the parent (Scenario 1 step 3), so the residual of 60 does
+    not ask B again; its explanation says why B was left out."""
+    other = await client_for(world.users["b.STORE_MANAGER"])
+    body = receipt(790, 790, expiry_date="2027-03-31")
+    assert (await other.post(f"/shipments/{po_delivered.id}/receipt", json=body)).status_code == 403
+    r = await receiver.post(f"/shipments/{po_delivered.id}/receipt", json=body)
+    assert r.status_code == 201, r.text
+    again = await receiver.post(f"/shipments/{po_delivered.id}/receipt", json=body)
+    assert again.status_code == 409
+
+    b, c = s1["Hospital B"], s1["Hospital C"]
+    (residual,) = await children_of(session, shortage)
+    (run,) = await session.scalars(select(MatchRun).where(MatchRun.shortage_id == residual.id))
+    assert run.excluded_org_ids == [b.id]
+    (sr,) = await requests_of(session, residual)
+    assert (sr.source_org_id, sr.qty) == (c.id, 60)  # C's 100 transferable covers 60
+
+    manager_c = await client_for(await add_user(session, c, "STORE_MANAGER", "m@c.test"))
+    r = await manager_c.post(f"/source-requests/{sr.id}/accept", json={})
+    assert r.status_code == 200, r.text
+    rec = await open_rec(session, residual)
+    assert "Hospital B (declined the request for the earlier shortage)" in rec.explanation
+
+
 async def test_scenario_1_audit_rows(
     session: AsyncSession,
     world: World,
@@ -421,9 +454,9 @@ async def test_an_open_excursion_needs_an_inspection_note(
 
 
 async def test_without_an_excursion_no_note_is_needed(
-    delivered: Shipment, receiver: httpx.AsyncClient
+    session: AsyncSession, delivered: Shipment, receiver: httpx.AsyncClient
 ) -> None:
-    assert await shipments.has_open_excursion(None, delivered) is False  # type: ignore[arg-type]
+    assert await shipments.has_open_excursion(session, delivered) is False
     r = await receiver.get(f"/shipments/{delivered.id}")
     assert (r.json()["inspection_note_required"], r.json()["receipt"]) == (False, None)
 

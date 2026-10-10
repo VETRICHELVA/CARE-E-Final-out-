@@ -14,7 +14,7 @@ transferable = max(0, on_hand − reserved − allocated − safety_stock − qu
 ```
 - A batch whose `expiry_date` is today or earlier counts as fully expired: transferable = 0.
 - A batch counts toward a shortage only if `days_to_expiry_at_delivery ≥ shortage.min_shelf_life_days`, where `days_to_expiry_at_delivery = (expiry_date − estimated_arrival_date).days`.
-- Active holds on a batch count as `reserved` for every other shortage.
+- Active holds on a batch count as `reserved` for every other shortage. A hold is active while TENTATIVE or FIRM; a RELEASED hold frees its stock, and a CONSUMED hold (drawn down at pickup together with `on_hand`, §9) no longer counts because the stock has left the batch.
 - Source-level transferable = the sum over that source's qualifying batches of the same product.
 - "Today" for expiry is the UTC date.
 - Verifying a batch records a VerificationEvent and sets `last_verified_at`. If `counted_qty` differs from `on_hand`, the count replaces `on_hand` (audited, before and after).
@@ -40,6 +40,7 @@ A candidate must pass every gate. Store each gate's result and a plain-language 
 - Hospital landed cost = qty × batch unit_cost_paise + transport + handling fee (`HANDLING_FEE_PCT`, default 2% of item value).
 - Supplier landed cost = qty × unit_price_paise + transport.
 - Supplier ETA = lead_time_hours + transport ETA.
+- Cold-chain maximum ride time (S16): a cold-chain shipment may spend at most `COLD_CHAIN_MAX_TRANSIT_HOURS` (default 4) between pickup and drop, counted from arriving at its pickup to arriving at its drop (so the handover allowance and every stop in between count). The route planner reports a shipment that cannot meet it as infeasible.
 
 ## 5. Ranking (eligible candidates only)
 - **CRITICAL:** earliest ETA → highest reliability score → lowest landed cost.
@@ -73,7 +74,7 @@ Timers are stored as deadlines in the database and enforced by arq jobs, so they
 5. The requester **approves**:
    - Transfer: holds become FIRM, requests become CONFIRMED, one Shipment per source (→ IN_FULFILLMENT).
    - Buy: a PurchaseOrder is created (→ IN_FULFILLMENT).
-6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun. Only a source that actively declined is excluded from this shortage's later runs: **declined → excluded; expired → not excluded** (a source that missed its response deadline can be asked again).
+6. A **decline, an expiry, a rejection or a supplier PO rejection** releases every related hold and starts a new MatchRun. A source that said no, or was said no to, is excluded from this shortage's later runs: **declined → excluded; recommendation rejected → its sources excluded; PO rejected → that supplier excluded; expired → not excluded** (a source that missed its response deadline can be asked again). When the requester rejects a recommendation, the re-run leaves out every source of the rejected plan: its hospital lines (TRANSFER, TRANSFER_SPLIT) or its supplier (BUY). The alternatives listed with it are not excluded. A residual shortage inherits these exclusions (§9).
 7. Receipt and reconciliation close it (§9).
 
 ## 8. State machines
@@ -92,6 +93,7 @@ Any transition not listed returns 409 `invalid_transition`.
 | RECEIVED | RESOLVED | Accepted = shortfall |
 | RECEIVED | PARTIALLY_RESOLVED | Accepted < shortfall (residual created) |
 | OPEN, MATCHING, AWAITING_DECISION | CANCELLED | Requester cancels (releases holds) |
+| DRAFT | CANCELLED | Requester cancels a chat draft (S17). A draft was never matched, so it has no source requests or holds and nothing is released |
 
 A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or MATCHING (else 409 `invalid_transition`), and returns 409 `conflict` while any source request for the shortage is still open (REQUESTED or TENTATIVE_HOLD): matching re-runs on its own when those requests are declined or expire.
 
@@ -105,17 +107,32 @@ A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or 
 | TENTATIVE_HOLD | CONFIRMED | Requester approves |
 | TENTATIVE_HOLD | EXPIRED | Hold deadline passed, or recommendation rejected/expired |
 
+**Hold**
+| From | To | Trigger |
+|---|---|---|
+| TENTATIVE | FIRM | Requester approves the recommendation |
+| TENTATIVE | RELEASED | Decline, expiry, rejection, superseded request or cancel (§7 step 6) |
+| FIRM | RELEASED | Allowed, but no flow releases a FIRM hold yet |
+| FIRM | CONSUMED | The driver records PICKED_UP: the batch's `on_hand` is drawn down with it (§9) |
+
+TENTATIVE and FIRM holds are active (§2). CONSUMED is not a release: the stock left with the shipment, so no waiting shortage re-runs for it. Hold rows are SYSTEM rows in the source org (§10).
+
 **Recommendation**: PENDING → APPROVED | REJECTED | ESCALATED | EXPIRED; ESCALATED → APPROVED | REJECTED | EXPIRED. Escalate notifies every APPROVER in the org.
 
-**PurchaseOrder**: SENT → ACKNOWLEDGED → DISPATCHED → DELIVERED; SENT or ACKNOWLEDGED → REJECTED.
+**PurchaseOrder**: SENT → ACKNOWLEDGED → DISPATCHED → DELIVERED; SENT or ACKNOWLEDGED → REJECTED. DISPATCHED → DELIVERED happens when the hospital records the receipt of the order's shipment (§9), as a SYSTEM row in the hospital's org mirrored into the supplier's.
 
 **Shipment**: CREATED → ASSIGNED → PICKED_UP → IN_TRANSIT → DELIVERED → RECONCILED. ASSIGNED → CREATED when unassigned.
+- PICKED_UP draws down the source batch and consumes its FIRM hold (§9). A batch that now records less `on_hand` than its hold (a short pickup) does not block it.
+- Limitation: one pickup stop per shipment (multi-stop pickups are not supported, including by the S16 route planner). Assigning a shipment whose FIRM holds sit at more than one of the source's facilities returns 409 `conflict`, "Stock is held at more than one of the source's facilities; a shipment can have only one pickup"; the route planner reports such a shipment as infeasible with the same reason instead of planning it.
+- Assign and unassign change the carrier, so they take any device (cold box) off the shipment. A device goes on a shipment only while its own org is the carrier (CLAUDE.md rule 6).
 
 ## 9. Receipt and reconciliation
 - Receipt records expected, received, accepted, rejected, and condition. Invariants: accepted + rejected = received; received ≤ expected.
-- If the shipment has an open cold-chain excursion, `inspection_note` is required before accepting.
+- If any cold-chain EXCURSION is on record for the shipment, even one that has since RECOVERED (§11: the excursion stays on record), `inspection_note` is required before accepting.
 - When every shipment for a shortage has a receipt: total accepted = shortfall → RESOLVED. Total accepted < shortfall → PARTIALLY_RESOLVED, and a residual Shortage is created with `qty_required = shortfall − accepted`, `qty_local_usable = 0`, the same product, priority and shelf-life minimum, `parent_shortage_id` set; it starts matching automatically.
-- Accepted stock is added to the receiver's inventory as a new batch. The source's on_hand and the FIRM hold are reduced at pickup.
+- The residual inherits its parent's excluded sources (`excluded_org_ids`): sources that declined, had a recommendation rejected, or had a purchase order rejected for the parent are not asked again for the residual (§7 step 6).
+- Accepted stock is added to the receiver's inventory as a new batch. The source's on_hand and the FIRM hold are reduced at pickup: `on_hand` drops by the hold's qty and the hold becomes CONSUMED.
+- Short pickup: if the batch then records less `on_hand` than the hold, pickup still goes ahead. It draws down only what the batch records (never below 0) and consumes the hold; the SYSTEM rows in the source org state the recorded figures (on hand before, held qty, qty drawn down). The hub does not claim what physically left: the shortfall surfaces when the receiver records what arrived, and reconciliation opens the residual as above.
 
 ## 10. Audit
 - Every state change above writes one AuditLog row in the same database transaction.
@@ -123,15 +140,26 @@ A manual match re-run (`POST /shortages/{id}/match`) is allowed only in OPEN or 
 - The system never writes statements about physical events that no one recorded.
 - Each row belongs to one org. A source request's row goes to the org of the user who acted (the source's accept or decline to the source org, the requester's cancel to the requester's org); a system change of a request (created, expired, superseded after a decline or expiry) to the requester's org. A hold's rows always go to the source org. A hold released because of another org's action is recorded as SYSTEM with a factual cause (e.g. "The requester cancelled the shortage."), never with the other org's user id or typed text.
 - A supplier's purchase-order actions (acknowledge, reject, dispatch, and the shipment created on dispatch) follow the same rule: the row is in the supplier's org with its user, mirrored into the hospital's org without the user's id.
+- A shipment transition is in the acting user's org, mirrored into the receiving (`to`) org without the user's id. The source's batch and hold changes at pickup are SYSTEM rows in the source org. A device taken off a shipment because assign or unassign changed the carrier is a SYSTEM row in the device's org ("The shipment's carrier changed, so the device was taken off it.").
 - A source's accept or decline is also mirrored into the requester's org (so the requester's own trail shows the answer, as in Scenario 1 step 8): the same action, reason and `reason_source`, with `actor_id` null and without `responded_by`.
 
 ## 11. Cold chain (S15)
 - An excursion = 2 consecutive readings outside the product's [temp_min_c, temp_max_c].
 - Device silent for 2 minutes while the shipment is IN_TRANSIT → DEVICE_SILENT event (warning).
 - Back in range for 2 consecutive readings → RECOVERED event; the excursion stays on record.
+- ColdChainEvents are append-only: an event on record is never revised or removed.
+- Late data: a reading that arrives dated at or before the shipment's last EXCURSION or RECOVERED on record never raises or changes an event dated at or before that event. Its batch is evaluated only after that event: an excursion or recovery its readings would have shown before it is not recorded (the events on record stand), and those readings count only as the run of consecutive readings leading into later readings.
+- Otherwise the events recorded are those of the readings in timestamp order, whatever their arrival order or batching.
 
 ## 12. Reliability and credits (S19)
-- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, where response_speed = max(0, 1 − median_response_minutes ÷ SLA minutes). Recomputed nightly and after each reconciliation.
+- score = 40 × acceptance_rate + 25 × on_time_rate + 20 × (1 − discrepancy_rate) + 15 × response_speed, rounded half up and clamped to 0–100. Recomputed nightly and after each reconciliation.
+- An org is scored from the components that apply to it. Its **answers** are:
+  - **Hospital** (unchanged since S19): its source requests. acceptance_rate = of the requests it answered or let expire unanswered, the share it accepted; a request still waiting, or superseded before the source answered, is not counted. Response time = minutes from the request's creation to the source's answer.
+  - **Supplier** (suppliers answer no source requests, so its purchase orders stand in for them): the purchase orders it has answered (moved out of SENT). acceptance_rate = acknowledged ÷ (acknowledged + rejected), where an order that ended REJECTED counts as rejected even if it was acknowledged first, and every other answered order as acknowledged; an order still SENT is not counted. Response time = minutes from the order being SENT to the supplier's first answer (ACKNOWLEDGED or REJECTED), as recorded in the audit log.
+- response_speed = max(0, 1 − median over the org's timed answers of (response minutes ÷ the §6 source response limit of that shortage's priority: 15 min CRITICAL, 4 h ROUTINE)). With one priority this is max(0, 1 − median_response_minutes ÷ that limit).
+- on_time_rate = of the org's shipments (as the `from` org) recorded DELIVERED, the share whose first recorded DELIVERED time is at or before the shortage's `required_by`.
+- discrepancy_rate = Σ discrepancy ÷ Σ expected over the org's reconciled shipments.
+- A hospital's score needs history in all four components; without history in any one of them it keeps the no-history default 70 (§5). A supplier is scored from the components that have history: the weighted average of those components with the same weights, scaled to 0–100 (e.g. only acceptance and on-time: (40 × acceptance_rate + 25 × on_time_rate) ÷ 65 × 100); it keeps 70 only while none of them has history.
 - Credits: +1 per 10 units transferred and reconciled, recorded in CreditLedger. They are not spendable in the MVP.
 
 ## 13. UI wording by resolution type

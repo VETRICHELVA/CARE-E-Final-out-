@@ -1,9 +1,12 @@
-// Deliveries (apps-ai-iot.md, hospital-web; S12): shipments on their way to this hospital, with
-// the hub's live status and ETA. Read-only: drivers move shipments, and receiving is its own
-// screen. `shipment.*` events refresh the list (no polling).
+// Deliveries (apps-ai-iot.md, hospital-web; S12): shipments to this hospital
+// (`GET /shipments?direction=inbound`), with the hub's live status and ETA. Drivers move
+// shipments; a delivered one links to the Receive screen for `receipt.record` holders.
+// `shipment.*` and `coldchain.*` events refresh the list (no polling). Each row opens the
+// delivery's detail with its cold-chain panel (S15).
 import { Link } from "react-router";
 import {
   Badge,
+  ColdChainStateBadge,
   Countdown,
   EmptyState,
   ErrorState,
@@ -17,10 +20,9 @@ import {
   TableHeader,
   TableRow,
   useCan,
-  useMe,
   useNow,
 } from "@care-e/ui";
-import { type Product, type Shipment, useProducts, useShipments } from "../api";
+import { type Product, type Shipment, useInboundShipments, useProducts } from "../api";
 import { LoadMore, PageHeader } from "../components/page";
 import { IN_MOTION, qty, SHORTAGE_READERS } from "../display";
 
@@ -62,21 +64,47 @@ function Carrier({ shipment }: { shipment: Shipment }) {
   );
 }
 
+/** business-rules.md §8: a receipt is recorded once the shipment is DELIVERED; afterwards the
+ *  same screen shows what was recorded. */
+function ReceiveLink({ shipment }: { shipment: Shipment }) {
+  const to = `/deliveries/${shipment.id}/receive`;
+  if (shipment.status === "DELIVERED")
+    return (
+      <Link to={to} className="font-medium text-primary hover:underline">
+        Receive
+      </Link>
+    );
+  if (shipment.status === "RECONCILED")
+    return (
+      <Link to={to} className="text-primary hover:underline">
+        View receipt
+      </Link>
+    );
+  return null;
+}
+
 function Row({
   shipment,
   product,
   now,
   canReadShortages,
+  canReceive,
 }: {
   shipment: Shipment;
   product: Product | undefined;
   now: number;
   canReadShortages: boolean;
+  canReceive: boolean;
 }) {
   return (
     <TableRow data-testid={`shipment-${shipment.id}`}>
       <TableCell>
-        <div className="font-medium">{shipment.product_name}</div>
+        <Link
+          to={`/deliveries/${shipment.id}`}
+          className="font-medium text-primary hover:underline"
+        >
+          {shipment.product_name}
+        </Link>
         <div className="text-xs text-muted-foreground">{shipment.product_code}</div>
       </TableCell>
       <TableCell className="text-right">{qty(shipment.qty, product)}</TableCell>
@@ -85,6 +113,7 @@ function Row({
         <div className="flex flex-wrap items-center gap-1.5">
           <StatusChip state={shipment.status} />
           {shipment.requires_cold_chain && <Badge variant="outline">Cold chain</Badge>}
+          <ColdChainStateBadge summary={shipment.coldchain} />
         </div>
       </TableCell>
       <TableCell>
@@ -101,23 +130,27 @@ function Row({
           </Link>
         </TableCell>
       )}
+      {canReceive && (
+        <TableCell>
+          <ReceiveLink shipment={shipment} />
+        </TableCell>
+      )}
     </TableRow>
   );
 }
 
 export function DeliveriesPage() {
-  const me = useMe().data;
-  const list = useShipments();
+  const list = useInboundShipments();
   const products = useProducts();
   const now = useNow();
   const canReadShortages = useCan(SHORTAGE_READERS);
+  const canReceive = useCan("receipt.record");
 
   let body;
   if (list.isPending) body = <Loading label="Loading deliveries…" />;
   else if (list.isError) body = <ErrorState error={list.error} />;
   else {
-    // The hub lists every shipment the org is part of; this screen is the inbound ones.
-    const rows = list.data.pages.flatMap((p) => p.items).filter((s) => s.to_org_id === me?.org.id);
+    const rows = list.data.pages.flatMap((p) => p.items);
     body =
       rows.length === 0 ? (
         <EmptyState title="No deliveries to your hospital">
@@ -135,6 +168,7 @@ export function DeliveriesPage() {
               <TableHead>ETA</TableHead>
               <TableHead>Required by</TableHead>
               {canReadShortages && <TableHead>For</TableHead>}
+              {canReceive && <TableHead>Receipt</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -145,6 +179,7 @@ export function DeliveriesPage() {
                 product={products.data?.byId.get(s.product_id)}
                 now={now}
                 canReadShortages={canReadShortages}
+                canReceive={canReceive}
               />
             ))}
           </TableBody>

@@ -6,6 +6,8 @@ import {
   matchRun,
   meAs,
   NOW,
+  ORG_B,
+  ownReliability,
   page,
   products,
   requestToB,
@@ -72,6 +74,31 @@ describe("Shortage detail", () => {
     expect(screen.getByTestId("plan").textContent).toBe(
       "Planned: Transfer — 850 kits from Hospital B",
     );
+  });
+
+  it("badges each eligible source with the score it was ranked by (S19)", async () => {
+    const fake = hub({
+      "GET /api/v1/orgs/{id}/reliability": {
+        ...ownReliability,
+        org_id: ORG_B,
+        score: 88,
+        credits: null,
+      },
+    });
+    show();
+    const table = await screen.findByRole("table", { name: "Eligible sources" });
+    const badges = within(table).getAllByTestId("reliability");
+    expect(badges.map((b) => b.textContent)).toEqual(["70", "70", "70"]);
+    // The components are fetched only when the tooltip opens.
+    expect(fake.to("GET", `/api/v1/orgs/${ORG_B}/reliability`)).toHaveLength(0);
+    fireEvent.focus(badges[0]!);
+    const tip = await screen.findByRole("tooltip");
+    expect(badges[0]!.getAttribute("aria-describedby")).toBe(tip.id);
+    expect(await within(tip).findByText("Score: 88 of 100")).toBeTruthy();
+    expect(within(tip).getByText("Acceptance rate: 100%")).toBeTruthy();
+    expect(fake.to("GET", `/api/v1/orgs/${ORG_B}/reliability`)).toHaveLength(1);
+    fireEvent.keyDown(badges[0]!, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("groups rejected candidates with the hub's exact reason text", async () => {
@@ -167,6 +194,54 @@ describe("Shortage detail", () => {
     await screen.findByTestId("shortfall");
     expect(screen.queryByRole("button", { name: "Cancel shortage" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
+  });
+
+  it("offers Confirm draft and Cancel on a saved chat draft, and confirms it as the user (S17)", async () => {
+    const fake = hub(
+      { "POST /api/v1/shortages/{id}/confirm": { ...shortage, status: "MATCHING" } },
+      { status: "DRAFT", source: "CHAT" },
+    );
+    show("REQUESTER");
+    const confirmButton = await screen.findByRole("button", { name: "Confirm draft" });
+    expect(screen.getByRole("button", { name: "Cancel shortage" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Re-run match" })).toBeNull();
+    fireEvent.click(confirmButton);
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Confirm draft" }),
+    );
+    await waitFor(() => expect(fake.to("POST", `${base}/confirm`)).toHaveLength(1));
+    cleanup();
+
+    hub({}, { status: "MATCHING" });
+    show("REQUESTER");
+    await screen.findByRole("button", { name: "Re-run match" });
+    expect(screen.queryByRole("button", { name: "Confirm draft" })).toBeNull();
+  });
+
+  it("cancels a saved chat draft with the typed reason (business-rules §8, DRAFT → CANCELLED)", async () => {
+    const fake = hub(
+      { "POST /api/v1/shortages/{id}/cancel": { ...shortage, status: "CANCELLED" } },
+      { status: "DRAFT", source: "CHAT" },
+    );
+    show("REQUESTER");
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel shortage" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("The draft is closed without being matched.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Reason (optional)"), {
+      target: { value: "Ordered by mistake" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel shortage" }));
+    await waitFor(() => expect(fake.to("POST", `${base}/cancel`)).toHaveLength(1));
+    expect(JSON.parse(fake.to("POST", `${base}/cancel`)[0]!.body!)).toEqual({
+      reason: "Ordered by mistake",
+    });
+    cleanup();
+
+    hub({}, { status: "DRAFT", source: "CHAT" });
+    show("APPROVER"); // no shortage.create: neither action
+    await screen.findByTestId("shortfall");
+    expect(screen.queryByRole("button", { name: "Cancel shortage" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm draft" })).toBeNull();
   });
 
   it("re-runs the match with the typed reason and refreshes the run", async () => {

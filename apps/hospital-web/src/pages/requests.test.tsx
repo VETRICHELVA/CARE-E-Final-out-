@@ -34,6 +34,13 @@ const declined: SourceRequest = {
   reason_source: "USER",
 };
 
+const superseded: SourceRequest = {
+  ...incoming,
+  id: "5e000000-0000-4000-8000-0000000000e1",
+  requester_org_name: "Hospital F",
+  status: "SUPERSEDED",
+};
+
 /** The fake hub's source-request list: `REQUESTED` for the awaiting list, everything else. */
 const list =
   (awaiting: SourceRequest[], rest: SourceRequest[] = []) =>
@@ -190,6 +197,16 @@ describe("Incoming requests", () => {
       "Needed for our own theatre list",
     );
     expect(within(table).queryByRole("button")).toBeNull();
+  });
+
+  it("says a superseded request is no longer needed (S19)", async () => {
+    hub({ "GET /api/v1/source-requests": list([], [superseded]) });
+    show();
+    const table = await screen.findByRole("table", { name: "Answered and closed" });
+    const row = within(table).getByTestId(`request-${superseded.id}`);
+    expect(within(row).getByText("Superseded")).toBeTruthy();
+    expect(within(row).getByText("No longer needed")).toBeTruthy();
+    expect(within(row).queryByRole("button")).toBeNull();
   });
 
   it("shows loading, then empty states", async () => {

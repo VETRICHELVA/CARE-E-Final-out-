@@ -1,5 +1,8 @@
 // Dashboard (apps-ai-iot.md, hospital-web; S08 part): open shortages by status, and incoming
-// requests awaiting this hospital's response with live countdowns.
+// requests awaiting this hospital's response with live countdowns. S18 adds, for users who
+// keep the stock (`inventory.edit`): predicted stock-outs, the expiry-risk count with each
+// batch's "Offer N to the network" suggestion, and surplus other hospitals offer this one.
+// S19 adds this hospital's reliability as a source and the credits it has earned.
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
@@ -13,11 +16,22 @@ import {
   Loading,
   StatusChip,
   useCan,
+  useMe,
   useNow,
 } from "@care-e/ui";
-import { useProducts, useShortages, useSourceRequests } from "../api";
+import {
+  useForecasts,
+  useIncomingSurplus,
+  useProducts,
+  useReliability,
+  useShortages,
+  useSourceRequests,
+} from "../api";
 import { PageHeader } from "../components/page";
-import { ANSWERABLE, OPEN_STATES, qty, SHORTAGE_READERS } from "../display";
+import { ReliabilityBadge } from "../components/reliability";
+import { ANSWERABLE, EXPIRY_BAND_LABELS, OPEN_STATES, qty, SHORTAGE_READERS } from "../display";
+import { matchLabel, StockoutDate, SyntheticBadge } from "./forecasts";
+import { useCanEditInventory } from "./inventory";
 
 function OpenShortages() {
   const shortages = useShortages();
@@ -72,6 +86,116 @@ function AwaitingRequests() {
   );
 }
 
+function ForecastSummary() {
+  const forecasts = useForecasts();
+  const products = useProducts();
+  if (forecasts.isPending || products.isPending) return <Loading label="Loading forecasts…" />;
+  if (forecasts.isError) return <ErrorState error={forecasts.error} />;
+  if (products.isError) return <ErrorState error={products.error} />;
+  if (forecasts.data.length === 0) return <EmptyState title="No forecasts yet" />;
+  const stockouts = forecasts.data
+    .filter((f) => f.stockout_date !== null)
+    .sort((a, b) => (a.stockout_date ?? "").localeCompare(b.stockout_date ?? ""));
+  const risks = forecasts.data.flatMap((f) => f.expiry_risks.map((r) => ({ f, r })));
+  return (
+    <div className="grid gap-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span>Expiry-risk batches</span>
+        <span className="font-semibold" data-testid="expiry-risk-count">
+          {risks.length}
+        </span>
+      </div>
+      {risks.length > 0 && (
+        <ul aria-label="Expiry-risk suggestions" className="grid gap-1">
+          {risks.map(({ f, r }) => {
+            const product = products.data.byId.get(f.product_id);
+            return (
+              <li key={r.batch_id}>
+                {r.surplus_post_id
+                  ? `Offered to the network: ${product?.name ?? "Unknown product"}, batch ${r.batch_no}`
+                  : `Offer ${qty(r.suggested_qty, product)} to the network: ${product?.name ?? "Unknown product"}, batch ${r.batch_no}`}{" "}
+                <SyntheticBadge forecast={f} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {stockouts.length === 0 ? (
+        <p className="text-muted-foreground">No stock-outs predicted.</p>
+      ) : (
+        <ul aria-label="Predicted stock-outs" className="grid gap-1">
+          {stockouts.map((f) => (
+            <li key={f.product_id} className="flex flex-wrap justify-between gap-2">
+              <span className="font-medium">
+                {products.data.byId.get(f.product_id)?.name ?? "Unknown product"}
+              </span>
+              <StockoutDate iso={f.stockout_date ?? ""} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The hub's stored score for this org (what matching ranks it by) and its credit balance. */
+function OwnReliability() {
+  const orgId = useMe().data?.org.id ?? "";
+  const reliability = useReliability(orgId);
+  if (reliability.isPending) return <Loading label="Loading reliability…" />;
+  if (reliability.isError) return <ErrorState error={reliability.error} />;
+  const r = reliability.data;
+  return (
+    <div className="grid gap-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span>Reliability score</span>
+        <ReliabilityBadge orgId={orgId} score={r.score} />
+      </div>
+      {!r.has_history && (
+        <p className="text-xs text-muted-foreground">
+          Not enough history yet, so the default score applies.
+        </p>
+      )}
+      <div className="flex items-center justify-between">
+        <span>Credits earned</span>
+        <span className="font-semibold" data-testid="credits">
+          {r.credits ?? 0}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        One credit per 10 units you transferred that the receiver accepted. Credits cannot be spent
+        yet.
+      </p>
+    </div>
+  );
+}
+
+function SurplusOffers() {
+  const offers = useIncomingSurplus();
+  const products = useProducts();
+  if (offers.isPending || products.isPending) return <Loading label="Loading surplus…" />;
+  if (offers.isError) return <ErrorState error={offers.error} />;
+  if (products.isError) return <ErrorState error={products.error} />;
+  if (offers.data.length === 0) return <EmptyState title="No surplus offered to you" />;
+  return (
+    <ul aria-label="Surplus offered to you" className="grid gap-2 text-sm">
+      {offers.data.map((o) => {
+        const product = products.data.byId.get(o.product_id);
+        return (
+          <li key={o.id}>
+            <div className="font-medium">
+              {o.org_name} offers {qty(o.offered_qty, product)} {product?.name ?? ""}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {EXPIRY_BAND_LABELS[o.expiry_band] ?? o.expiry_band} · {matchLabel(o.match)}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function DashCard({ title, to, children }: { title: string; to: string; children: ReactNode }) {
   return (
     <Card>
@@ -89,19 +213,40 @@ function DashCard({ title, to, children }: { title: string; to: string; children
 export function DashboardPage() {
   const canSeeShortages = useCan(SHORTAGE_READERS);
   const canRespond = useCan("source_request.respond");
+  const canEditStock = useCanEditInventory();
   return (
     <>
       <PageHeader title="Dashboard" />
-      {canSeeShortages || canRespond ? (
+      {canSeeShortages || canRespond || canEditStock ? (
         <div className="grid gap-4 md:grid-cols-2">
           {canRespond && (
             <DashCard title="Incoming requests awaiting response" to="/requests">
               <AwaitingRequests />
             </DashCard>
           )}
+          {canRespond && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your reliability as a source</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <OwnReliability />
+              </CardContent>
+            </Card>
+          )}
           {canSeeShortages && (
             <DashCard title="Open shortages" to="/shortages">
               <OpenShortages />
+            </DashCard>
+          )}
+          {canEditStock && (
+            <DashCard title="Forecasts and expiry risk" to="/forecasts">
+              <ForecastSummary />
+            </DashCard>
+          )}
+          {canEditStock && (
+            <DashCard title="Surplus offered to you" to="/forecasts">
+              <SurplusOffers />
             </DashCard>
           )}
         </div>

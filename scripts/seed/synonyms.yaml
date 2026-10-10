@@ -1,0 +1,30 @@
+# What hospital staff call catalog products (S17, chat ordering): catalog code -> synonyms.
+# Read by the hub's product search (GET /api/v1/ai/read/products/search), which also matches
+# each product's name and code. A synonym that fits more than one product belongs to none:
+# the search must leave such words ambiguous (plain "kits" scores Surgical Kit A and Rapid
+# Diagnostic Kit alike), so the chat asks instead of picking.
+#
+# Format: YAML in its JSON-compatible subset (one flow mapping, double-quoted strings, "#"
+# comment lines; Prettier's trailing commas are fine), read with the standard library.
+{
+  "SURG-KIT-A": ["SK-A", "SKA", "surgical kit A", "surgical kit", "kit A"],
+  "DIAG-RDK": ["RDK", "rapid kit", "rapid test kit", "rapid diagnostic kit", "diagnostic kit"],
+  "IV-CAN-20G": ["20G cannula", "cannula 20G", "IV cannula", "cannula", "pink cannula"],
+  "SURG-GLV-STR": ["sterile gloves", "surgical gloves"],
+  "IV-SET-INF": ["IV set", "infusion set"],
+  "IV-NS-500": ["NS 500", "NS", "normal saline", "saline"],
+  "IV-RL-500": ["RL 500", "RL", "ringer lactate", "ringers lactate"],
+  "IV-STC-3W": ["three way", "3 way stopcock", "3-way"],
+  "INJ-SYR-5": ["5 ml syringe", "5 cc syringe"],
+  "PPE-N95": ["N95", "N95 mask"],
+  "PPE-MSK-3PLY": ["3 ply mask", "triple layer mask"],
+  "PPE-GLV-NIT": ["nitrile gloves", "exam gloves"],
+  "WND-GZE-STR": ["gauze", "gauze swabs"],
+  "RSP-NSL-PRG": ["nasal prongs", "O2 prongs"],
+  "RSP-ETT-75": ["ET tube 7.5", "ETT 7.5"],
+  "CTH-FOL-16": ["foley 16", "foley catheter"],
+  "CTH-URB-2L": ["urobag", "urine bag"],
+  "MED-INS-REG": ["regular insulin", "human insulin"],
+  "MED-TT-VAC": ["TT vaccine", "TT injection"],
+  "MED-HEPB-VAC": ["hep B vaccine", "HBV vaccine"],
+}

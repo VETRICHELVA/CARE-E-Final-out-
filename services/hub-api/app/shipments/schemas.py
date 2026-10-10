@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from app.coldchain.schemas import ColdChainSummary
 from app.db import NulFreeStr
 from app.domain.fulfillment import RouteProvider, ShipmentStatus, StopType
 from app.receiving.schemas import ReceiptOut
@@ -116,6 +117,10 @@ class ShipmentOut(BaseModel):
     route_provider: RouteProvider | None
     pickup: StopOut | None
     drop: StopOut | None
+    coldchain: ColdChainSummary | None = Field(
+        description="The newest cold-chain event the caller may see, and whether an "
+        "excursion is on record (S15); null when there is none."
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -127,8 +132,9 @@ class ShipmentDetailOut(ShipmentOut):
     status_history: list[StatusChangeOut]
     last_location: LocationOut | None
     inspection_note_required: bool = Field(
-        description="True when the shipment has an open cold-chain excursion: its receipt then "
-        "needs an inspection note (business-rules.md §9). Always false until S15."
+        description="True when a cold-chain excursion is on record for the shipment, even one "
+        "that has since recovered: its receipt then needs an inspection note "
+        "(business-rules.md §9, §11)."
     )
     receipt: ReceiptOut | None = Field(
         description="What the receiving org recorded (with the reconciliation once every "

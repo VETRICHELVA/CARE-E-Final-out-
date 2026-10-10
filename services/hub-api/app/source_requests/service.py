@@ -3,7 +3,16 @@ the release-and-rematch path (business-rules.md §2, §6, §7 steps 2, 3 and 6, 
 
 Lock order, everywhere: shortage, then source request, then batches by id. Accept, decline
 and the timer all take the shortage row first, so they serialize per shortage and never
-deadlock; competing accepts for the same batches serialize on the batch rows."""
+deadlock; competing accepts for the same batches serialize on the batch rows.
+
+CRITICAL parallel requests (§7 step 2, S19): a CRITICAL TRANSFER run asks up to 3 single
+sources at once. Accepts serialize on the shortage row, so exactly one wins: in its
+transaction every other open request of the shortage becomes SUPERSEDED and any tentative
+hold of theirs is released, as SYSTEM "Another source confirmed first.". A later accept then
+finds its request SUPERSEDED and gets 409. §8 lists no other way for a parallel request to
+supersede its siblings, so a decline or expiry of one ends only that request while another
+is still waiting for an answer; once none is left open and none accepted, the holds are
+released and matching re-runs as usual (§7 step 6), without the sources that declined."""
 
 import logging
 import uuid
@@ -17,6 +26,7 @@ from app.auth.models import User
 from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.shortage import Status
 from app.domain.source_request import (
+    ANOTHER_SOURCE_FIRST,
     HOLD_DEADLINE_PASSED,
     RESPONSE_DEADLINE_PASSED,
     STOCK_CHANGED,
@@ -97,6 +107,29 @@ async def _deadline(session: AsyncSession, sr: SourceRequest) -> tuple[datetime 
     return None, ""
 
 
+async def _run(session: AsyncSession, sr: SourceRequest) -> MatchRun:
+    """The match run whose plan asked for `sr`."""
+    run_id = await session.scalar(
+        select(Candidate.match_run_id).where(Candidate.id == sr.candidate_id)
+    )
+    return await session.get_one(MatchRun, run_id)
+
+
+def _parallel(run: MatchRun) -> bool:
+    """The run asked its sources in parallel: a CRITICAL TRANSFER (§7 step 2, S19)."""
+    return bool((run.planned_resolution or {}).get("parallel"))
+
+
+async def _siblings_waiting(
+    session: AsyncSession, sr: SourceRequest, shortage: Shortage, was: str
+) -> bool:
+    """A parallel request that ended unanswered while another parallel request of its run is
+    still open: nothing is released and matching does not re-run yet (see the module doc)."""
+    if was != RequestStatus.REQUESTED or not _parallel(await _run(session, sr)):
+        return False
+    return bool(await holds.open_requests(session, shortage.id))
+
+
 # --- the release path ------------------------------------------------------------------------
 
 
@@ -112,7 +145,8 @@ async def release_and_rematch(
     """§7 step 6, used by every non-CONFIRMED exit of a request: release every tentative
     hold of the shortage, supersede its other open requests, put the shortage back to
     MATCHING if it had moved on, and start a new match run without `exclude` (for this
-    shortage; only a source that declined is excluded). `reason` is the factual SYSTEM
+    shortage: a source that declined, a rejected recommendation's sources or a supplier
+    that rejected a purchase order; an expiry excludes no one). `reason` is the factual SYSTEM
     cause. The caller has locked the shortage and already ended the request that caused
     this. Returns None if the shortage is closed."""
     await holds.release(
@@ -137,7 +171,10 @@ async def _expire(
     """End a request by its deadline (or a stock change), then release and re-run. An
     expiry excludes no one (§7 step 6: declined -> excluded; expired -> not excluded), so a
     source that missed its response deadline can be asked again."""
+    was = sr.status
     await holds.move_request(session, shortage, sr, RequestStatus.EXPIRED, None, reason)
+    if await _siblings_waiting(session, sr, shortage, was):
+        return
     await release_and_rematch(session, shortage, reason, trigger=Trigger.EXPIRY, now=now)
 
 
@@ -226,22 +263,32 @@ async def accept(
         responded_by=user.id,
         responded_at=now,
     )
-    await _ready_check(session, shortage, sr)
+    run = await _run(session, sr)
+    if _parallel(run):
+        # §7 step 2: the first accept wins; the other open requests are superseded and any
+        # tentative hold of theirs released, in this transaction (SYSTEM, §10).
+        await holds.release(
+            session,
+            shortage,
+            hold_reason=ANOTHER_SOURCE_FIRST,
+            actor=None,
+            reason=ANOTHER_SOURCE_FIRST,
+            keep=sr.id,
+        )
+    await _ready_check(session, shortage, run)
     return sr
 
 
-async def _ready_check(session: AsyncSession, shortage: Shortage, sr: SourceRequest) -> None:
-    """§7 step 4: once every request of this run's plan holds stock, hand over to S09."""
-    run_id = await session.scalar(
-        select(Candidate.match_run_id).where(Candidate.id == sr.candidate_id)
-    )
+async def _ready_check(session: AsyncSession, shortage: Shortage, run: MatchRun) -> None:
+    """§7 step 4: once every request of this run's plan holds stock (for parallel requests:
+    the one that won), hand over to S09."""
     statuses = await session.scalars(
         select(SourceRequest.status)
         .join(Candidate, Candidate.id == SourceRequest.candidate_id)
-        .where(Candidate.match_run_id == run_id)
+        .where(Candidate.match_run_id == run.id)
     )
-    if all_ready(list(statuses)):
-        await on_sources_ready(session, shortage, await session.get_one(MatchRun, run_id))
+    if all_ready(list(statuses), parallel=_parallel(run)):
+        await on_sources_ready(session, shortage, run)
 
 
 async def decline(
@@ -270,6 +317,8 @@ async def decline(
         decline_reason=typed,
         reason_source="USER" if typed else "SYSTEM",
     )
+    if await _siblings_waiting(session, sr, shortage, RequestStatus.REQUESTED):
+        return sr
     await release_and_rematch(
         session, shortage, DECLINED, trigger=Trigger.DECLINE, exclude=[sr.source_org_id], now=now
     )

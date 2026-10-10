@@ -76,6 +76,12 @@ export function ago(iso: string, now: number): string {
   return `${Math.floor(hours / 24)} d ago`;
 }
 
+/** The most shipments one route plan takes (POST /routes/optimize, S16). */
+export const MAX_ROUTE_SHIPMENTS = 25;
+
+/** A route plan's stop types. */
+export const STOP_LABEL: Record<"PICKUP" | "DROP", string> = { PICKUP: "Pickup", DROP: "Drop" };
+
 /** Map tiles: OpenStreetMap's standard tiles unless `VITE_MAP_TILE_URL` names another server
  *  (e.g. a self-hosted tile cache for the demo). */
 export const TILE_URL =

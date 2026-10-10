@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
 import { createQueryClient, logout, useAuth, useEventStream } from "@care-e/api-client";
 import { can, LoginPage, ProtectedRoute, useMe } from "./auth";
+import { ColdChainAlerts, type ColdChainAlertConfig } from "./coldchain";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
@@ -33,6 +34,12 @@ export type AppConfig = {
   routes?: ExtraRoute[];
   /** Refresh screens from the hub's event stream (`useEventStream`) instead of polling. */
   liveUpdates?: boolean;
+  /** Extra header content for a signed-in user, before their name (e.g. a notification bell). */
+  headerExtra?: ReactNode;
+  /** Rendered on every signed-in screen after the page, e.g. hospital-web's copilot panel. */
+  aside?: ReactNode;
+  /** Toasts for the hub's cold-chain events (S15); needs `liveUpdates`. */
+  coldChainAlerts?: ColdChainAlertConfig;
 };
 
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
@@ -40,12 +47,16 @@ function AppShell({
   name,
   nav,
   liveUpdates = false,
-}: Pick<AppConfig, "name" | "nav" | "liveUpdates">) {
+  headerExtra,
+  aside,
+  coldChainAlerts,
+}: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra" | "aside" | "coldChainAlerts">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
   const visible = nav.filter((item) => !item.capability || can(me, item.capability));
   return (
     <div className="min-h-svh">
+      {liveUpdates && coldChainAlerts && <ColdChainAlerts {...coldChainAlerts} />}
       <header className="border-b bg-card">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold text-primary">{name}</span>
@@ -68,6 +79,7 @@ function AppShell({
           </nav>
           {me && (
             <div className="ml-auto flex items-center gap-3 text-sm">
+              {headerExtra}
               <div className="text-right leading-tight">
                 <div className="font-medium">{me.user.full_name}</div>
                 <div className="text-muted-foreground" data-testid="org-name">
@@ -85,6 +97,7 @@ function AppShell({
       <main className="mx-auto max-w-6xl p-4">
         <Outlet />
       </main>
+      {aside}
     </div>
   );
 }
@@ -94,7 +107,17 @@ const placeholder = (label: string) => (
 );
 
 /** One app: sign-in, the org-type gate, the header and nav, and its screens. */
-export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }: AppConfig) {
+export function CareApp({
+  name,
+  allow,
+  refusal,
+  nav,
+  routes = [],
+  liveUpdates,
+  headerExtra,
+  aside,
+  coldChainAlerts,
+}: AppConfig) {
   const [queryClient] = useState(createQueryClient);
   // Signing out (or a failed refresh) must not leave the last user's data in the cache.
   useEffect(
@@ -107,7 +130,18 @@ export function CareApp({ name, allow, refusal, nav, routes = [], liveUpdates }:
         <Routes>
           <Route path="/login" element={<LoginPage appName={name} />} />
           <Route element={<ProtectedRoute allow={allow} refusal={refusal} />}>
-            <Route element={<AppShell name={name} nav={nav} liveUpdates={liveUpdates} />}>
+            <Route
+              element={
+                <AppShell
+                  name={name}
+                  nav={nav}
+                  liveUpdates={liveUpdates}
+                  headerExtra={headerExtra}
+                  aside={aside}
+                  coldChainAlerts={coldChainAlerts}
+                />
+              }
+            >
               {nav.map((item) => (
                 <Route
                   key={item.to}

@@ -18,8 +18,9 @@
 | Shortage detail | /shortages/:id | Status timeline; latest match run: eligible candidates ranked, rejected ones with reasons; source requests and their state; audit trail | S08, extended S12 |
 | Recommendation | /shortages/:id (decision panel) | Type badge, lines, cost, ETA, explanation, alternatives; buttons worded by type (business-rules §13); reject or escalate with optional reason | S12 |
 | Incoming requests | /requests | Requests addressed to this hospital: product, qty, deadline countdown; Accept (places hold) or Decline (optional reason) | S08 |
-| Deliveries | /deliveries | Inbound shipments with live status, ETA, cold-chain badge | S12 |
-| Receive | /deliveries/:id/receive | Expected, received, accepted, rejected, condition, inspection note (required if excursion) | S12 |
+| Deliveries | /deliveries | Inbound shipments with live status, ETA, cold-chain badge (and the newest cold-chain event) | S12, extended S15 |
+| Delivery detail | /deliveries/:id | Status, ETA, carrier, status history, cold-chain panel; alert toast for cold-chain events on inbound shipments | S15 |
+| Receive | /deliveries/:id/receive | Expected, received, accepted, rejected, condition, inspection note (required if excursion: a red notice and the cold-chain panel are shown) | S12, extended S15 |
 | Chat | panel on every page | Chat ordering and copilot (see AI) | S13, S17 |
 | Forecasts and surplus | /forecasts | Predicted stock-outs, reorder suggestions, expiry-risk batches with "Offer to network" | S18 |
 
@@ -34,7 +35,7 @@
 ## delivery-web (responsive down to 360 px)
 | Screen | Route | Content | Section |
 |---|---|---|---|
-| Dispatch board | / | Unassigned shipments: pickup, drop, deadline, qty, cold-chain flag; assign driver and vehicle | S11 |
+| Dispatch board | / | Unassigned shipments: pickup, drop, deadline, qty, cold-chain flag (and, for shipments on the road, the newest cold-chain event); assign driver and vehicle | S11, extended S15 |
 | Shipment detail | /shipments/:id | Map with route (OSRM), ETA, status history, live position, cold-chain panel | S11, S15 |
 | Route planner | /plan | Choose a driver and several shipments → optimized stop order with time windows | S16 |
 | Fleet | /fleet | Drivers and vehicles; device assignment for cold boxes | S11, S14 |
@@ -43,7 +44,7 @@
 Maps: Leaflet with OpenStreetMap tiles.
 
 ## AI service (`services/ai-service`)
-- Calls the hub only through `/api/v1/ai/read/*` with a **read-only service token**. It has no database access and no write endpoints.
+- Calls the hub only through `/api/v1/ai/read/*` with a **read-only service token**. It has no database access and no write endpoints Each call also carries the signed-in user's access token (`X-On-Behalf-Of`), so the hub answers as that user: their org scope, capabilities and redaction (api-and-events.md, S13).
 - The LLM provider and model are set by environment variables (`AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`). With no key, the service returns a clear "AI is not configured" response, so the rest of the system still works.
 - Every response includes the tool calls it made, so the UI can show "Based on: match run #3, candidate Hospital D".
 
@@ -52,12 +53,16 @@ Maps: Leaflet with OpenStreetMap tiles.
 - The system prompt requires: answer only from tool results; quote numbers exactly; if the data isn't there, say so; never suggest an action has been taken.
 - The context sent with each question = the screen the user is on (e.g. shortage_id), plus the question.
 - Test set: 15 questions with expected facts; a test fails if the answer contains a number not present in the tool results.
+- At most 6 tool calls per question. The service checks every answer itself: a number found in no tool result gets one correction turn, then the answer is withheld. A number from the user's question counts only if a tool result also contains it, so the copilot corrects a wrong figure instead of confirming it ("Apollo has 480 vials, right?" when the hub returns 120). A screen record the user may not see is answered "That information is not available to you." without asking the model.
 
 ### Chat ordering (S17)
 - Input: free text. Output: a **draft** `{product_id or candidates[], qty_required, required_by, priority, min_shelf_life_days, notes}` plus fields it could not fill.
 - Product resolution: fuzzy match against the catalog (name, code, synonyms). If more than one product scores within 10% of the best → return `candidates` and ask the user to choose. Never pick silently.
 - Relative dates ("by Friday", "in 72 hours") are resolved in the user's time zone and shown back for confirmation.
 - The UI shows a confirmation card; only the user's click calls `POST /shortages` (as the user, with source=CHAT).
+- As built (S17): `POST /chat/draft {message, user_tz, now?}` → `{draft, missing_fields, product_candidates, question, assumptions, tool_trace}`. The model only extracts (structured output: product phrases, figures with the words they came from, the kind of date); code checks every figure against the user's words, asks the hub's product search (`GET /ai/read/products/search`, as the user) and resolves dates. Unstated fields default to priority ROUTINE, the product's `min_shelf_life_days` and `qty_local_usable` 0, and are listed in `missing_fields`. More than one product: the user is asked to send one message each. Unlike the copilot, the user's own message is a source of figures here (the draft, notes and questions echo the user's quantity and words), so a figure must be in the message or a tool result.
+- Dates (as built): a weekday alone or as "this <weekday>" is its next occurrence on or after today ("by Friday" said on a Friday is today); "next <weekday>" is that weekday in the following week, weeks starting on Monday ("next Friday" said on Friday 9 October is 16 October); weekdays match whole words or known abbreviations only (mon, tue/tues, wed/weds, thu/thur/thurs, fri, sat, sun). A day of the month alone ("by 10th") is the next such date; a day and month without a year is this year's, so a passed one is flagged "That time has already passed". A clock time is kept only as the user wrote it: with am/pm, noon or midnight, or in 24-hour notation ("18:00", "1800 hrs"); a bare hour ("by 6") gives no time. EOD is 23:59. Assumed times, listed in `assumptions` and shown on the card: no time of day 23:59; morning 09:00, afternoon 14:00, evening 18:00, night 21:00.
+- hospital-web: the copilot panel's "Order" mode (users with `shortage.create`): every field editable, the required-by date in full, candidates as buttons, an unstated min shelf life follows the product chosen (its default, shown as "Product default: N days."), "Create shortage" (OPEN), "Save as draft" (DRAFT) and "Cancel". A saved draft is confirmed from its shortage page ("Confirm draft", `POST /shortages/{id}/confirm`) or cancelled there ("Cancel shortage", `POST /shortages/{id}/cancel`).
 - Test set: 20 phrasings; at least 18 must produce a correct draft or a correct clarifying question.
 
 ### Forecasting (S18 — runs in the hub worker, not the AI service, so the AI service stays read-only)

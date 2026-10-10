@@ -102,8 +102,9 @@ class MatchRun(Entity):
 
 class Candidate(Entity):
     """A source checked in a run. Hospitals carry `transferable_qty` and the batches counted
-    (oldest expiry first); suppliers carry `offered_qty`. `gate_results` lists every gate in
-    business-rules.md §3 order with its reason; `rank` is set for eligible candidates only."""
+    (oldest expiry first); suppliers carry `offered_qty` and `unit_price_paise`.
+    `gate_results` lists every gate in business-rules.md §3 order with its reason; `rank` is
+    set for eligible candidates only."""
 
     __tablename__ = "candidate"
     __table_args__ = (CheckConstraint(_one_of("source_type", SourceType), name="source_type"),)
@@ -117,6 +118,9 @@ class Candidate(Entity):
     gate_results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     eligible: Mapped[bool]
     landed_cost_paise: Mapped[int | None] = mapped_column(BigInteger)
+    # Supplier candidates: the offer's unit price when the run checked it (S20), eligible or
+    # not; null for hospitals. The network metrics price "procurement cost avoided" with it.
+    unit_price_paise: Mapped[int | None] = mapped_column(BigInteger)
     eta_hours: Mapped[float]
     reliability: Mapped[int]
     rank: Mapped[int | None]

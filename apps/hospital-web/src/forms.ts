@@ -70,5 +70,7 @@ export function useForm<K extends string>(initial: Record<K, string>) {
     setErrors(result.success ? {} : fieldErrors(result.error));
     return result.success ? result.data : undefined;
   }
-  return { values, errors, setErrors, bind, parse };
+  /** Sets one field, as if the user had typed it (e.g. a chosen product, S17). */
+  const set = (name: K, value: string) => setValues((v) => ({ ...v, [name]: value }));
+  return { values, errors, setErrors, bind, parse, set };
 }

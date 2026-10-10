@@ -10,19 +10,21 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator, Iterable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis
 from redis.asyncio.client import PubSub
-from sqlalchemy import func, select
+from sqlalchemy import and_, delete, exists, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.service import ACCESS_TTL
+from app.config import settings
 from app.domain.events import EventType
+from app.domain.webhooks import DeliveryStatus
 from app.events import webhooks
-from app.events.models import PUBLISH_SEQ, EventOutbox
+from app.events.models import PUBLISH_SEQ, EventOutbox, EventPruneMark, WebhookDelivery
 
 PUBLISH_BATCH = 100
 PUBLISH_LOCK = 0x0CA4E5E7  # pg advisory lock key: one publisher at a time keeps `seq` in order
@@ -120,7 +122,9 @@ async def missed(
     session: AsyncSession, org_id: uuid.UUID, after: int
 ) -> tuple[list[tuple[int, dict[str, Any]]], bool]:
     """Events for `org_id` published after `after`, in publish order, and whether there were
-    too many to replay (then the client gets `reset` instead)."""
+    too many to replay, or some were already pruned (then the client gets `reset` instead)."""
+    if after < await pruned_through(session):
+        return [], True
     rows = (
         await session.execute(
             select(EventOutbox.seq, EventOutbox.payload)
@@ -132,6 +136,60 @@ async def missed(
     if len(rows) > REPLAY_LIMIT:
         return [], True
     return [(int(seq), payload) for seq, payload in rows], False
+
+
+async def pruned_through(session: AsyncSession) -> int:
+    """The highest `seq` the pruning job has deleted (0 before any pruning)."""
+    return int(await session.scalar(select(EventPruneMark.seq)) or 0)
+
+
+PRUNE_BATCH = 5_000
+
+
+async def prune(session: AsyncSession, now: datetime | None = None) -> int:
+    """S20: delete published events older than EVENT_RETENTION_HOURS (`coldchain.reading`:
+    READING_EVENT_RETENTION_HOURS) with their finished webhook deliveries. An unpublished
+    event, or one with a delivery still PENDING, stays. Commits per batch; returns how many
+    events were deleted. The highest deleted `seq` is kept (EventPruneMark): replay answers
+    an older Last-Event-ID with `reset`, since events the client never saw may be gone."""
+    now = now or datetime.now(UTC)
+    general = now - timedelta(hours=settings.event_retention_hours)
+    readings = now - timedelta(hours=settings.reading_event_retention_hours)
+    pending = exists().where(
+        WebhookDelivery.event_id == EventOutbox.id,
+        WebhookDelivery.status == DeliveryStatus.PENDING,
+    )
+    due = (
+        select(EventOutbox.id)
+        .where(
+            EventOutbox.published_at.is_not(None),
+            or_(
+                EventOutbox.published_at < general,
+                and_(
+                    EventOutbox.event_type == EventType.COLDCHAIN_READING,
+                    EventOutbox.published_at < readings,
+                ),
+            ),
+            ~pending,
+        )
+        .order_by(EventOutbox.seq)
+        .limit(PRUNE_BATCH)
+    )
+    total = 0
+    while ids := list(await session.scalars(due)):
+        await session.execute(delete(WebhookDelivery).where(WebhookDelivery.event_id.in_(ids)))
+        deleted = await session.scalars(
+            delete(EventOutbox).where(EventOutbox.id.in_(ids)).returning(EventOutbox.seq)
+        )
+        highest = max(int(seq) for seq in deleted if seq is not None)
+        await session.execute(
+            update(EventPruneMark).values(seq=func.greatest(EventPruneMark.seq, highest))
+        )
+        await session.commit()
+        total += len(ids)
+        if len(ids) < PRUNE_BATCH:
+            break
+    return total
 
 
 async def open_stream(

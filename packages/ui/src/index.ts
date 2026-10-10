@@ -1,4 +1,25 @@
 export { CareApp, type AppConfig, type ExtraRoute, type NavItem } from "./app";
+export {
+  COLDCHAIN_LABEL,
+  type ColdChain,
+  ColdChainAlerts,
+  type ColdChainAlertConfig,
+  type ColdChainEvent,
+  ColdChainEventList,
+  type ColdChainEventType,
+  ColdChainPanel,
+  ColdChainStateBadge,
+  type ColdChainSummary,
+  coldChainKey,
+  describeColdChainEvent,
+  formatBand,
+  formatSeconds,
+  formatTemp,
+  isColdChainAlert,
+  TemperatureChart,
+  useColdChain,
+  useColdChainAlerts,
+} from "./coldchain";
 export { ConfirmDialog } from "./confirm";
 export { Countdown, formatCountdown, isPast, useNow } from "./countdown";
 export { can, LoginPage, ProtectedRoute, useCan, useMe, useSignedIn } from "./auth";
@@ -31,3 +52,4 @@ export * from "./components/ui/table";
 export * from "./components/ui/tabs";
 export * from "./components/ui/textarea";
 export { toast } from "sonner";
+export { BellIcon } from "lucide-react";

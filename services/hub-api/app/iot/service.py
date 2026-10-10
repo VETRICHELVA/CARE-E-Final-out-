@@ -1,6 +1,6 @@
-"""Telemetry ingest (apps-ai-iot.md, Ingest): store readings once, keep Device fresh.
-
-Cold-chain rules (business-rules.md §11) are S15's and run in the hub, not here."""
+"""Telemetry ingest (apps-ai-iot.md, Ingest): store readings once, keep Device fresh, link
+them to the device's shipment and run the cold-chain rules (business-rules.md §11, in
+`app.coldchain.service`) on them."""
 
 import logging
 import uuid
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
 from app.auth.models import User
+from app.coldchain import service as coldchain
 from app.domain.events import EventType
 from app.domain.fulfillment import ACTIVE_SHIPMENT, ARRIVED
 from app.errors import AppError
@@ -97,8 +98,8 @@ async def after_store(
     """Hook for each device's newly stored readings (none on a replay): link them to the
     device's assigned shipment while that shipment is ASSIGNED, PICKED_UP or IN_TRANSIT, and
     emit `coldchain.reading` {shipment_id, temp_c, ts} for each linked reading to the
-    shipment's orgs. Readings of an unassigned device, or of a shipment not on its way, stay
-    unlinked and emit nothing. Still to come: S15 evaluates the cold-chain rules here."""
+    shipment's orgs, then evaluate the cold-chain rules on them (S15). Readings of an
+    unassigned device, or of a shipment not on its way, stay unlinked and emit nothing."""
     if not stored or device.assigned_shipment_id is None:
         return
     shipment = await session.get(Shipment, device.assigned_shipment_id)
@@ -114,6 +115,7 @@ async def after_store(
             {"shipment_id": shipment.id, "temp_c": reading.temp_c, "ts": reading.ts},
         )
     await session.flush()
+    await coldchain.evaluate_readings(session, shipment, device, stored)
 
 
 # --- device assignment (S14 part 3) -----------------------------------------------------------
@@ -137,14 +139,26 @@ async def assign_device(
     shipment_id: uuid.UUID | None,
     reason: str | None,
 ) -> Device:
-    """Put the caller's org's device on a shipment its org may see, or take it off
-    (`shipment_id` null). The shipment must not have arrived (409), and must not carry
-    another device (409: take that one off first). One audit row in the device's org."""
+    """Put the caller's org's device on a shipment its org carries, or take it off
+    (`shipment_id` null). A box rides only with its own org's shipments (CLAUDE.md rule 6):
+    403 when another org carries the shipment, 409 while it is CREATED (no carrier yet;
+    assigning or unassigning it takes any device off). The shipment must not have arrived
+    (409), and must not carry another device (409: take that one off first). One audit row
+    in the device's org."""
     device = await own_device(session, user, device_pk)
     before = device.assigned_shipment_id
     target: Shipment | None = None
     if shipment_id is not None:
         target = await shipments.get_visible(session, user, shipment_id, lock=True)
+        if target.carrier_org_id is None:
+            raise AppError(
+                409,
+                "conflict",
+                "The shipment has no carrier yet; a device goes on once it is assigned.",
+                {"status": target.status},
+            )
+        if target.carrier_org_id != device.org_id:
+            raise AppError(403, "forbidden", "Another organization carries this shipment.")
         if target.status in ARRIVED:
             raise AppError(
                 409,

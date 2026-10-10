@@ -12,7 +12,7 @@ The firmware only measures and reports. Cold-chain rules (excursions, silence) a
 - While Wi-Fi or the broker is unreachable, up to 60 readings (10 min) are buffered and published, oldest first, on reconnect. If the buffer fills, the oldest reading is dropped.
 - Wi-Fi and MQTT reconnect with exponential backoff, from 1 s up to 60 s.
 - `battery` is sent only if a battery gauge is configured (`BATTERY_ADC_PIN`). A USB power bank cannot be measured, so the field is normally omitted.
-- Probe errors (-127 = not found, 85 = power-on value) are skipped, not published.
+- Probe errors (-127 = not found, 85 = power-on value) are skipped, not published. A failed probe therefore shows in the hub as silence: after 2 minutes without a reading on an IN_TRANSIT shipment the hub raises DEVICE_SILENT, never an excursion (business-rules.md §11). The cold-chain rules run only in the hub.
 
 No hardware? `scripts/simulate_telemetry.py` publishes the same messages (see the end of this file).
 
@@ -72,7 +72,7 @@ Record the result (date, device ID, offset, pass or fail per step) in `docs/buil
 3. **Calibrate.** Put the probe and a reference thermometer in stirred ice water for 2 minutes. Set `TEMP_OFFSET_C` to (reference − reported), reflash, and confirm the reported value is within 0.2 °C of the reference.
 4. **Cold box.** Put the probe in the box with gel packs. Readings should settle within 2–8 °C. Hold the probe in your hand: readings should rise above 8 °C within a minute.
 5. **Offline buffer.** Turn the hotspot off for about 3 minutes, then back on. Within about a minute of reconnecting, the subscriber should receive about 18 readings in a burst, with the original 10 s-apart timestamps and no gap.
-6. **Probe unplugged.** Disconnect the probe's data wire. The serial log shows `probe error (-127.0), reading skipped` and nothing is published. Reconnect it and publishing resumes.
+6. **Probe unplugged.** Disconnect the probe's data wire. The serial log shows `probe error (-127.0), reading skipped` and nothing is published. With the box on an IN_TRANSIT shipment, the hub raises DEVICE_SILENT within about 2.5 minutes (not an excursion). Reconnect it and publishing resumes.
 
 ## Simulator
 
@@ -81,7 +81,7 @@ uv run scripts/simulate_telemetry.py --device cb-01 --profile normal|excursion|s
 ```
 
 - `normal`: 3.5–5.5 °C, forever.
-- `excursion`: normal for 1 minute, then 9.1 and 9.4 °C, then normal again.
-- `silent`: normal for 1 minute, then stops publishing.
+- `excursion`: normal for 1 minute, then 9.1 and 9.4 °C, then normal again. On a 2–8 °C shipment the hub raises EXCURSION on 9.4 °C and RECOVERED two normal readings later (Scenario 2).
+- `silent`: normal for 1 minute, then stops publishing. On an IN_TRANSIT shipment the hub's worker raises DEVICE_SILENT once 2 minutes pass without a reading (checked every 30 s).
 
 `--host` and `--port` default to `localhost:1883` (the `make up` broker).

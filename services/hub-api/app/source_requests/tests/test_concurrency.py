@@ -263,3 +263,97 @@ async def test_concurrent_stock_writes_never_lose_a_waiting_shortages_rerun(
         plan = runs[-1].planned_resolution
         assert plan is not None and plan["type"] == "TRANSFER"
         assert [line["source_org_id"] for line in plan["lines"]] == [str(b.id)]
+
+
+async def test_three_parallel_critical_requests_and_three_simultaneous_accepts(
+    committed: Maker, client: httpx.AsyncClient
+) -> None:
+    """S19 (§7 step 2): a CRITICAL TRANSFER asks 3 sources at once and all 3 accept at the
+    same moment. Exactly one wins TENTATIVE_HOLD, the other two are SUPERSEDED with the
+    SYSTEM reason, and no hold is left on a superseded request."""
+    from app.recommendations.models import Recommendation
+
+    now = datetime.now(UTC)
+    tag = unique()
+    async with committed() as session:
+        product = Product(
+            code=f"P-{tag}",
+            name=f"Parallel kit {tag}",
+            category="Test",
+            unit="each",
+            default_min_shelf_life_days=30,
+        )
+        session.add(product)
+        sources, managers = [], {}
+        for n in range(3):
+            org = await add_org(
+                session, f"Source {n} {tag}", OrgType.HOSPITAL, 12.93 + n / 100, 77.6
+            )
+            await add_batch(session, org, product, now, on_hand=1000, expiry_days=180)
+            managers[org.id] = await add_user(session, org, "STORE_MANAGER", f"sm{n}-{tag}@p.test")
+            sources.append(org)
+        authorize(session, product, *sources)
+        requester = await add_org(session, f"Requester {tag}", OrgType.HOSPITAL, 12.97, 77.59)
+        user = await add_user(session, requester, "REQUESTER", f"req-{tag}@p.test")
+        shortage = await create_shortage(
+            session, user, product, now, qty_required=850, qty_local_usable=0
+        )
+        requests = list(
+            await session.scalars(
+                select(SourceRequest).where(SourceRequest.shortage_id == shortage.id)
+            )
+        )
+        await session.commit()
+    assert len(requests) == 3 and {r.status for r in requests} == {"REQUESTED"}
+
+    auths = {org_id: await token(committed, u) for org_id, u in managers.items()}
+    responses = await asyncio.gather(
+        *(
+            client.post(f"/source-requests/{sr.id}/accept", headers=auths[sr.source_org_id])
+            for sr in requests
+        )
+    )
+    codes = sorted(r.status_code for r in responses)
+    assert codes == [200, 409, 409], [r.text for r in responses]
+    for r in responses:
+        if r.status_code == 409:
+            assert r.json()["code"] == "invalid_transition"
+            assert r.json()["details"]["from"] == "SUPERSEDED"
+
+    async with committed() as session:
+        rows = list(
+            await session.scalars(
+                select(SourceRequest).where(SourceRequest.shortage_id == shortage.id)
+            )
+        )
+        assert sorted(r.status for r in rows) == ["SUPERSEDED", "SUPERSEDED", "TENTATIVE_HOLD"]
+        (winner,) = [r for r in rows if r.status == "TENTATIVE_HOLD"]
+        holds = list(
+            await session.scalars(
+                select(Hold).where(Hold.source_request_id.in_([r.id for r in rows]))
+            )
+        )
+        # No orphan holds: every hold belongs to the winner and is active.
+        assert {h.source_request_id for h in holds} == {winner.id}
+        assert all(h.status in ACTIVE_HOLD for h in holds)
+        assert sum(h.qty for h in holds) == 850
+        for sr in rows:
+            if sr.status == "SUPERSEDED":
+                reason = await session.scalar(
+                    select(AuditLog.reason).where(
+                        AuditLog.entity_id == sr.id,
+                        AuditLog.after["status"].astext == "SUPERSEDED",
+                    )
+                )
+                assert reason == "Another source confirmed first."
+        recs = list(
+            await session.scalars(
+                select(Recommendation).where(Recommendation.shortage_id == shortage.id)
+            )
+        )
+        assert len(recs) == 1
+        assert [line["source_org_id"] for line in recs[0].lines] == [str(winner.source_org_id)]
+        runs = await session.scalar(
+            select(func.count()).select_from(MatchRun).where(MatchRun.shortage_id == shortage.id)
+        )
+        assert runs == 1  # the losers' 409s re-ran nothing

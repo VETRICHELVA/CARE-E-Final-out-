@@ -13,6 +13,8 @@ export type Driver = Schemas["DriverOut"];
 export type Vehicle = Schemas["VehicleOut"];
 export type Device = Schemas["DeviceOut"];
 export type LocationPing = Schemas["LocationOut"];
+export type RoutePlan = Schemas["RoutePlanOut"];
+export type RouteStop = Schemas["RouteStopOut"];
 
 // Query keys are [path template, params]: `useEventStream()` (on in app.tsx) invalidates them
 // by path when the hub reports a change (`shipment.*` refresh the lists and the detail,
@@ -25,6 +27,8 @@ export const keys = {
   /** Shipments this org has on the road (ASSIGNED, PICKED_UP, IN_TRANSIT), for the fleet's
    *  device picker. A key of its own: the lists above are paged. */
   onTheWay: ["/api/v1/shipments", { on_the_way: true }] as const,
+  /** Every unassigned shipment, all pages: the route planner's choices. */
+  unassigned: ["/api/v1/shipments", { status: "CREATED", all_pages: true }] as const,
   shipment: (id: string) => ["/api/v1/shipments/{shipment_id}", { shipment_id: id }] as const,
   drivers: ["/api/v1/drivers"] as const,
   vehicles: ["/api/v1/vehicles"] as const,
@@ -83,6 +87,22 @@ export function useOnTheWay(enabled = true) {
           ),
         )
       ).flat(),
+    enabled,
+  });
+}
+
+/** Every unassigned (CREATED) shipment the hub shows this org, every page. */
+export function useUnassigned(enabled = true) {
+  return useQuery({
+    queryKey: keys.unassigned,
+    queryFn: () =>
+      fetchAllPages((cursor) =>
+        unwrap(
+          client.GET("/api/v1/shipments", {
+            params: { query: { status: "CREATED", limit: PAGE_LIMIT, cursor } },
+          }),
+        ),
+      ),
     enabled,
   });
 }
@@ -246,5 +266,42 @@ export function useAssignDevice() {
       ),
     onSettled: () =>
       Promise.all([queryClient.invalidateQueries({ queryKey: keys.devices }), refresh()]),
+  });
+}
+
+export type RouteInput = { driverId: string; vehicleId: string; shipmentIds: string[] };
+
+/** The viewer's IANA time zone, so the hub writes the times in its reasons as the dispatcher
+ *  reads them ("before 14:00 IST"). */
+export const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+const routeBody = ({ driverId, vehicleId, shipmentIds }: RouteInput) => ({
+  driver_id: driverId,
+  vehicle_id: vehicleId,
+  shipment_ids: shipmentIds,
+  timezone: timeZone(),
+});
+
+/** A stop order for one driver over the chosen shipments (S16). The hub solves it and says
+ *  why any shipment cannot fit; nothing is written. */
+export function useOptimizeRoute() {
+  return useMutation({
+    mutationFn: (input: RouteInput) =>
+      unwrap(client.POST("/api/v1/routes/optimize", { body: routeBody(input) })),
+  });
+}
+
+/** Assigns the driver and vehicle to every shipment that fits, as the hub plans it again (each
+ *  one audited as an assignment). Refreshes the shipment views whatever the hub answered. */
+export function useApplyRoute() {
+  const refresh = useRefreshShipments();
+  return useMutation({
+    mutationFn: ({ reason, ...input }: RouteInput & { reason: string | undefined }) =>
+      unwrap(
+        client.POST("/api/v1/routes/apply", {
+          body: { ...routeBody(input), ...reasonBody(reason) },
+        }),
+      ),
+    onSettled: refresh,
   });
 }

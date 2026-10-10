@@ -456,7 +456,12 @@ async def test_reject_releases_holds_and_rematches(
         "SYSTEM",
     )
     run = (await runs_of(session, shortage))[-1]
-    assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (2, "MANUAL", [])
+    # §7 step 6: the rejected plan's source stays out of this shortage's later runs.
+    assert (run.run_no, run.triggered_by, run.excluded_org_ids) == (
+        2,
+        "MANUAL",
+        [world.hospital_b.id],
+    )
     (*_, rejected) = await audit_of(session, transfer.id)
     assert (rejected.action, rejected.reason, rejected.reason_source) == (
         "recommendation.status_changed",
@@ -475,6 +480,39 @@ async def test_rejecting_a_buy_makes_a_fresh_recommendation(
     assert (old.id, old.status, new.status, new.type) == (buy.id, "REJECTED", "PENDING", "BUY")
     await session.refresh(shortage)
     assert shortage.status == "AWAITING_DECISION"
+
+
+async def test_rejecting_excludes_the_plans_sources_from_later_runs(
+    session: AsyncSession,
+    world: World,
+    s1: Orgs,
+    shortage: Shortage,
+    transfer: Recommendation,
+    approver: httpx.AsyncClient,
+    client_for: ClientFor,
+) -> None:
+    """§7 step 6: a rejected TRANSFER's hospital, then a rejected BUY's supplier, are left
+    out of this shortage's later runs, as a decline is."""
+    b, y, x = s1["Hospital B"], s1["Supplier Y"], s1["Supplier X"]
+    other = await client_for(world.users["b.APPROVER"])
+    assert (await other.post(f"/recommendations/{transfer.id}/reject")).status_code == 403
+    assert (await approver.post(f"/recommendations/{transfer.id}/reject")).status_code == 200
+    again = await approver.post(f"/recommendations/{transfer.id}/reject")
+    assert (again.status_code, again.json()["code"]) == (409, "invalid_transition")
+
+    second = await open_rec(session, shortage)
+    run = (await runs_of(session, shortage))[-1]
+    assert run.excluded_org_ids == [b.id]
+    candidates = (await candidates_of(session, second)).values()
+    assert b.id not in {c.source_org_id for c in candidates}
+    assert (second.type, second.lines[0]["source_org_id"]) == ("BUY", str(y.id))
+    assert "Hospital B (was in a recommendation the requester rejected)" in second.explanation
+
+    assert (await approver.post(f"/recommendations/{second.id}/reject")).status_code == 200
+    third = await open_rec(session, shortage)
+    run = (await runs_of(session, shortage))[-1]
+    assert sorted(run.excluded_org_ids, key=str) == sorted([b.id, y.id], key=str)
+    assert (third.type, third.lines[0]["source_org_id"]) == ("BUY", str(x.id))
 
 
 async def test_escalate_notifies_every_approver_and_can_still_be_approved(

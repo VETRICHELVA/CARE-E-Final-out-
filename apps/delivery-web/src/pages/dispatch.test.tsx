@@ -76,6 +76,36 @@ describe("Dispatch board", () => {
     expect(fake.to("GET", "/api/v1/shipments")[0]!.url.searchParams.get("status")).toBe("CREATED");
   });
 
+  it("badges a shipment on the road with the hub's newest cold-chain event", async () => {
+    const hot: Shipment = {
+      ...assigned("IN_TRANSIT", coldShipment, 7),
+      coldchain: {
+        last_event_type: "EXCURSION",
+        last_event_at: "2026-10-08T06:30:00Z",
+        had_excursion: true,
+      },
+    };
+    const back: Shipment = {
+      ...assigned("IN_TRANSIT", coldShipment, 8),
+      coldchain: {
+        last_event_type: "RECOVERED",
+        last_event_at: "2026-10-08T06:31:00Z",
+        had_excursion: true,
+      },
+    };
+    const quiet = assigned("IN_TRANSIT", coldShipment, 9);
+    hub({ "GET /api/v1/shipments": list([hot, back, quiet]) });
+    show("DISPATCHER", "/?status=IN_TRANSIT");
+    expect(within(await card(hot)).getByTestId("coldchain-badge").textContent).toBe(
+      "Temperature excursion",
+    );
+    expect(within(await card(back)).getByTestId("excursion-badge").textContent).toBe(
+      "Excursion on record",
+    );
+    expect(within(await card(quiet)).queryByTestId("coldchain-badge")).toBeNull();
+    expect(within(await card(quiet)).getByText("Cold chain")).toBeTruthy();
+  });
+
   it("hides Assign from a user without shipment.assign", async () => {
     hub();
     show("NONE");

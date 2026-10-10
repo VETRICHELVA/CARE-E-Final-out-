@@ -289,9 +289,31 @@ export interface paths {
         /**
          * Create Shortage
          * @description Create a shortage in the caller's org. The hub computes the shortfall and runs the
-         *     first match, so the shortage comes back MATCHING.
+         *     first match, so the shortage comes back MATCHING; with `status: DRAFT` it comes back
+         *     DRAFT and unmatched (a chat draft saved for later, S17).
          */
         post: operations["create_shortage_api_v1_shortages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shortages/{shortage_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Draft
+         * @description DRAFT -> OPEN (business-rules §8: the requester confirms a chat draft), then the first
+         *     match run, so it comes back MATCHING. 409 `invalid_transition` unless DRAFT.
+         */
+        post: operations["confirm_draft_api_v1_shortages__shortage_id__confirm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -326,7 +348,8 @@ export interface paths {
         put?: never;
         /**
          * Cancel Shortage
-         * @description Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`.
+         * @description Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409
+         *     `invalid_transition`.
          */
         post: operations["cancel_shortage_api_v1_shortages__shortage_id__cancel_post"];
         delete?: never;
@@ -475,9 +498,10 @@ export interface paths {
         /**
          * Assign Device
          * @description Put one of the caller's org's devices (403 for another org's) on a shipment the org
-         *     may see, or take it off with `shipment_id: null`. Its new readings are linked to the
-         *     shipment, and sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or
-         *     IN_TRANSIT. 409 if the shipment has arrived or already carries another device.
+         *     carries (403 if another org carries it; 409 while it is CREATED and has no carrier), or
+         *     take it off with `shipment_id: null`. Its new readings are linked to the shipment, and
+         *     sent as `coldchain.reading`, while the shipment is ASSIGNED, PICKED_UP or IN_TRANSIT.
+         *     409 if the shipment has arrived or already carries another device.
          */
         post: operations["assign_device_api_v1_devices__device_id__assign_post"];
         delete?: never;
@@ -864,9 +888,9 @@ export interface paths {
         };
         /**
          * Get Shipment
-         * @description One shipment with its route geometry, status history and last driver location.
-         *     403 unless the caller's org is involved (or it is unassigned and the caller is a
-         *     logistics org).
+         * @description One shipment with its route geometry, status history and last driver location (only
+         *     a ping recorded since the current assignment; none while CREATED). 403 unless the
+         *     caller's org is involved (or it is unassigned and the caller is a logistics org).
          */
         get: operations["get_shipment_api_v1_shipments__shipment_id__get"];
         put?: never;
@@ -891,7 +915,8 @@ export interface paths {
          * @description CREATED -> ASSIGNED with one of the caller's org's drivers and vehicles (403 for
          *     another org's). A cold-chain shipment needs a cold-chain vehicle: 400 with the reason
          *     otherwise. Stores the road route, its geometry and the ETA (OSRM, haversine fallback).
-         *     409 unless CREATED.
+         *     409 unless CREATED, and 409 `conflict` when the held stock is at more than one of the
+         *     source's facilities (one pickup per shipment). Any device on it comes off.
          */
         post: operations["assign_shipment_api_v1_shipments__shipment_id__assign_post"];
         delete?: never;
@@ -911,7 +936,8 @@ export interface paths {
         put?: never;
         /**
          * Unassign Shipment
-         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED.
+         * @description ASSIGNED -> CREATED, by the carrier org (403 otherwise); 409 unless ASSIGNED. Any
+         *     device on it comes off.
          */
         post: operations["unassign_shipment_api_v1_shipments__shipment_id__unassign_post"];
         delete?: never;
@@ -933,7 +959,8 @@ export interface paths {
          * Update Shipment Status
          * @description The assigned driver only (403 otherwise): ASSIGNED -> PICKED_UP -> IN_TRANSIT ->
          *     DELIVERED, one step at a time (409 otherwise). PICKED_UP draws down the source's
-         *     on_hand and consumes its FIRM hold.
+         *     on_hand and consumes its FIRM hold; a batch recording less than its hold is drawn down
+         *     only by what it records (never below 0).
          */
         post: operations["update_shipment_status_api_v1_shipments__shipment_id__status_post"];
         delete?: never;
@@ -1004,6 +1031,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/routes/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Optimize Route
+         * @description A stop order for one of the caller's org's drivers over unassigned shipments,
+         *     starting now: each pickup before its drop, each drop by its shortage's `required_by`,
+         *     each cold-chain shipment within the cold-chain ride limit (business-rules.md §4).
+         *     Shipments that cannot fit come back in `infeasible` with a reason. Writes nothing.
+         *     403 for another org's driver, vehicle or a shipment the caller's org cannot see; 409
+         *     unless every shipment is CREATED.
+         */
+        post: operations["optimize_route_api_v1_routes_optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routes/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Route
+         * @description Plans again and assigns the driver and vehicle to every feasible shipment (as
+         *     POST /shipments/{id}/assign does, with its checks and audit rows), with each stop's
+         *     `planned_at` and the ETA from the plan. All or nothing; 409 `conflict` if no shipment
+         *     fits, `invalid_transition` unless every shipment is CREATED.
+         */
+        post: operations["apply_route_api_v1_routes_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/shipments/{shipment_id}/receipt": {
         parameters: {
             query?: never;
@@ -1020,7 +1095,8 @@ export interface paths {
          *     shipment of the shortage has a receipt the shortage is reconciled (RESOLVED, or
          *     PARTIALLY_RESOLVED with a residual shortage that starts matching). 403 for any other
          *     org; 409 unless DELIVERED; 400 if received > expected, accepted + rejected ≠ received,
-         *     an open cold-chain excursion has no inspection note, or accepted stock has no expiry.
+         *     a shipment with an excursion on record has no inspection note, or accepted stock has
+         *     no expiry.
          */
         post: operations["record_receipt_api_v1_shipments__shipment_id__receipt_post"];
         delete?: never;
@@ -1070,10 +1146,554 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ai/read/shortages/{shortage_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Shortage
+         * @description get_shortage: GET /shortages/{id} (needs `shortage.create` or `recommendation.approve`)
+         *     with the product, facility, its source requests (requester's view), recommendations,
+         *     shipments and residual shortages.
+         */
+        get: operations["ai_shortage_api_v1_ai_read_shortages__shortage_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shortages/{shortage_id}/match-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Match Run
+         * @description get_match_run: GET /shortages/{id}/match-runs/latest.
+         */
+        get: operations["ai_match_run_api_v1_ai_read_shortages__shortage_id__match_run_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Candidate
+         * @description get_candidate: one candidate as the match run shows it (no hospital cost).
+         */
+        get: operations["ai_candidate_api_v1_ai_read_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/recommendations/{recommendation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Recommendation
+         * @description get_recommendation: GET /recommendations/{id} (supplier costs only).
+         */
+        get: operations["ai_recommendation_api_v1_ai_read_recommendations__recommendation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shipments/{shipment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Shipment
+         * @description get_shipment: GET /shipments/{id} (the receipt for the receiving org only), without
+         *     the route geometry, which only a map needs.
+         */
+        get: operations["ai_shipment_api_v1_ai_read_shipments__shipment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/shipments/{shipment_id}/coldchain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Coldchain
+         * @description get_coldchain_events: whether the shipment needs cold chain, its readings summary and
+         *     excursion events (none until S15). Involved orgs only, as GET /shipments/{id}.
+         */
+        get: operations["ai_coldchain_api_v1_ai_read_shipments__shipment_id__coldchain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Audit
+         * @description get_audit: needs `audit.read`. `entity=shortage` is that shortage's whole trail as
+         *     GET /shortages/{id}/audit; any other entity is GET /audit?entity=&entity_id= (own org's
+         *     rows). Oldest first.
+         */
+        get: operations["ai_audit_api_v1_ai_read_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ai/read/products/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ai Product Search
+         * @description Chat ordering (S17): fuzzy match on product name, code and synonyms
+         *     (scripts/seed/synonyms.yaml), best first, each with its score; products under the
+         *     minimum score are left out. The catalog is the same for every user (GET /products), so
+         *     this reads nothing of any org. It ranks and never picks.
+         */
+        get: operations["ai_product_search_api_v1_ai_read_products_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/shipments/{shipment_id}/coldchain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Coldchain
+         * @description The shipment's readings and cold-chain events (business-rules.md §11), with the
+         *     product's band and the cold box's battery and last seen. Only the shipment's from, to
+         *     and carrier orgs (403 otherwise); the carrier sees its own devices' data only.
+         */
+        get: operations["get_coldchain_api_v1_shipments__shipment_id__coldchain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forecasts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Forecasts
+         * @description The caller's own org's forecasts, one per product with a stored forecast (catalog
+         *     order): the next 30 days with their interval, the predicted stock-out date, the reorder
+         *     suggestion and each expiry-risk batch, against the stock recorded now.
+         */
+        get: operations["list_forecasts_api_v1_forecasts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/forecasts/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Forecasts
+         * @description Forecast now instead of waiting for the nightly job. A platform admin runs every
+         *     hospital (or `org_id`); any other caller needs `inventory.edit` in a HOSPITAL org and runs
+         *     its own org only (403 for another `org_id`). Statistics, not an LLM: the same history
+         *     gives the same numbers.
+         */
+        post: operations["run_forecasts_api_v1_forecasts_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Surplus
+         * @description The caller's org's own posts, newest first.
+         */
+        get: operations["list_surplus_api_v1_surplus_get"];
+        put?: never;
+        /**
+         * Create Surplus
+         * @description Offer one of the caller's org's batches to the network (from an expiry-risk
+         *     suggestion or by hand), then match it. 400 if the batch has expired or `qty` exceeds its
+         *     transferable (`details.transferable_qty`); 409 `conflict` if the batch already has a live
+         *     post; 403 for another org's batch.
+         */
+        post: operations["create_surplus_api_v1_surplus_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus/incoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Incoming Surplus
+         * @description Other orgs' live (OPEN or MATCHED) posts matched to the caller's org, newest post
+         *     first: offered qty, expiry band and location only (CLAUDE.md rule 6). A withdrawn or
+         *     expired post leaves this list.
+         */
+        get: operations["list_incoming_surplus_api_v1_surplus_incoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/surplus/{surplus_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Surplus
+         * @description OPEN or MATCHED → WITHDRAWN (posting org only, else 403); otherwise 409
+         *     `invalid_transition`. A withdrawn post is never matched again.
+         */
+        post: operations["withdraw_surplus_api_v1_surplus__surplus_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{org_id}/reliability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reliability
+         * @description Any signed-in user may read any org's stored score and its four components (they rank
+         *     and explain candidates). The credit balance is shown to the org's own users only.
+         */
+        get: operations["get_reliability_api_v1_orgs__org_id__reliability_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Network Metrics
+         * @description Network-wide figures across every org: platform users with `audit.read` only (403
+         *     for anyone else, as the figures span other orgs).
+         */
+        get: operations["network_metrics_api_v1_metrics_network_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AiColdChainOut
+         * @description Cold-chain record of a shipment. S15 adds excursion events; until then `events` is
+         *     empty and `has_open_excursion` false (business-rules.md §11).
+         */
+        AiColdChainOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** Device Id */
+            device_id: string | null;
+            /** Reading Count */
+            reading_count: number;
+            /** First Reading At */
+            first_reading_at: string | null;
+            /** Last Reading At */
+            last_reading_at: string | null;
+            /** Min Temp C */
+            min_temp_c: number | null;
+            /** Max Temp C */
+            max_temp_c: number | null;
+            /** Has Open Excursion */
+            has_open_excursion: boolean;
+            /** Events */
+            events: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AiRecommendationRef */
+        AiRecommendationRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Type */
+            type: string;
+            /** Status */
+            status: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** AiShipmentRef */
+        AiShipmentRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["ShipmentStatus"];
+            /** Qty */
+            qty: number;
+            /** From Org Name */
+            from_org_name: string;
+        };
+        /**
+         * AiShortageOut
+         * @description GET /shortages/{id} plus what hangs off it, as the requester's org sees it.
+         */
+        AiShortageOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Facility Id
+             * Format: uuid
+             */
+            facility_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Qty Required */
+            qty_required: number;
+            /** Qty Local Usable */
+            qty_local_usable: number;
+            /**
+             * Shortfall
+             * @description Hub-computed max(0, qty_required - qty_local_usable); never taken as input.
+             */
+            readonly shortfall: number;
+            /**
+             * Required By
+             * Format: date-time
+             */
+            required_by: string;
+            priority: components["schemas"]["Priority"];
+            /** Min Shelf Life Days */
+            min_shelf_life_days: number;
+            status: components["schemas"]["Status"];
+            /** Notes */
+            notes: string | null;
+            /** Parent Shortage Id */
+            parent_shortage_id: string | null;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Product Code */
+            product_code: string;
+            /** Product Name */
+            product_name: string;
+            /** Facility Name */
+            facility_name: string;
+            /**
+             * Source Requests
+             * @description As GET /source-requests?direction=outgoing&shortage_id= (newest first).
+             */
+            source_requests: components["schemas"]["SourceRequestOut"][];
+            /**
+             * Recommendations
+             * @description Newest first.
+             */
+            recommendations: components["schemas"]["AiRecommendationRef"][];
+            /**
+             * Shipments
+             * @description Newest first.
+             */
+            shipments: components["schemas"]["AiShipmentRef"][];
+            /**
+             * Residual Shortages
+             * @description Shortages opened for what a short delivery left (parent_shortage_id).
+             */
+            residual_shortages: components["schemas"]["AiShortageRef"][];
+        };
+        /** AiShortageRef */
+        AiShortageRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            status: components["schemas"]["Status"];
+            /** Qty Required */
+            qty_required: number;
+            /** Shortfall */
+            shortfall: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ApplyIn */
+        ApplyIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Shipment Ids
+             * @description Unassigned (CREATED) shipments the caller's org may see; repeats count once.
+             */
+            shipment_ids: string[];
+            /**
+             * Timezone
+             * @description IANA time zone for the times in the reasons, e.g. Asia/Kolkata.
+             * @default UTC
+             */
+            timezone: string;
+            /**
+             * Vehicle Id
+             * Format: uuid
+             */
+            vehicle_id: string;
+            /** Reason */
+            reason?: string | null;
+        };
         /** ApprovalOut */
         ApprovalOut: {
             recommendation: components["schemas"]["RecommendationOut"];
@@ -1148,6 +1768,13 @@ export interface components {
              * Format: date-time
              */
             ts: string;
+        };
+        /** BandOut */
+        BandOut: {
+            /** Temp Min C */
+            temp_min_c: number | null;
+            /** Temp Max C */
+            temp_max_c: number | null;
         };
         /** BatchCreate */
         BatchCreate: {
@@ -1331,11 +1958,144 @@ export interface components {
              */
             rank: number | null;
         };
+        /** ColdChainComplianceOut */
+        ColdChainComplianceOut: {
+            /**
+             * Deliveries
+             * @description Cold-chain shipments recorded DELIVERED or RECONCILED.
+             */
+            deliveries: number;
+            /**
+             * Monitored
+             * @description Of those, shipments with at least one sensor reading.
+             */
+            monitored: number;
+            /**
+             * With Excursion
+             * @description Monitored shipments with an EXCURSION event.
+             */
+            with_excursion: number;
+            /**
+             * With Device Silent
+             * @description Monitored shipments with a DEVICE_SILENT event (not a breach, a gap).
+             */
+            with_device_silent: number;
+            /**
+             * Compliance Rate
+             * @description (monitored - with_excursion) ÷ monitored; null with none monitored.
+             */
+            compliance_rate: number | null;
+        };
+        /** ColdChainDeviceOut */
+        ColdChainDeviceOut: {
+            /** Device Id */
+            device_id: string;
+            /** Battery Level */
+            battery_level: number | null;
+            /** Last Seen */
+            last_seen: string | null;
+        };
+        /** ColdChainEventOut */
+        ColdChainEventOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            type: components["schemas"]["ColdChainEventType"];
+            severity: components["schemas"]["Severity"];
+            /** Device Id */
+            device_id: string;
+            /**
+             * Observed Value
+             * @description EXCURSION / RECOVERED: the reading (°C) that completed the run of consecutive readings. DEVICE_SILENT: seconds without a reading when it was noticed.
+             */
+            observed_value: number;
+            /**
+             * Threshold
+             * @description EXCURSION / RECOVERED: the band's bound (°C) the excursion crossed. DEVICE_SILENT: the silence limit in seconds.
+             */
+            threshold: number;
+            /**
+             * Ts
+             * Format: date-time
+             * @description The reading that completed the run, or when the silence was noticed.
+             */
+            ts: string;
+        };
+        /**
+         * ColdChainEventType
+         * @enum {string}
+         */
+        ColdChainEventType: "EXCURSION" | "DEVICE_SILENT" | "RECOVERED";
+        /** ColdChainOut */
+        ColdChainOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** @description The product's allowed range; both null: no rule. */
+            band: components["schemas"]["BandOut"];
+            /** @description The cold box on the shipment, or the one that sent its newest reading. */
+            device: components["schemas"]["ColdChainDeviceOut"] | null;
+            /**
+             * Silent After Seconds
+             * @description A device silent this long while IN_TRANSIT raises DEVICE_SILENT.
+             */
+            silent_after_seconds: number;
+            /**
+             * Readings
+             * @description The newest readings, oldest first.
+             */
+            readings: components["schemas"]["ReadingOut"][];
+            /**
+             * Events
+             * @description Every cold-chain event, oldest first.
+             */
+            events: components["schemas"]["ColdChainEventOut"][];
+            /**
+             * Has Excursion
+             * @description An EXCURSION is on record (it stays after RECOVERED).
+             */
+            has_excursion: boolean;
+        };
+        /**
+         * ColdChainSummary
+         * @description A shipment's cold-chain state for lists (the dispatch board and Deliveries badges).
+         */
+        ColdChainSummary: {
+            last_event_type: components["schemas"]["ColdChainEventType"];
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Had Excursion */
+            had_excursion: boolean;
+        };
         /**
          * Condition
          * @enum {string}
          */
         Condition: "GOOD" | "DAMAGED" | "TEMPERATURE_ISSUE";
+        /** CostAvoidedOut */
+        CostAvoidedOut: {
+            /**
+             * Paise
+             * @description Σ units accepted from hospital transfers × the cheapest supplier unit price recorded by the match run that chose the source.
+             */
+            paise: number;
+            /** Units Priced */
+            units_priced: number;
+            /**
+             * Units Unpriced
+             * @description Accepted transfer units whose match run recorded no supplier price; not counted in `paise`.
+             */
+            units_unpriced: number;
+        };
         /**
          * DemandOut
          * @description Open network demand for one product the caller's supplier org offers. Aggregated over
@@ -1425,11 +2185,60 @@ export interface components {
          * @enum {string}
          */
         EventType: "shortage.status_changed" | "source_request.created" | "source_request.status_changed" | "recommendation.ready" | "recommendation.status_changed" | "purchase_order.created" | "purchase_order.status_changed" | "shipment.created" | "shipment.status_changed" | "shipment.location" | "coldchain.reading" | "coldchain.excursion" | "coldchain.device_silent" | "coldchain.recovered" | "reconciliation.completed" | "surplus.matched" | "inventory.changed" | "supplier_offer.changed";
+        /**
+         * ExpiryRiskOut
+         * @description A batch whose forecast usage before expiry is less than on_hand - safety stock.
+         */
+        ExpiryRiskOut: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Batch No */
+            batch_no: string;
+            /**
+             * Expiry Date
+             * Format: date
+             */
+            expiry_date: string;
+            /** On Hand */
+            on_hand: number;
+            /** Safety Stock */
+            safety_stock: number;
+            /** Transferable */
+            transferable: number;
+            /** Usage Before Expiry */
+            usage_before_expiry: number;
+            /**
+             * Excess
+             * @description on_hand - safety stock - forecast usage, rounded down.
+             */
+            excess: number;
+            /**
+             * Suggested Qty
+             * @description What "Offer to network" posts: the excess, never more than transferable.
+             */
+            suggested_qty: number;
+            /**
+             * Surplus Post Id
+             * @description The batch's live (OPEN or MATCHED) surplus post, if any.
+             */
+            surplus_post_id: string | null;
+        };
+        /** ExpirySavedOut */
+        ExpirySavedOut: {
+            /**
+             * Units
+             * @description Units accepted from hospital transfers that came from batches posted as surplus before the source request.
+             */
+            units: number;
+        };
         /** FacilityOut */
         FacilityOut: {
             /** Name */
             name: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
             /**
              * Id
              * Format: uuid
@@ -1444,6 +2253,72 @@ export interface components {
             address: string;
             /** Has Cold Storage */
             has_cold_storage: boolean;
+        };
+        /** ForecastDayOut */
+        ForecastDayOut: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /** Predicted Qty */
+            predicted_qty: number;
+            /**
+             * Lower
+             * @description Lower bound of the 95% prediction interval.
+             */
+            lower: number;
+            /**
+             * Upper
+             * @description Upper bound of the 95% prediction interval.
+             */
+            upper: number;
+        };
+        /**
+         * ForecastOut
+         * @description One product's stored forecast against the caller's org's stock now.
+         */
+        ForecastOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Model Version
+             * @description holt-winters-weekly/1, or moving-average-28/1 under 60 days of history.
+             */
+            model_version: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Synthetic History
+             * @description True when the history includes synthetic (seeded) consumption records.
+             */
+            synthetic_history: boolean;
+            /**
+             * Days
+             * @description The next 30 days, from today.
+             */
+            days: components["schemas"]["ForecastDayOut"][];
+            /**
+             * Usable Stock
+             * @description On hand less reserved, allocated, quarantined and active holds, over unexpired batches (safety stock is usable by its own hospital).
+             */
+            usable_stock: number;
+            /** Safety Stock */
+            safety_stock: number;
+            /**
+             * Stockout Date
+             * @description The first day cumulative forecast use exceeds usable stock; null if it does not within the stored forecast.
+             */
+            stockout_date: string | null;
+            reorder: components["schemas"]["ReorderOut"] | null;
+            /** Expiry Risks */
+            expiry_risks: components["schemas"]["ExpiryRiskOut"][];
         };
         /** GateOut */
         GateOut: {
@@ -1492,12 +2367,18 @@ export interface components {
             /** Errors */
             errors: components["schemas"]["RowError"][];
         };
-        /** Location */
-        Location: {
-            /** Lat */
-            lat: number;
-            /** Lng */
-            lng: number;
+        /** InfeasibleOut */
+        InfeasibleOut: {
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            /**
+             * Reason
+             * @description Why the shipment cannot be in this route, in plain words.
+             */
+            reason: string;
         };
         /** LocationIn */
         LocationIn: {
@@ -1534,6 +2415,28 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MatchKind
+         * @enum {string}
+         */
+        MatchKind: "SHORTAGE" | "FORECAST";
+        /**
+         * MatchReason
+         * @description Why the post was matched to the caller's org: its own open shortage of the product,
+         *     or its own forecast stock-out within 14 days.
+         */
+        MatchReason: {
+            kind: components["schemas"]["MatchKind"];
+            /** Shortage Id */
+            shortage_id: string | null;
+            /** Stockout Date */
+            stockout_date: string | null;
+            /**
+             * Matched At
+             * Format: date-time
+             */
+            matched_at: string;
         };
         /** MatchRunOut */
         MatchRunOut: {
@@ -1577,6 +2480,23 @@ export interface components {
             roles: string[];
             /** Capabilities */
             capabilities: string[];
+        };
+        /**
+         * NetworkMetricsOut
+         * @description Network-wide figures for the platform admin, each computed from recorded rows only
+         *     (api-and-events.md "Network metrics"). No hospital's unit cost appears or is used.
+         */
+        NetworkMetricsOut: {
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            time_to_confirmed_source: components["schemas"]["TimeToSourceOut"];
+            resolution_mix: components["schemas"]["ResolutionMixOut"];
+            procurement_cost_avoided: components["schemas"]["CostAvoidedOut"];
+            units_saved_from_expiry: components["schemas"]["ExpirySavedOut"];
+            cold_chain: components["schemas"]["ColdChainComplianceOut"];
         };
         /** NotificationOut */
         NotificationOut: {
@@ -1658,13 +2578,37 @@ export interface components {
              */
             updated_at: string;
         };
+        /** OptimizeIn */
+        OptimizeIn: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /**
+             * Shipment Ids
+             * @description Unassigned (CREATED) shipments the caller's org may see; repeats count once.
+             */
+            shipment_ids: string[];
+            /**
+             * Timezone
+             * @description IANA time zone for the times in the reasons, e.g. Asia/Kolkata.
+             * @default UTC
+             */
+            timezone: string;
+            /**
+             * Vehicle Id
+             * @description Optional: with a vehicle without cold chain, cold-chain shipments are reported infeasible.
+             */
+            vehicle_id?: string | null;
+        };
         /** OrgOut */
         OrgOut: {
             /** Name */
             name: string;
             /** Type */
             type: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
             /**
              * Id
              * Format: uuid
@@ -1719,6 +2663,13 @@ export interface components {
         Page_FacilityOut_: {
             /** Items */
             items: components["schemas"]["FacilityOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[ForecastOut] */
+        Page_ForecastOut_: {
+            /** Items */
+            items: components["schemas"]["ForecastOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
         };
@@ -1778,6 +2729,20 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** Page[SurplusOfferOut] */
+        Page_SurplusOfferOut_: {
+            /** Items */
+            items: components["schemas"]["SurplusOfferOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** Page[SurplusOut] */
+        Page_SurplusOut_: {
+            /** Items */
+            items: components["schemas"]["SurplusOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** Page[VehicleOut] */
         Page_VehicleOut_: {
             /** Items */
@@ -1829,6 +2794,11 @@ export interface components {
              * @description The best BUY, or for a BUY the next one.
              */
             alternatives: components["schemas"]["PlanLine"][];
+            /**
+             * Parallel
+             * @description CRITICAL TRANSFER only (S19): the single-source candidates asked at once, the planned line first; the first to accept wins. Empty for every other plan.
+             */
+            parallel?: components["schemas"]["PlanLine"][];
         };
         /**
          * PoStatus
@@ -1840,6 +2810,39 @@ export interface components {
          * @enum {string}
          */
         Priority: "CRITICAL" | "ROUTINE";
+        /**
+         * ProductMatchOut
+         * @description One catalog product the search phrase may name (S17), with how well it scored.
+         */
+        ProductMatchOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Category */
+            category: string;
+            /** Unit */
+            unit: string;
+            /** Requires Cold Chain */
+            requires_cold_chain: boolean;
+            /** Default Min Shelf Life Days */
+            default_min_shelf_life_days: number;
+            /**
+             * Score
+             * @description 0-1; 1.0 = the phrase is the name, code or a synonym.
+             */
+            score: number;
+            /**
+             * Matched On
+             * @description The name, code or synonym that scored best.
+             */
+            matched_on: string;
+        };
         /** ProductOut */
         ProductOut: {
             /**
@@ -1864,11 +2867,22 @@ export interface components {
             /** Default Min Shelf Life Days */
             default_min_shelf_life_days: number;
         };
+        /**
+         * ProductSearchOut
+         * @description Best first; products scoring under the search's minimum are left out. The search ranks
+         *     and never picks: callers must ask the user when scores are close (apps-ai-iot.md).
+         */
+        ProductSearchOut: {
+            /** Q */
+            q: string;
+            /** Items */
+            items: components["schemas"]["ProductMatchOut"][];
+        };
         /** PublicFacilityView */
         PublicFacilityView: {
             /** Name */
             name: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
         };
         /**
          * PublicOrgView
@@ -1879,7 +2893,7 @@ export interface components {
             name: string;
             /** Type */
             type: string;
-            location: components["schemas"]["Location"];
+            location: components["schemas"]["app__orgs__schemas__Location"];
         };
         /**
          * PurchaseOrderOut
@@ -1957,6 +2971,20 @@ export interface components {
             /** Battery */
             battery?: number | null;
         };
+        /** ReadingOut */
+        ReadingOut: {
+            /** Device Id */
+            device_id: string;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+            /** Temp C */
+            temp_c: number;
+            /** Battery */
+            battery: number | null;
+        };
         /** ReasonIn */
         ReasonIn: {
             /** Reason */
@@ -1983,7 +3011,7 @@ export interface components {
             condition: components["schemas"]["Condition"];
             /**
              * Inspection Note
-             * @description Required (400) when the shipment has an open cold-chain excursion (`inspection_note_required` on the shipment).
+             * @description Required (400) when a cold-chain EXCURSION is on record for the shipment, even one since RECOVERED (`inspection_note_required` on the shipment).
              */
             inspection_note?: string | null;
             /**
@@ -2203,16 +3231,170 @@ export interface components {
             refresh_token: string;
         };
         /**
+         * ReliabilityOut
+         * @description An org's stored reliability (business-rules.md §12). Components are null while the
+         *     org has no history for them; the score is then the no-history default (70).
+         */
+        ReliabilityOut: {
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Score
+             * @description 0-100; what matching ranks by.
+             */
+            score: number;
+            /**
+             * Has History
+             * @description False while the score is the no-history default (some component has no history yet).
+             */
+            has_history: boolean;
+            /**
+             * Acceptance Rate
+             * @description Share of answered source requests accepted; for a supplier, purchase orders acknowledged ÷ (acknowledged + rejected).
+             */
+            acceptance_rate: number | null;
+            /**
+             * Response Speed
+             * @description max(0, 1 - median(response time ÷ the response limit)); for a supplier, from purchase order SENT to its first answer.
+             */
+            response_speed: number | null;
+            /** Median Response Minutes */
+            median_response_minutes: number | null;
+            /**
+             * On Time Rate
+             * @description Share of delivered shipments delivered by the shortage's deadline.
+             */
+            on_time_rate: number | null;
+            /**
+             * Discrepancy Rate
+             * @description Units not accepted ÷ units expected, over reconciled shipments.
+             */
+            discrepancy_rate: number | null;
+            /**
+             * Computed At
+             * @description Null until first computed.
+             */
+            computed_at: string | null;
+            /**
+             * Credits
+             * @description The org's credit balance (§12, not spendable yet); the caller's own org only, null for any other org.
+             */
+            credits: number | null;
+        };
+        /** ReorderOut */
+        ReorderOut: {
+            /**
+             * Lead Time Days
+             * @description The shortest supplier lead time for the product in whole days (rounded up), or the default (7) when no supplier offers it.
+             */
+            lead_time_days: number;
+            /**
+             * Qty
+             * @description Forecast lead-time demand + safety stock - usable stock, rounded up, never below 0.
+             */
+            qty: number;
+        };
+        /**
          * RequestStatus
          * @enum {string}
          */
         RequestStatus: "REQUESTED" | "TENTATIVE_HOLD" | "DECLINED" | "EXPIRED" | "SUPERSEDED" | "CONFIRMED";
+        /** ResolutionMixOut */
+        ResolutionMixOut: {
+            /**
+             * Transfers
+             * @description Approved TRANSFER and TRANSFER_SPLIT recommendations.
+             */
+            transfers: number;
+            /**
+             * Purchases
+             * @description Approved BUY recommendations.
+             */
+            purchases: number;
+            /**
+             * Transfer Share
+             * @description transfers ÷ (transfers + purchases).
+             */
+            transfer_share: number | null;
+            /**
+             * Purchase Share
+             * @description purchases ÷ (transfers + purchases).
+             */
+            purchase_share: number | null;
+        };
+        /** RouteApplyOut */
+        RouteApplyOut: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /** Vehicle Id */
+            vehicle_id: string | null;
+            /** Stops */
+            stops: components["schemas"]["RouteStopOut"][];
+            /** Infeasible */
+            infeasible: components["schemas"]["InfeasibleOut"][];
+            /**
+             * Assigned Shipment Ids
+             * @description The feasible shipments, now ASSIGNED to the driver, in pickup order.
+             */
+            assigned_shipment_ids: string[];
+        };
+        /**
+         * RoutePlanOut
+         * @description A stop order for one driver: every pickup before its drop, every drop by its
+         *     shortage's `required_by`, every cold-chain shipment within the cold-chain ride limit.
+         *     Shipments that cannot fit are in `infeasible`, never left out silently.
+         */
+        RoutePlanOut: {
+            /**
+             * Driver Id
+             * Format: uuid
+             */
+            driver_id: string;
+            /** Vehicle Id */
+            vehicle_id: string | null;
+            /** Stops */
+            stops: components["schemas"]["RouteStopOut"][];
+            /** Infeasible */
+            infeasible: components["schemas"]["InfeasibleOut"][];
+        };
         /**
          * RouteProvider
          * @description Which provider gave a stored route: OSRM, or the haversine fallback (§4).
          * @enum {string}
          */
         RouteProvider: "OSRM" | "HAVERSINE";
+        /** RouteStopOut */
+        RouteStopOut: {
+            /**
+             * Seq
+             * @description 1-based position in the route.
+             */
+            seq: number;
+            /**
+             * Shipment Id
+             * Format: uuid
+             */
+            shipment_id: string;
+            type: components["schemas"]["StopType"];
+            /** Place */
+            place: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Eta
+             * Format: date-time
+             * @description Planned arrival at the stop.
+             */
+            eta: string;
+        };
         /** RowError */
         RowError: {
             /** Line */
@@ -2220,6 +3402,28 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** RunOut */
+        RunOut: {
+            /** Org Ids */
+            org_ids: string[];
+            /**
+             * Series
+             * @description Hospital x product series forecast.
+             */
+            series: number;
+            /**
+             * Models
+             * @description Series per model version.
+             */
+            models: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * Severity
+         * @enum {string}
+         */
+        Severity: "ALERT" | "WARNING" | "INFO";
         /** ShipmentDetailOut */
         ShipmentDetailOut: {
             /**
@@ -2288,6 +3492,8 @@ export interface components {
             route_provider: components["schemas"]["RouteProvider"] | null;
             pickup: components["schemas"]["StopOut"] | null;
             drop: components["schemas"]["StopOut"] | null;
+            /** @description The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none. */
+            coldchain: components["schemas"]["ColdChainSummary"] | null;
             /**
              * Created At
              * Format: date-time
@@ -2310,7 +3516,7 @@ export interface components {
             last_location: components["schemas"]["LocationOut"] | null;
             /**
              * Inspection Note Required
-             * @description True when the shipment has an open cold-chain excursion: its receipt then needs an inspection note (business-rules.md §9). Always false until S15.
+             * @description True when a cold-chain excursion is on record for the shipment, even one that has since recovered: its receipt then needs an inspection note (business-rules.md §9, §11).
              */
             inspection_note_required: boolean;
             /** @description What the receiving org recorded (with the reconciliation once every shipment of the shortage has a receipt). Shown to the receiving org only; null for the other orgs and before a receipt. */
@@ -2388,6 +3594,8 @@ export interface components {
             route_provider: components["schemas"]["RouteProvider"] | null;
             pickup: components["schemas"]["StopOut"] | null;
             drop: components["schemas"]["StopOut"] | null;
+            /** @description The newest cold-chain event the caller may see, and whether an excursion is on record (S15); null when there is none. */
+            coldchain: components["schemas"]["ColdChainSummary"] | null;
             /**
              * Created At
              * Format: date-time
@@ -2439,6 +3647,18 @@ export interface components {
             notes?: string | null;
             /** Reason */
             reason?: string | null;
+            /**
+             * @description Where the user filled it in: FORM, or CHAT for a chat draft the user checked and confirmed on its card (S17). The AI service never calls this.
+             * @default FORM
+             */
+            source: components["schemas"]["ShortageSource"];
+            /**
+             * Status
+             * @description OPEN (the default) starts matching at once. DRAFT saves it unmatched until the requester confirms it (POST /shortages/{id}/confirm; business-rules §8).
+             * @default OPEN
+             * @enum {string}
+             */
+            status: "OPEN" | "DRAFT";
         };
         /** ShortageOut */
         ShortageOut: {
@@ -2659,6 +3879,126 @@ export interface components {
              */
             expires_at: string;
         };
+        /**
+         * SurplusCreate
+         * @description Offer one of the caller's org's batches to the network. `qty` may not exceed the
+         *     batch's transferable now; afterwards the post offers only up to its current
+         *     transferable (CLAUDE.md rule 4).
+         */
+        SurplusCreate: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Qty */
+            qty: number;
+            /** Min Price Paise */
+            min_price_paise?: number | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * SurplusOfferOut
+         * @description Another org's post as a matched org sees it: transferable qty, expiry band and
+         *     location only (CLAUDE.md rule 6). No batch, expiry date, price or stock figures.
+         */
+        SurplusOfferOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Org Name */
+            org_name: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Offered Qty
+             * @description Never more than the batch's current transferable.
+             */
+            offered_qty: number;
+            /**
+             * Expiry Band
+             * @description UNDER_30_DAYS, 30_TO_59_DAYS, 60_TO_89_DAYS or 90_DAYS_OR_MORE.
+             */
+            expiry_band: string;
+            location: components["schemas"]["app__surplus__schemas__Location"];
+            status: components["schemas"]["SurplusStatus"];
+            match: components["schemas"]["MatchReason"];
+        };
+        /**
+         * SurplusOut
+         * @description The poster's own view of its post.
+         */
+        SurplusOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /**
+             * Qty
+             * @description What was posted.
+             */
+            qty: number;
+            /**
+             * Offered Qty
+             * @description What the network is offered now: qty, never more than the batch's current hub-computed transferable (0 once the batch has expired).
+             */
+            offered_qty: number;
+            /**
+             * Expiry Date
+             * Format: date
+             */
+            expiry_date: string;
+            /** Min Price Paise */
+            min_price_paise: number | null;
+            status: components["schemas"]["SurplusStatus"];
+            /**
+             * Matched Org Ids
+             * @description The orgs it was matched to (each got `surplus.matched`).
+             */
+            matched_org_ids: string[];
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * SurplusStatus
+         * @enum {string}
+         */
+        SurplusStatus: "OPEN" | "MATCHED" | "WITHDRAWN" | "EXPIRED";
         /** TelemetryBatch */
         TelemetryBatch: {
             /** Readings */
@@ -2681,6 +4021,21 @@ export interface components {
              * @description device_ids with no Device; not stored.
              */
             unknown_devices: string[];
+        };
+        /** TimeToSourceOut */
+        TimeToSourceOut: {
+            /**
+             * Median Minutes
+             * @description Median minutes from a shortage being reported to its first confirmed source; null while no shortage has one.
+             */
+            median_minutes: number | null;
+            /**
+             * Shortages Confirmed
+             * @description Shortages with a confirmed source.
+             */
+            shortages_confirmed: number;
+            /** Shortages Reported */
+            shortages_reported: number;
         };
         /** TokenPair */
         TokenPair: {
@@ -2811,6 +4166,22 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** Location */
+        app__orgs__schemas__Location: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+        };
+        /** Location */
+        app__surplus__schemas__Location: {
+            /** Facility Name */
+            facility_name: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
         };
     };
     responses: never;
@@ -3384,6 +4755,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_draft_api_v1_shortages__shortage_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4535,6 +5941,72 @@ export interface operations {
             };
         };
     };
+    optimize_route_api_v1_routes_optimize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptimizeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutePlanOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_route_api_v1_routes_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteApplyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     record_receipt_api_v1_shipments__shipment_id__receipt_post: {
         parameters: {
             query?: never;
@@ -4631,6 +6103,568 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_shortage_api_v1_ai_read_shortages__shortage_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiShortageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_match_run_api_v1_ai_read_shortages__shortage_id__match_run_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shortage_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_candidate_api_v1_ai_read_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                candidate_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_recommendation_api_v1_ai_read_recommendations__recommendation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                recommendation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_shipment_api_v1_ai_read_shipments__shipment_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShipmentDetailOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_coldchain_api_v1_ai_read_shipments__shipment_id__coldchain_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiColdChainOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_audit_api_v1_ai_read_audit_get: {
+        parameters: {
+            query: {
+                /** @description e.g. shortage, source_request, shipment */
+                entity: string;
+                entity_id: string;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AuditOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_product_search_api_v1_ai_read_products_search_get: {
+        parameters: {
+            query: {
+                /** @description The words the user typed. */
+                q: string;
+                limit?: number;
+            };
+            header?: {
+                /** @description The signed-in user's access token (with or without 'Bearer '); the hub answers as that user. */
+                "X-On-Behalf-Of"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSearchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_coldchain_api_v1_shipments__shipment_id__coldchain_get: {
+        parameters: {
+            query?: {
+                /** @description How many of the newest readings to return. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                shipment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ColdChainOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_forecasts_api_v1_forecasts_get: {
+        parameters: {
+            query?: {
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ForecastOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_forecasts_api_v1_forecasts_run_post: {
+        parameters: {
+            query?: {
+                org_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_surplus_api_v1_surplus_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["SurplusStatus"] | null;
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SurplusOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_surplus_api_v1_surplus_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SurplusCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurplusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incoming_surplus_api_v1_surplus_incoming_get: {
+        parameters: {
+            query?: {
+                product_id?: string | null;
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_SurplusOfferOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_surplus_api_v1_surplus__surplus_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                surplus_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ReasonIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SurplusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reliability_api_v1_orgs__org_id__reliability_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReliabilityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_metrics_api_v1_metrics_network_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkMetricsOut"];
                 };
             };
         };

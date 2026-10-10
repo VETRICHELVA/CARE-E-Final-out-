@@ -11,7 +11,10 @@ export const RERUN_FROM = new Set(["OPEN", "MATCHING"]);
 /** api-and-events.md (S05): who may list and read their org's shortages. Writes stay
  *  `shortage.create` only. */
 export const SHORTAGE_READERS = ["shortage.create", "recommendation.approve"] as const;
-export const CANCEL_FROM = new Set(["OPEN", "MATCHING", "AWAITING_DECISION"]);
+/** Shortage states the requester may cancel (business-rules §8; DRAFT since S17). */
+export const CANCEL_FROM = new Set(["DRAFT", "OPEN", "MATCHING", "AWAITING_DECISION"]);
+/** A saved chat draft the requester may confirm (DRAFT -> OPEN, S17). */
+export const CONFIRM_FROM = new Set(["DRAFT"]);
 /** Shortage states that are still being worked on (the dashboard's "open" shortages). */
 export const OPEN_STATES = [
   "DRAFT",
@@ -78,6 +81,22 @@ export const ENTITY_LABELS: Record<string, string> = {
   recommendation: "Recommendation",
   purchase_order: "Purchase order",
   shipment: "Shipment",
+  match_run: "Match run",
+  receipt: "Receipt",
+  reconciliation: "Reconciliation",
+  batch: "Batch",
+};
+
+/** Receipt conditions (api-and-events.md, S12). */
+export const CONDITION_LABELS: Record<string, string> = {
+  GOOD: "Good",
+  DAMAGED: "Damaged",
+  TEMPERATURE_ISSUE: "Temperature issue",
+};
+
+/** Notification types the hub writes (S12: escalations). */
+export const NOTIFICATION_LABELS: Record<string, string> = {
+  "recommendation.escalated": "Recommendation escalated to you",
 };
 
 /** The hub's wording when a user acted without typing a reason (business-rules.md §10). */
@@ -113,3 +132,21 @@ export function candidateQty(c: Candidate, product: Product | undefined) {
 /** A browser date (`YYYY-MM-DD`) from a hub date, shown in the user's locale. */
 export const formatDate = (iso: string) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { dateStyle: "medium" });
+
+/** The expiry band another hospital's surplus shows instead of its expiry date (CLAUDE.md
+ *  rule 6). */
+export const EXPIRY_BAND_LABELS: Record<string, string> = {
+  UNDER_30_DAYS: "Expires in under 30 days",
+  "30_TO_59_DAYS": "Expires in 30–59 days",
+  "60_TO_89_DAYS": "Expires in 60–89 days",
+  "90_DAYS_OR_MORE": "Expires in 90 days or more",
+};
+
+/** Surplus post states the poster may still withdraw (the hub's OPEN or MATCHED). */
+export const WITHDRAW_FROM = new Set(["OPEN", "MATCHED"]);
+
+/** Whole days from `today` (a YYYY-MM-DD date) to `iso` (another), for "in 4 days". */
+export function daysUntil(iso: string, today: Date = new Date()) {
+  const start = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - start) / 86_400_000);
+}

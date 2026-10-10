@@ -1,18 +1,24 @@
 // Scenario 1 data (demo-scenarios.md) as the hub would return it.
-import type { Me } from "@care-e/api-client";
+import type { Me, Schemas } from "@care-e/api-client";
 import type {
   AuditRow,
   Batch,
   Candidate,
   Facility,
+  Forecast,
   MatchRun,
+  Notification,
+  Receipt,
   Product,
   Recommendation,
   RecommendationLine,
+  Reliability,
   Shipment,
   ShipmentDetail,
   Shortage,
   SourceRequest,
+  SurplusOffer,
+  SurplusPost,
 } from "../api";
 
 export const ORG_A = "0a000000-0000-4000-8000-000000000001";
@@ -422,6 +428,7 @@ export const shipmentToA: ShipmentDetail = {
   route_provider: "OSRM",
   pickup: null,
   drop: null,
+  coldchain: null,
   created_at: "2026-10-07T06:00:25Z",
   updated_at: "2026-10-07T06:00:29Z",
   route_geometry: null,
@@ -457,3 +464,234 @@ export const auditRow = (fields: Partial<AuditRow> & Pick<AuditRow, "id">): Audi
   ts: "2026-10-07T06:00:00Z",
   ...fields,
 });
+
+// ---- S12 part 2: receipts, reconciliation and notifications ----
+
+export const RECEIPT_ID = "ae000000-0000-4000-8000-000000000101";
+export const RESIDUAL_ID = "5a000000-0000-4000-8000-000000000060";
+
+/** Supplier Y's 850 kits, delivered to Hospital A and waiting for the receipt (step 7). */
+export const deliveredToA: ShipmentDetail = {
+  ...shipmentToA,
+  status: "DELIVERED",
+  eta: null,
+  drop: {
+    seq: 2,
+    stop_type: "DROP",
+    place: "Hospital A Main Store",
+    lat: 0,
+    lng: 0,
+    planned_at: null,
+    actual_at: "2026-10-07T08:00:00Z",
+  },
+};
+
+/** Scenario 1 step 7: 790 of 850 accepted, reconciled PARTIAL with a residual of 60. */
+export const partialReceipt: Receipt = {
+  id: RECEIPT_ID,
+  shipment_id: shipmentToA.id,
+  shortage_id: shortage.id,
+  expected: 850,
+  received: 850,
+  accepted: 790,
+  rejected: 60,
+  condition: "DAMAGED",
+  inspection_note: null,
+  received_by: ME_ID,
+  ts: "2026-10-07T09:00:00Z",
+  batch_id: "ba000000-0000-4000-8000-000000000079",
+  reconciliation: {
+    id: "ae000000-0000-4000-8000-000000000001",
+    shortage_id: shortage.id,
+    shipment_id: shipmentToA.id,
+    expected: 850,
+    accepted: 790,
+    discrepancy: 60,
+    outcome: "PARTIAL",
+    residual_shortage_id: RESIDUAL_ID,
+    created_at: "2026-10-07T09:00:01Z",
+  },
+};
+
+/** The residual shortage the hub opened for the missing 60 (business-rules §9). */
+export const residual: Shortage = {
+  ...shortage,
+  id: RESIDUAL_ID,
+  qty_required: 60,
+  qty_local_usable: 0,
+  shortfall: 60,
+  status: "MATCHING",
+  parent_shortage_id: shortage.id,
+  created_at: "2026-10-07T09:00:01Z",
+  updated_at: "2026-10-07T09:00:02Z",
+};
+
+export const escalation = (
+  id: string,
+  fields: Partial<Notification> & { reason?: string | null } = {},
+): Notification => {
+  const { reason = null, ...rest } = fields;
+  return {
+    id,
+    type: "recommendation.escalated",
+    payload: {
+      recommendation_id: transferRec.id,
+      shortage_id: shortage.id,
+      escalated_by: "00000000-0000-4000-8000-0000000000bb",
+      reason,
+      expires_at: transferRec.expires_at,
+    },
+    read_at: null,
+    created_at: "2026-10-07T06:01:00Z",
+    ...rest,
+  };
+};
+
+/** Scenario 2's readings on `shipmentToA`: near 4 °C, 9.1 and 9.4 °C, then back in range. */
+export const excursionColdChain: Schemas["ColdChainOut"] = {
+  shipment_id: shipmentToA.id,
+  requires_cold_chain: true,
+  band: { temp_min_c: 2, temp_max_c: 8 },
+  device: { device_id: "cb-01", battery_level: 82, last_seen: "2026-10-07T07:01:00Z" },
+  silent_after_seconds: 120,
+  readings: [4.1, 4.3, 9.1, 9.4, 5.0, 4.6].map((temp_c, i) => ({
+    device_id: "cb-01",
+    ts: `2026-10-07T07:00:${i}0Z`,
+    temp_c,
+    battery: 82,
+  })),
+  events: [
+    {
+      id: "cc000000-0000-4000-8000-000000000001",
+      type: "EXCURSION",
+      severity: "ALERT",
+      device_id: "cb-01",
+      observed_value: 9.4,
+      threshold: 8,
+      ts: "2026-10-07T07:00:30Z",
+    },
+    {
+      id: "cc000000-0000-4000-8000-000000000002",
+      type: "RECOVERED",
+      severity: "INFO",
+      device_id: "cb-01",
+      observed_value: 4.6,
+      threshold: 8,
+      ts: "2026-10-07T07:00:50Z",
+    },
+  ],
+  has_excursion: true,
+};
+
+// ---- Scenario 3 (S18): expiry surplus meets a forecast stock-out ----
+
+export const ivCannula: Product = {
+  id: "9a000000-0000-4000-8000-000000000020",
+  code: "IV-CAN-20G",
+  name: "IV Cannula 20G",
+  category: "IV and infusion",
+  unit: "each",
+  requires_cold_chain: false,
+  temp_min_c: null,
+  temp_max_c: null,
+  default_min_shelf_life_days: 30,
+};
+export const productsWithIv = { items: [kitA, ivCannula], next_cursor: null };
+export const IV_BATCH = "ba000000-0000-4000-8000-000000000020";
+export const SURPLUS_ID = "50000000-0000-4000-8000-000000000001";
+
+const days = (n: number, value = 30) =>
+  Array.from({ length: n }, (_, i) => ({
+    date: `2026-10-${String(8 + i).padStart(2, "0")}`,
+    predicted_qty: value,
+    lower: value - 5,
+    upper: value + 5,
+  }));
+
+/** Hospital B: on hand 1,000, safety 200, expiry +55 days, about 500 used before then. */
+export const forecastB: Forecast = {
+  product_id: ivCannula.id,
+  model_version: "holt-winters-weekly/1",
+  generated_at: "2026-10-07T20:30:00Z",
+  synthetic_history: true,
+  days: days(20, 9),
+  usable_stock: 1000,
+  safety_stock: 200,
+  stockout_date: null,
+  reorder: { lead_time_days: 1, qty: 0 },
+  expiry_risks: [
+    {
+      batch_id: IV_BATCH,
+      batch_no: "IV-2026-07",
+      expiry_date: "2026-12-02",
+      on_hand: 1000,
+      safety_stock: 200,
+      transferable: 800,
+      usage_before_expiry: 502.4,
+      excess: 300,
+      suggested_qty: 300,
+      surplus_post_id: null,
+    },
+  ],
+};
+
+/** Hospital E: 120 usable at about 30 a day runs out in 4 days. */
+export const forecastE: Forecast = {
+  product_id: ivCannula.id,
+  model_version: "holt-winters-weekly/1",
+  generated_at: "2026-10-07T20:30:00Z",
+  synthetic_history: true,
+  days: days(20),
+  usable_stock: 120,
+  safety_stock: 0,
+  stockout_date: "2026-10-12",
+  reorder: { lead_time_days: 1, qty: 0 },
+  expiry_risks: [],
+};
+
+export const offerFromB: SurplusOffer = {
+  id: SURPLUS_ID,
+  org_id: ORG_B,
+  org_name: "Hospital B",
+  product_id: ivCannula.id,
+  offered_qty: 300,
+  expiry_band: "30_TO_59_DAYS",
+  location: { facility_name: "Hospital B central store", lat: 12.93, lng: 77.62 },
+  status: "MATCHED",
+  match: {
+    kind: "FORECAST",
+    shortage_id: null,
+    stockout_date: "2026-10-12",
+    matched_at: "2026-10-08T06:00:00Z",
+  },
+};
+
+export const ownPost: SurplusPost = {
+  id: SURPLUS_ID,
+  org_id: ORG_A,
+  batch_id: IV_BATCH,
+  product_id: ivCannula.id,
+  qty: 300,
+  offered_qty: 300,
+  expiry_date: "2026-12-02",
+  min_price_paise: null,
+  status: "MATCHED",
+  matched_org_ids: [ORG_B],
+  created_by: ME_ID,
+  created_at: "2026-10-08T06:00:00Z",
+};
+
+/** S19: Hospital A's stored reliability, with history, as GET /orgs/{id}/reliability returns
+ *  it to its own users (credits included). */
+export const ownReliability: Reliability = {
+  org_id: ORG_A,
+  score: 93,
+  has_history: true,
+  acceptance_rate: 1,
+  response_speed: 0.8,
+  median_response_minutes: 3,
+  on_time_rate: 1,
+  discrepancy_rate: 0.0529,
+  computed_at: "2026-10-07T02:00:00Z",
+  credits: 80,
+};

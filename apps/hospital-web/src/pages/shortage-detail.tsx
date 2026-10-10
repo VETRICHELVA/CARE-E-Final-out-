@@ -26,6 +26,7 @@ import {
   type Shortage,
   useAudit,
   useCancelShortage,
+  useConfirmDraft,
   useLatestRun,
   useProducts,
   useRerunMatch,
@@ -34,6 +35,7 @@ import {
 import { PageHeader } from "../components/page";
 import {
   CANCEL_FROM,
+  CONFIRM_FROM,
   OPEN_REQUEST_STATES,
   qty,
   RERUN_FROM,
@@ -113,6 +115,7 @@ function Actions({ shortage }: { shortage: Shortage }) {
   const canAct = useCan("shortage.create");
   const rerun = useRerunMatch(shortage.id);
   const cancel = useCancelShortage(shortage.id);
+  const confirm = useConfirmDraft(shortage.id);
   const requests = useShortageRequests(shortage.id);
   if (!canAct) return null;
   // The hub refuses a manual re-run while a source request is open; it re-runs on its own when
@@ -122,6 +125,18 @@ function Actions({ shortage }: { shortage: Shortage }) {
     requests.data.pages.some((p) => p.items.some((r) => OPEN_REQUEST_STATES.has(r.status)));
   return (
     <>
+      {CONFIRM_FROM.has(shortage.status) && (
+        <ConfirmDialog
+          trigger="Confirm draft"
+          title="Confirm this draft?"
+          description="The shortage opens and the hub starts looking for transferable stock."
+          confirmLabel="Confirm draft"
+          onConfirm={async (reason) => {
+            await confirm.mutateAsync(reason);
+            toast.success("Draft confirmed. Matching has started.");
+          }}
+        />
+      )}
       {RERUN_FROM.has(shortage.status) && !waitingOnSource && (
         <ConfirmDialog
           trigger="Re-run match"
@@ -138,7 +153,11 @@ function Actions({ shortage }: { shortage: Shortage }) {
         <ConfirmDialog
           trigger="Cancel shortage"
           title="Cancel this shortage?"
-          description="The hub stops looking for sources for it."
+          description={
+            shortage.status === "DRAFT"
+              ? "The draft is closed without being matched."
+              : "The hub stops looking for sources for it."
+          }
           confirmLabel="Cancel shortage"
           destructive
           onConfirm={async (reason) => {
@@ -186,9 +205,7 @@ export function ShortageDetailPage() {
           {canReadAudit && <TabsTrigger value="audit">Audit trail</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="grid gap-4">
-          {!run.isPending && !run.isError && (
-            <DecisionPanel shortage={s} run={run.data} product={product} />
-          )}
+          <DecisionPanel shortage={s} product={product} />
           <Card>
             <CardContent>
               <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -203,6 +220,16 @@ export function ShortageDetailPage() {
                 <Fact label="Minimum shelf life">{s.min_shelf_life_days} days</Fact>
                 <Fact label="Reported">{formatDateTime(s.created_at)}</Fact>
                 {s.notes && <Fact label="Notes">{s.notes}</Fact>}
+                {s.parent_shortage_id && (
+                  <Fact label="Residual of">
+                    <Link
+                      to={`/shortages/${s.parent_shortage_id}`}
+                      className="text-primary hover:underline"
+                    >
+                      An earlier shortage
+                    </Link>
+                  </Fact>
+                )}
               </dl>
             </CardContent>
           </Card>

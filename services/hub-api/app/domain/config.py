@@ -23,6 +23,7 @@ class Tunables(BaseSettings):
     handover_hours: NonNegInt = 1
     transport_rate_paise_per_km: NonNegInt = 2_500  # Rs 25/km
     handling_fee_pct: NonNegInt = 2  # % of item value, hospital sources; integer maths
+    cold_chain_max_transit_hours: Pos = 4  # pickup to drop, cold-chain shipments (S16)
 
     # §3 Eligibility gates: freshness
     verified_within_critical_hours: Pos = 24
@@ -34,6 +35,13 @@ class Tunables(BaseSettings):
     max_split_sources: Annotated[int, Field(ge=2)] = 3
     default_reliability: Annotated[int, Field(ge=0, le=100)] = 70  # an org with no history
 
+    # §7 step 2: a CRITICAL TRANSFER asks up to this many single-source candidates at once (S19)
+    critical_parallel_requests: PosInt = 3
+
+    # §12 Reliability and credits (S19)
+    reliability_nightly_hour_utc: Annotated[int, Field(ge=0, le=23)] = 2  # the nightly recompute
+    units_per_credit: PosInt = 10  # +1 credit per this many units transferred and reconciled
+
     # §6 Time limits, by shortage priority
     sla_critical_response_minutes: Pos = 15
     sla_routine_response_minutes: Pos = 4 * 60
@@ -42,6 +50,10 @@ class Tunables(BaseSettings):
     sla_critical_recommendation_minutes: Pos = 30
     sla_routine_recommendation_minutes: Pos = 24 * 60
 
+    # §11 Cold chain (S15)
+    coldchain_consecutive_readings: PosInt = 2  # excursion / recovery
+    coldchain_silent_minutes: Pos = 2  # device silent while IN_TRANSIT -> DEVICE_SILENT
+
     # §6 Timers: how often the worker looks for overdue deadlines
     timer_interval_seconds: Annotated[int, Field(gt=0, le=60)] = 30
 
@@ -49,6 +61,18 @@ class Tunables(BaseSettings):
     webhook_first_retry_seconds: PosInt = 60
     webhook_max_retry_seconds: PosInt = 60 * 60
     webhook_retry_window_hours: PosInt = 24
+
+    # apps-ai-iot.md, Forecasting (S18): run nightly in the hub worker and on demand
+    forecast_horizon_days: PosInt = 30  # the "30-day forecast" each product gets
+    forecast_max_horizon_days: PosInt = 365  # how far out a batch's expiry can be judged
+    forecast_min_history_days: PosInt = 60  # below this: the moving average
+    forecast_moving_average_days: PosInt = 28
+    forecast_interval_pct: Annotated[int, Field(gt=0, lt=100)] = 95
+    forecast_default_lead_time_days: PosInt = 7  # reorder lead time with no supplier offer
+    forecast_nightly_hour_utc: Annotated[int, Field(ge=0, le=23)] = 20  # 02:00 IST
+    forecast_nightly_minute_utc: Annotated[int, Field(ge=0, le=59)] = 30
+    # S18 surplus: match open posts to forecast stock-outs this close (brief)
+    surplus_stockout_match_days: PosInt = 14
 
 
 _t = Tunables()
@@ -59,6 +83,7 @@ AVG_SPEED_KMH = _t.avg_speed_kmh
 HANDOVER_HOURS = _t.handover_hours
 TRANSPORT_RATE_PAISE_PER_KM = _t.transport_rate_paise_per_km
 HANDLING_FEE_PCT = _t.handling_fee_pct
+COLD_CHAIN_MAX_TRANSIT = timedelta(hours=_t.cold_chain_max_transit_hours)
 
 # §3 Eligibility gates: freshness
 VERIFIED_WITHIN_CRITICAL = timedelta(hours=_t.verified_within_critical_hours)
@@ -69,6 +94,13 @@ OFFER_UPDATED_WITHIN = timedelta(days=_t.offer_updated_within_days)
 NEAR_EXPIRY_DAYS = _t.near_expiry_days
 MAX_SPLIT_SOURCES = _t.max_split_sources
 DEFAULT_RELIABILITY = _t.default_reliability
+
+# §7 step 2 (S19)
+CRITICAL_PARALLEL_REQUESTS = _t.critical_parallel_requests
+
+# §12 Reliability and credits (S19)
+RELIABILITY_NIGHTLY_HOUR_UTC = _t.reliability_nightly_hour_utc
+UNITS_PER_CREDIT = _t.units_per_credit
 
 # §6 Time limits, by shortage priority
 SOURCE_RESPONSE_LIMIT = {
@@ -85,7 +117,25 @@ RECOMMENDATION_VALIDITY = {
 }
 TIMER_INTERVAL_SECONDS = _t.timer_interval_seconds
 
+# §11 Cold chain
+COLDCHAIN_CONSECUTIVE_READINGS = _t.coldchain_consecutive_readings
+COLDCHAIN_SILENT_AFTER = timedelta(minutes=_t.coldchain_silent_minutes)
+
 # api-and-events.md, Webhooks
 WEBHOOK_FIRST_RETRY = timedelta(seconds=_t.webhook_first_retry_seconds)
 WEBHOOK_MAX_RETRY = timedelta(seconds=_t.webhook_max_retry_seconds)
 WEBHOOK_RETRY_WINDOW = timedelta(hours=_t.webhook_retry_window_hours)
+
+# apps-ai-iot.md, Forecasting (S18)
+FORECAST_HORIZON_DAYS = _t.forecast_horizon_days
+FORECAST_MAX_HORIZON_DAYS = max(_t.forecast_max_horizon_days, _t.forecast_horizon_days)
+FORECAST_MIN_HISTORY_DAYS = _t.forecast_min_history_days
+FORECAST_MOVING_AVERAGE_DAYS = _t.forecast_moving_average_days
+FORECAST_INTERVAL_PCT = _t.forecast_interval_pct
+FORECAST_DEFAULT_LEAD_TIME_DAYS = _t.forecast_default_lead_time_days
+FORECAST_NIGHTLY_HOUR_UTC = _t.forecast_nightly_hour_utc
+FORECAST_NIGHTLY_MINUTE_UTC = _t.forecast_nightly_minute_utc
+SURPLUS_STOCKOUT_MATCH_DAYS = _t.surplus_stockout_match_days
+# The expiry band other orgs see instead of a surplus batch's expiry date (CLAUDE.md rule 6):
+# under 30 days, 30-59, 60-89, or 90 and more.
+SURPLUS_EXPIRY_BAND_DAYS = (30, 60, 90)

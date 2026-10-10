@@ -6,6 +6,14 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   // The hub is reached through this proxy, so calls are same-origin and the hub needs no CORS here.
-  server: { port: 5173, strictPort: true, proxy: { "/api": "http://127.0.0.1:8000" } },
-  test: { environment: "jsdom" },
+  // `/ai/*` is the AI service (`make ai`, port 8100) for the copilot panel (S13).
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      "/api": "http://127.0.0.1:8000",
+      "/ai": { target: "http://127.0.0.1:8100", rewrite: (path) => path.replace(/^\/ai/, "") },
+    },
+  },
+  test: { environment: "jsdom", setupFiles: ["src/test/setup.ts"], testTimeout: 20_000 },
 });

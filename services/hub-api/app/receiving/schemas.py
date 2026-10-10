@@ -21,7 +21,8 @@ class ReceiptIn(BaseModel):
     condition: Condition
     inspection_note: NulFreeStr | None = Field(
         default=None,
-        description="Required (400) when the shipment has an open cold-chain excursion "
+        description="Required (400) when a cold-chain EXCURSION is on record for the shipment, "
+        "even one since RECOVERED "
         "(`inspection_note_required` on the shipment).",
     )
     expiry_date: date | None = Field(

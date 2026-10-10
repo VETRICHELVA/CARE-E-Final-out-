@@ -13,7 +13,8 @@ const TONES: Record<Tone, string> = {
 };
 
 /** Every state in business-rules.md §8 (Shortage, SourceRequest, Recommendation,
- *  PurchaseOrder, Shipment). A state shared by several machines means the same thing in each. */
+ *  PurchaseOrder, Shipment) and SurplusPost (S18). A state shared by several machines means the
+ *  same thing in each. */
 export const STATUS: Record<string, { label: string; tone: Tone }> = {
   DRAFT: { label: "Draft", tone: "neutral" },
   OPEN: { label: "Open", tone: "info" },
@@ -43,6 +44,8 @@ export const STATUS: Record<string, { label: string; tone: Tone }> = {
   PICKED_UP: { label: "Picked up", tone: "progress" },
   IN_TRANSIT: { label: "In transit", tone: "progress" },
   RECONCILED: { label: "Reconciled", tone: "success" },
+  MATCHED: { label: "Matched", tone: "success" },
+  WITHDRAWN: { label: "Withdrawn", tone: "neutral" },
 };
 
 /** Shows a hub state as a coloured chip. An unknown state shows as-is, in neutral. */

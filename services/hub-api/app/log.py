@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -30,7 +31,32 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(entry, default=str)
 
 
+# The SSE stream ticket rides in the query string (EventSource cannot send headers); uvicorn's
+# access log would print it. It expires after 60 s and opens only the stream, but it is still
+# a credential, so it never reaches a log line (S20).
+_SECRET_PARAMS = re.compile(r"([?&]ticket=)[^&#\s]*", re.IGNORECASE)
+
+
+def redact(path: str) -> str:
+    return _SECRET_PARAMS.sub(r"\1[redacted]", path)
+
+
+class RedactQuerySecrets(logging.Filter):
+    """For uvicorn's access logger, whose args are (client, method, path, version, status)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(redact(a) if isinstance(a, str) else a for a in record.args)
+        elif isinstance(record.msg, str):
+            record.msg = redact(record.msg)
+        return True
+
+
 def install(app: FastAPI) -> None:
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, RedactQuerySecrets) for f in access.filters):
+        access.addFilter(RedactQuerySecrets())
+
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     log.handlers = [handler]

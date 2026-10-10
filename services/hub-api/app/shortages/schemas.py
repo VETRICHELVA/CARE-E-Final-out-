@@ -30,6 +30,16 @@ class ShortageCreate(BaseModel):
     )
     notes: NulFreeStr | None = None
     reason: NulFreeStr | None = None
+    source: ShortageSource = Field(
+        default=ShortageSource.FORM,
+        description="Where the user filled it in: FORM, or CHAT for a chat draft the user "
+        "checked and confirmed on its card (S17). The AI service never calls this.",
+    )
+    status: Literal[Status.OPEN, Status.DRAFT] = Field(
+        default=Status.OPEN,
+        description="OPEN (the default) starts matching at once. DRAFT saves it unmatched "
+        "until the requester confirms it (POST /shortages/{id}/confirm; business-rules §8).",
+    )
     shortfall: SkipJsonSchema[Any] = Field(default=None, exclude=True)
 
 
@@ -110,6 +120,11 @@ class PlannedResolution(BaseModel):
     type: Literal["TRANSFER", "TRANSFER_SPLIT", "BUY"]
     lines: list[PlanLine]
     alternatives: list[PlanLine] = Field(description="The best BUY, or for a BUY the next one.")
+    parallel: list[PlanLine] = Field(
+        default_factory=list,
+        description="CRITICAL TRANSFER only (S19): the single-source candidates asked at once, "
+        "the planned line first; the first to accept wins. Empty for every other plan.",
+    )
 
 
 class MatchRunOut(BaseModel):
@@ -127,7 +142,7 @@ class MatchRunOut(BaseModel):
     def _shown(plan: dict[str, Any]) -> PlannedResolution:
         """The stored plan keeps every cost; the requester sees supplier costs only."""
         out = PlannedResolution.model_validate(plan)
-        for line in (*out.lines, *out.alternatives):
+        for line in (*out.lines, *out.alternatives, *out.parallel):
             if line.source_type == SourceType.HOSPITAL:
                 line.landed_cost_paise = None
         return out

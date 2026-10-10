@@ -34,8 +34,21 @@ async def create_shortage(
     body: ShortageCreate, user: Requester, session: SessionDep
 ) -> ShortageOut:
     """Create a shortage in the caller's org. The hub computes the shortfall and runs the
-    first match, so the shortage comes back MATCHING."""
+    first match, so the shortage comes back MATCHING; with `status: DRAFT` it comes back
+    DRAFT and unmatched (a chat draft saved for later, S17)."""
     shortage = await service.create_shortage(session, user, body)
+    await session.commit()
+    return ShortageOut.model_validate(shortage)
+
+
+@router.post("/{shortage_id}/confirm")
+async def confirm_draft(
+    shortage_id: uuid.UUID, user: Requester, session: SessionDep, body: ReasonIn | None = None
+) -> ShortageOut:
+    """DRAFT -> OPEN (business-rules §8: the requester confirms a chat draft), then the first
+    match run, so it comes back MATCHING. 409 `invalid_transition` unless DRAFT."""
+    reason = body.reason if body else None
+    shortage = await service.confirm_draft(session, user, shortage_id, reason)
     await session.commit()
     return ShortageOut.model_validate(shortage)
 
@@ -63,7 +76,8 @@ async def get_shortage(shortage_id: uuid.UUID, user: Reader, session: SessionDep
 async def cancel_shortage(
     shortage_id: uuid.UUID, user: Requester, session: SessionDep, body: ReasonIn | None = None
 ) -> ShortageOut:
-    """Allowed from OPEN, MATCHING or AWAITING_DECISION; otherwise 409 `invalid_transition`."""
+    """Allowed from DRAFT, OPEN, MATCHING or AWAITING_DECISION; otherwise 409
+    `invalid_transition`."""
     reason = body.reason if body else None
     shortage = await service.cancel_shortage(session, user, shortage_id, reason)
     await session.commit()

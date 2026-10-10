@@ -16,6 +16,7 @@ from app import routing
 from app.audit import service as audit
 from app.auth.models import User
 from app.catalog.models import Product, ProductAuthorization, SupplierOffer
+from app.coldchain.models import ColdChainEvent
 from app.domain import config, gates
 from app.domain.costing import Point, transport_cost_paise, transport_eta_hours
 from app.domain.events import EventType
@@ -24,7 +25,7 @@ from app.domain.inventory import batch_transferable, days_to_expiry_at
 from app.domain.ranking import Option, is_near_expiry, rank
 from app.domain.resolution import BUY, TRANSFER_SPLIT, Line, Plan, plan
 from app.domain.shortage import TRANSITIONS, Status, shortfall
-from app.domain.source_request import OPEN_REQUEST, HoldStatus
+from app.domain.source_request import OPEN_REQUEST, HoldStatus, RequestStatus
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
 from app.events import service as events
@@ -41,7 +42,6 @@ from app.shortages.models import (
     MatchRun,
     Priority,
     Shortage,
-    ShortageSource,
     SourceType,
     Trigger,
 )
@@ -49,6 +49,7 @@ from app.shortages.schemas import NO_ELIGIBLE_SOURCE, MatchRunOut, PlannedResolu
 from app.source_requests import holds
 from app.source_requests.hooks import on_sources_ready
 from app.source_requests.models import Hold, SourceRequest
+from app.trust import service as trust
 
 ENTITY = "shortage"
 SNAPSHOT = (
@@ -92,7 +93,9 @@ async def get_shortage(
 async def create_shortage(
     session: AsyncSession, user: User, body: ShortageCreate, *, now: datetime | None = None
 ) -> Shortage:
-    """OPEN with the hub-computed shortfall, then MATCHING with its first match run (§7)."""
+    """OPEN with the hub-computed shortfall, then MATCHING with its first match run (§7).
+    A DRAFT (a chat draft saved for later, S17) is stored with the same checks and shortfall
+    but does not match until the requester confirms it (`confirm_draft`)."""
     await own_facility(session, user, body.facility_id)
     product = await session.get(Product, body.product_id)
     if product is None:
@@ -116,10 +119,10 @@ async def create_shortage(
         required_by=body.required_by,
         priority=body.priority,
         min_shelf_life_days=product.default_min_shelf_life_days if min_days is None else min_days,
-        status=Status.OPEN,
+        status=body.status,
         notes=body.notes,
         created_by=user.id,
-        source=ShortageSource.FORM,
+        source=body.source,
     )
     session.add(shortage)
     await session.flush()
@@ -127,15 +130,33 @@ async def create_shortage(
     await audit.record(
         session, user, ENTITY, shortage.id, f"{ENTITY}.created", None, after, body.reason
     )
-    await run_match(session, shortage, Trigger.CREATE, reason="Shortage created.", now=now)
+    if shortage.status == Status.OPEN:
+        await run_match(session, shortage, Trigger.CREATE, reason="Shortage created.", now=now)
+    return shortage
+
+
+async def confirm_draft(
+    session: AsyncSession,
+    user: User,
+    shortage_id: uuid.UUID,
+    reason: str | None,
+    *,
+    now: datetime | None = None,
+) -> Shortage:
+    """DRAFT -> OPEN: the requester confirms a saved chat draft (§8), which then matches as a
+    new shortage does (OPEN -> MATCHING). Any other status is a 409 `invalid_transition`."""
+    shortage = await get_shortage(session, user, shortage_id, lock=True)
+    await move_shortage(session, shortage, Status.OPEN, user, reason)
+    await run_match(session, shortage, Trigger.CREATE, reason="Draft confirmed.", now=now)
     return shortage
 
 
 async def cancel_shortage(
     session: AsyncSession, user: User, shortage_id: uuid.UUID, reason: str | None
 ) -> Shortage:
-    """From OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
-    Releases every tentative hold and supersedes every open source request (§8). The
+    """From DRAFT, OPEN, MATCHING or AWAITING_DECISION only; anything else is a 409.
+    Releases every tentative hold and supersedes every open source request (§8); a DRAFT
+    (S17) was never matched, so it has none and nothing is released. The
     supersedes are the requester's (their org, their reason); the hold releases sit in the
     source orgs as SYSTEM with the factual cause, never the requester's id or text (§10)."""
     shortage = await get_shortage(session, user, shortage_id, lock=True)
@@ -307,7 +328,8 @@ async def rematch_after_releases(session: AsyncSession, *, now: datetime | None 
 async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set[uuid.UUID]:
     """The records whose audit rows make up a shortage's trail (GET /shortages/{id}/audit):
     the shortage, its match runs, source requests, recommendations, purchase orders,
-    shipments, receipts, reconciliations and the batches its receipts added. Holds are not
+    shipments, their cold-chain events, receipts, reconciliations and the batches its
+    receipts added. Holds are not
     listed: their rows belong to the source orgs (business-rules.md §10)."""
     ids: set[uuid.UUID] = {shortage_id}
     for model in (
@@ -327,7 +349,26 @@ async def trail_entity_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set
             )
         )
     )
+    ids.update(
+        await session.scalars(
+            select(ColdChainEvent.id)
+            .join(Shipment, Shipment.id == ColdChainEvent.shipment_id)
+            .where(Shipment.shortage_id == shortage_id)
+        )
+    )
     return ids
+
+
+async def declined_org_ids(session: AsyncSession, shortage_id: uuid.UUID) -> set[uuid.UUID]:
+    """Sources that declined a request for this shortage (§7 step 6: declined -> excluded)."""
+    return set(
+        await session.scalars(
+            select(SourceRequest.source_org_id).where(
+                SourceRequest.shortage_id == shortage_id,
+                SourceRequest.status == RequestStatus.DECLINED,
+            )
+        )
+    )
 
 
 async def latest_run(session: AsyncSession, shortage_id: uuid.UUID) -> MatchRun | None:
@@ -393,12 +434,16 @@ async def run_match(
     `exclude` orgs (e.g. a source that declined) stay out of this shortage's later runs too.
     A system run (no actor) passes its factual cause as `reason`.
     A TRANSFER or TRANSFER_SPLIT plan sends one source request per planned source (§7 step 2;
-    CRITICAL parallel requests arrive in S19); a BUY plan calls `on_sources_ready` at once."""
+    a CRITICAL TRANSFER asks up to 3 single sources at once, S19); a BUY plan calls
+    `on_sources_ready` at once. A source that declined a request for this shortage stays
+    excluded, including one of a CRITICAL run's parallel requests that declined while the
+    others were still open (no re-run followed that decline)."""
     now = now or datetime.now(UTC)
     if shortage.status == Status.OPEN:
         await move_shortage(session, shortage, Status.MATCHING, actor, reason)
     last = await latest_run(session, shortage.id)
-    excluded = sorted({*(last.excluded_org_ids if last else ()), *exclude})
+    declined = await declined_org_ids(session, shortage.id)
+    excluded = sorted({*(last.excluded_org_ids if last else ()), *exclude, *declined})
     sources = await _sources(session, shortage, excluded, now)
     planned = _decide(sources, shortage)
 
@@ -505,6 +550,8 @@ async def _sources(
     held = await holds.held_by_batch(
         session, (r.id for r in batches), exclude_shortage_id=shortage.id
     )
+    # §5: ranking reads each org's stored reliability score (S19), never computes it here.
+    reliability = await trust.scores(session, (r.org_id for r in batches))
     sources: list[_Source] = []
     for org_id, rows in groupby(batches, key=lambda r: r.org_id):
         lots = []
@@ -537,7 +584,7 @@ async def _sources(
                     hospital=True,
                     qty=sum(x.transferable for x in counted),
                     eta_hours=far.eta_hours,
-                    reliability=config.DEFAULT_RELIABILITY,  # ReliabilityScore arrives in S19
+                    reliability=reliability[org_id],
                     near_expiry=bool(counted) and is_near_expiry(counted[0].row.expiry_date, today),
                     lots=tuple((x.transferable, x.row.unit_cost_paise) for x in counted),
                     transport_paise=transport_cost_paise(far.km),
@@ -566,25 +613,28 @@ async def _sources(
             )
         )
 
-    offers = await session.execute(
-        select(
-            SupplierOffer.org_id,
-            SupplierOffer.product_id,
-            SupplierOffer.unit_price_paise,
-            SupplierOffer.lead_time_hours,
-            SupplierOffer.available_qty,
-            SupplierOffer.updated_at,
-            Organization.lat,
-            Organization.lng,
-            Organization.status,
+    offers = (
+        await session.execute(
+            select(
+                SupplierOffer.org_id,
+                SupplierOffer.product_id,
+                SupplierOffer.unit_price_paise,
+                SupplierOffer.lead_time_hours,
+                SupplierOffer.available_qty,
+                SupplierOffer.updated_at,
+                Organization.lat,
+                Organization.lng,
+                Organization.status,
+            )
+            .join(Organization, Organization.id == SupplierOffer.org_id)
+            .where(
+                SupplierOffer.product_id == shortage.product_id,
+                Organization.type == OrgType.SUPPLIER,
+                Organization.id.not_in(excluded),
+            )
         )
-        .join(Organization, Organization.id == SupplierOffer.org_id)
-        .where(
-            SupplierOffer.product_id == shortage.product_id,
-            Organization.type == OrgType.SUPPLIER,
-            Organization.id.not_in(excluded),
-        )
-    )
+    ).all()
+    reliability = await trust.scores(session, (o.org_id for o in offers))
     for o in offers:
         km = await routing.ROUTING.distance_km(Point(o.lat, o.lng), dest)
         eta = o.lead_time_hours + transport_eta_hours(km)
@@ -597,7 +647,7 @@ async def _sources(
                     hospital=False,
                     qty=o.available_qty,
                     eta_hours=eta,
-                    reliability=config.DEFAULT_RELIABILITY,
+                    reliability=reliability[o.org_id],
                     near_expiry=False,
                     lots=((o.available_qty, o.unit_price_paise),),
                     transport_paise=transport_cost_paise(km),
@@ -659,6 +709,7 @@ def _candidate(s: _Source, run_id: uuid.UUID, need: int) -> Candidate:
         ],
         eligible=s.eligible,
         landed_cost_paise=s.option.cost(need) if s.eligible else None,
+        unit_price_paise=None if hospital else s.option.lots[0][1],
         eta_hours=s.option.eta_hours,
         reliability=s.option.reliability,
         rank=s.rank,
@@ -682,5 +733,6 @@ def _plan_json(planned: Plan | None, ids: dict[str, uuid.UUID]) -> dict[str, Any
         }
 
     lines, alternatives = [line(x) for x in planned.lines], [line(x) for x in planned.alternatives]
-    out = {"type": planned.type, "lines": lines, "alternatives": alternatives}
+    parallel = [line(x) for x in planned.parallel]
+    out = {"type": planned.type, "lines": lines, "alternatives": alternatives, "parallel": parallel}
     return PlannedResolution.model_validate(out).model_dump(mode="json")

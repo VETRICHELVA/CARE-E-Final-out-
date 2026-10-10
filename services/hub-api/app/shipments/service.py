@@ -9,7 +9,13 @@ on the dispatch board), every LOGISTICS org. Events go to the same orgs.
 Audit (§10): each transition is one row in the acting user's org, mirrored into the
 shortage's org (its trail) without the actor's id when that is another org; a system change
 goes to the shortage's org. The source's stock and hold changes at pickup are SYSTEM rows
-in the source org."""
+in the source org, and a device taken off because the carrier changed is a SYSTEM row in
+the device's org.
+
+A cold box rides only with its own org's shipments (CLAUDE.md rule 6): a device goes on a
+shipment only while its org is the carrier (`app.iot.service.assign_device`), and assign
+and unassign take any device off, since they change the carrier. The detail shows only the
+location pings recorded since the current assignment."""
 
 import uuid
 from collections.abc import Iterable, Sequence
@@ -17,29 +23,35 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import routing
 from app.audit import service as audit
+from app.audit.models import AuditLog
 from app.auth.models import User
 from app.catalog.models import Product
+from app.coldchain.models import ColdChainEvent
+from app.domain.coldchain import ColdChainEventType
 from app.domain.costing import Point, geojson_line, transport_eta_hours
 from app.domain.events import EventType
 from app.domain.fulfillment import (
     ACTIVE_SHIPMENT,
-    PICKUP_RECORDED,
+    CARRIER_CHANGED,
+    MULTI_FACILITY,
     SHIPMENT_TRANSITIONS,
     ShipmentStatus,
     StopType,
     cold_chain_vehicle_refusal,
     driver_may_move,
+    short_pickup,
 )
 from app.domain.source_request import HoldStatus
 from app.domain.state_machine import InvalidTransition, transition
 from app.errors import AppError
 from app.events import service as events
 from app.inventory.models import InventoryBatch
+from app.iot.models import Device
 from app.orgs.models import Facility, Organization, OrgType
 from app.shipments.models import Driver, LocationPing, Shipment, ShipmentLeg, Vehicle
 from app.shortages.models import Shortage
@@ -48,6 +60,7 @@ from app.source_requests.models import Hold
 
 ENTITY = "shipment"
 BATCH = "inventory_batch"
+DEVICE = "device"
 S = ShipmentStatus
 
 
@@ -116,7 +129,8 @@ class Stop:
 
 async def _pickup(session: AsyncSession, shipment: Shipment) -> Stop:
     """Where the stock is: for a transfer, the facility holding the largest share of the
-    request's held stock (one pickup per shipment; multi-stop is S16); for a purchase
+    request's held stock (one pickup per shipment: assign refuses held stock at several
+    facilities until S16's multi-stop planner); for a purchase
     order, the supplier's location (as matching measures it)."""
     if shipment.source_request_id is not None:
         row = (
@@ -167,6 +181,19 @@ async def _ensure_legs(session: AsyncSession, shipment: Shipment) -> list[Shipme
     session.add_all(legs)
     await session.flush()
     return legs
+
+
+async def stops_of(session: AsyncSession, shipment: Shipment) -> tuple[Stop, Stop]:
+    """The shipment's pickup and drop: its stored legs, or where they would be (an older
+    shipment without legs gets them at assignment). Writes nothing."""
+    legs = {leg.stop_type: leg for leg in await legs_of(session, shipment.id)}
+    if StopType.PICKUP in legs and StopType.DROP in legs:
+        pickup, drop = legs[StopType.PICKUP], legs[StopType.DROP]
+        return (
+            Stop(pickup.place, Point(pickup.lat, pickup.lng)),
+            Stop(drop.place, Point(drop.lat, drop.lng)),
+        )
+    return await _pickup(session, shipment), await _drop(session, shipment)
 
 
 def _history(shipment: Shipment, before: str | None, at: datetime) -> None:
@@ -297,6 +324,64 @@ async def _own[T: (Driver, Vehicle)](
     return obj
 
 
+async def own_driver(session: AsyncSession, user: User, driver_id: uuid.UUID) -> Driver:
+    """One of the caller's org's active drivers: 404 unknown, 403 another org's, 400
+    inactive (the checks `assign` makes)."""
+    driver: Driver = await _own(session, user, Driver, driver_id)
+    if not driver.active:
+        raise AppError(400, "validation", "This driver is not active.", {"driver_id": driver_id})
+    return driver
+
+
+async def own_vehicle(session: AsyncSession, user: User, vehicle_id: uuid.UUID) -> Vehicle:
+    """One of the caller's org's vehicles: 404 unknown, 403 another org's."""
+    vehicle: Vehicle = await _own(session, user, Vehicle, vehicle_id)
+    return vehicle
+
+
+async def pickup_facilities(session: AsyncSession, shipment: Shipment) -> int:
+    """How many of the source's facilities hold the shipment's FIRM holds."""
+    if shipment.source_request_id is None:
+        return 1  # a purchase order: one pickup at the supplier
+    count = await session.scalar(
+        select(func.count(func.distinct(InventoryBatch.facility_id)))
+        .select_from(Hold)
+        .join(InventoryBatch, InventoryBatch.id == Hold.batch_id)
+        .where(
+            Hold.source_request_id == shipment.source_request_id,
+            Hold.status == HoldStatus.FIRM,
+        )
+    )
+    return int(count or 0)
+
+
+async def _take_off_device(session: AsyncSession, shipment: Shipment) -> uuid.UUID | None:
+    """The carrier is changing: take any device off the shipment (a box rides only with its
+    own org's shipments; CLAUDE.md rule 6). The device's row is SYSTEM in the device's org
+    with the factual cause. Returns the device's id, or None if none was on it."""
+    if shipment.device_id is None:
+        return None
+    device = await session.get(Device, shipment.device_id, populate_existing=True)
+    shipment.device_id = None
+    if device is None:
+        return None
+    if device.assigned_shipment_id == shipment.id:
+        device.assigned_shipment_id = None
+        await session.flush()
+        await audit.record(
+            session,
+            None,
+            DEVICE,
+            device.id,
+            f"{DEVICE}.unassigned",
+            {"assigned_shipment_id": shipment.id},
+            {"assigned_shipment_id": None},
+            CARRIER_CHANGED,
+            org_id=device.org_id,
+        )
+    return device.id
+
+
 async def assign(
     session: AsyncSession,
     user: User,
@@ -306,14 +391,29 @@ async def assign(
     vehicle_id: uuid.UUID,
     reason: str | None,
     now: datetime | None = None,
+    planned: tuple[datetime, datetime] | None = None,
 ) -> Shipment:
     """CREATED -> ASSIGNED with the caller's org's active driver and vehicle; the caller's
     org becomes the carrier. A cold-chain shipment needs a cold-chain vehicle (400 with the
-    reason). The road route (OSRM, or haversine when OSRM is off, failing or slow) gives
-    the distance, the geometry and the ETA: now + distance ÷ 40 km/h + 1 h (§4)."""
+    reason). A transfer whose FIRM holds sit at more than one of the source's facilities is
+    a 409 `conflict` (§8: one pickup per shipment until the route planner supports
+    multi-stop pickups). Any device on the shipment comes off (the carrier changes). The
+    road route (OSRM, or haversine when OSRM is off, failing or slow) gives the distance,
+    the geometry and the ETA: now + distance ÷ 40 km/h + 1 h (§4).
+
+    `planned` is (pickup, drop) from a route plan (S16, several shipments for one driver):
+    the legs' `planned_at` and the ETA then come from the plan instead."""
     now = now or datetime.now(UTC)
     shipment = await get_visible(session, user, shipment_id, lock=True)
     _check(shipment, S.ASSIGNED, S.ASSIGNED in SHIPMENT_TRANSITIONS.get(shipment.status, set()))
+    facilities = await pickup_facilities(session, shipment)
+    if facilities > 1:
+        raise AppError(
+            409,
+            "conflict",
+            MULTI_FACILITY,
+            {"reason": "multiple_pickup_facilities", "facility_count": facilities},
+        )
     driver: Driver = await _own(session, user, Driver, driver_id)
     vehicle: Vehicle = await _own(session, user, Vehicle, vehicle_id)
     if not driver.active:
@@ -331,30 +431,31 @@ async def assign(
 
     pickup, drop = await _ensure_legs(session, shipment)
     route = await routing.ROUTING.route(Point(pickup.lat, pickup.lng), Point(drop.lat, drop.lng))
-    eta = now + timedelta(hours=transport_eta_hours(route.distance_km))
-    pickup.planned_at, drop.planned_at = now, eta
+    if planned is None:
+        pickup.planned_at = now
+        eta = now + timedelta(hours=transport_eta_hours(route.distance_km))
+    else:
+        pickup.planned_at, eta = planned
+    drop.planned_at = eta
+    removed = await _take_off_device(session, shipment)
     shipment.driver_id, shipment.vehicle_id = driver.id, vehicle.id
     shipment.carrier_org_id = user.org_id
     shipment.eta = eta
     shipment.route_distance_km = round(route.distance_km, 3)
     shipment.route_provider = route.provider
     shipment.route_geometry = geojson_line(route.path)
-    await _move(
-        session,
-        shipment,
-        S.ASSIGNED,
-        user,
-        reason,
-        now,
-        changes={
-            "driver_id": driver.id,
-            "vehicle_id": vehicle.id,
-            "carrier_org_id": user.org_id,
-            "eta": eta,
-            "route_distance_km": shipment.route_distance_km,
-            "route_provider": route.provider,
-        },
-    )
+    changes: dict[str, Any] = {
+        "driver_id": driver.id,
+        "vehicle_id": vehicle.id,
+        "carrier_org_id": user.org_id,
+        "eta": eta,
+        "route_distance_km": shipment.route_distance_km,
+        "route_provider": route.provider,
+        **({"planned_pickup_at": planned[0]} if planned else {}),
+    }
+    if removed:
+        changes["device_id"] = None
+    await _move(session, shipment, S.ASSIGNED, user, reason, now, changes=changes)
     return shipment
 
 
@@ -367,8 +468,8 @@ async def unassign(
     now: datetime | None = None,
 ) -> Shipment:
     """ASSIGNED -> CREATED, by the carrier org only (403 otherwise): the driver, vehicle,
-    carrier and the route computed at assignment are cleared, and the shipment is back on
-    every logistics org's dispatch board."""
+    carrier, any device and the route computed at assignment are cleared, and the shipment
+    is back on every logistics org's dispatch board."""
     now = now or datetime.now(UTC)
     shipment = await get_visible(session, user, shipment_id, lock=True)
     if shipment.carrier_org_id is not None and shipment.carrier_org_id != user.org_id:
@@ -377,19 +478,16 @@ async def unassign(
     left = shipment.carrier_org_id
     for leg in await legs_of(session, shipment.id):  # before the changes below: autoflush
         leg.planned_at = shipment.planned_eta if leg.stop_type == StopType.DROP else None
+    removed = await _take_off_device(session, shipment)
     shipment.driver_id = shipment.vehicle_id = shipment.carrier_org_id = None
     shipment.eta = shipment.route_distance_km = None
     shipment.route_provider = None
     shipment.route_geometry = None
+    changes: dict[str, Any] = {"driver_id": None, "vehicle_id": None, "carrier_org_id": None}
+    if removed:
+        changes["device_id"] = None
     await _move(
-        session,
-        shipment,
-        S.CREATED,
-        user,
-        reason,
-        now,
-        changes={"driver_id": None, "vehicle_id": None, "carrier_org_id": None},
-        notify_also=[left],
+        session, shipment, S.CREATED, user, reason, now, changes=changes, notify_also=[left]
     )
     return shipment
 
@@ -440,8 +538,10 @@ async def _draw_down(session: AsyncSession, shipment: Shipment, now: datetime) -
     """§9: at pickup the source's on_hand drops by each FIRM hold's qty and the hold is
     CONSUMED. Rows go to the source org as SYSTEM (the driver is another org's user);
     `inventory.changed` goes to the source org. A purchase order has no holds (supplier
-    stock is not tracked as batches). 409 if a batch now records less on hand than its
-    hold: the source must correct its count first, nothing is drawn down."""
+    stock is not tracked as batches). A short pickup (§8/§9: the batch now records less on
+    hand than its hold) draws down only what the batch records, never below 0, still
+    consumes the hold, and the row states both figures; the shortfall surfaces at receipt
+    and reconciliation opens the residual."""
     if shipment.source_request_id is None:
         return []
     rows: Sequence[tuple[Hold, InventoryBatch]] = (
@@ -464,20 +564,11 @@ async def _draw_down(session: AsyncSession, shipment: Shipment, now: datetime) -
             "The source holds no firm stock for this shipment.",
             {"source_request_id": shipment.source_request_id},
         )
-    short = [(h, b) for h, b in rows if b.on_hand < h.qty]
-    if short:
-        hold, batch = short[0]
-        raise AppError(
-            409,
-            "conflict",
-            f"Batch {batch.batch_no} records {batch.on_hand} on hand, less than the "
-            f"{hold.qty} held for this shipment. The source must correct its count first.",
-            {"batch_id": batch.id, "on_hand": batch.on_hand, "held_qty": hold.qty},
-        )
     source = shipment.from_org_id
     for hold, batch in rows:
         before = batch.on_hand
-        batch.on_hand -= hold.qty
+        drawn, cause = short_pickup(before, hold.qty)
+        batch.on_hand = before - drawn
         await session.flush()
         await audit.record(
             session,
@@ -486,11 +577,17 @@ async def _draw_down(session: AsyncSession, shipment: Shipment, now: datetime) -
             batch.id,
             f"{BATCH}.picked_up",
             {"on_hand": before},
-            {"on_hand": batch.on_hand, "shipment_id": shipment.id, "hold_id": hold.id},
-            PICKUP_RECORDED,
+            {
+                "on_hand": batch.on_hand,
+                "shipment_id": shipment.id,
+                "hold_id": hold.id,
+                "held_qty": hold.qty,
+                "drawn_qty": drawn,
+            },
+            cause,
             org_id=source,
         )
-        await holds.move_hold(session, hold, source, HoldStatus.CONSUMED, None, PICKUP_RECORDED)
+        await holds.move_hold(session, hold, source, HoldStatus.CONSUMED, None, cause)
     batches = {b.id: b for _, b in rows}
     await events.emit(
         session,
@@ -520,10 +617,18 @@ async def mark_reconciled(
 
 
 async def has_open_excursion(session: AsyncSession, shipment: Shipment) -> bool:
-    """Whether the shipment has a cold-chain excursion on record that is still open
-    (business-rules.md §9, §11): its receipt then needs an inspection note. Always False
-    until S15 records cold-chain events."""
-    return False
+    """Whether the shipment's receipt needs an inspection note (business-rules.md §9, §11):
+    true if any EXCURSION is on record for it, even one that has since RECOVERED (the
+    excursion stays on record)."""
+    found = await session.scalar(
+        select(ColdChainEvent.id)
+        .where(
+            ColdChainEvent.shipment_id == shipment.id,
+            ColdChainEvent.type == ColdChainEventType.EXCURSION,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 # --- location pings ---------------------------------------------------------------------------
@@ -567,10 +672,34 @@ async def ping(
     return location
 
 
-async def last_location(session: AsyncSession, shipment_id: uuid.UUID) -> LocationPing | None:
+async def _assigned_since(session: AsyncSession, shipment: Shipment) -> datetime | None:
+    """When the current assignment was recorded, by the database clock: its audit row's
+    `ts` (both it and a ping's `created_at` are `clock_timestamp()`, so a phone's `ts`,
+    which may run up to 5 min ahead, cannot place an old ping after it). The row is in the
+    carrier's org, the org that assigned it."""
+    return await session.scalar(
+        select(func.max(AuditLog.ts)).where(
+            AuditLog.org_id == shipment.carrier_org_id,
+            AuditLog.entity == ENTITY,
+            AuditLog.entity_id == shipment.id,
+            AuditLog.action == f"{ENTITY}.status_changed",
+            AuditLog.after["status"].astext == S.ASSIGNED,
+        )
+    )
+
+
+async def last_location(session: AsyncSession, shipment: Shipment) -> LocationPing | None:
+    """The newest ping recorded since the current assignment; none while the shipment is
+    CREATED. An earlier carrier's driver positions never reach the carrier that took the
+    shipment over, nor the logistics orgs on the dispatch board (CLAUDE.md rule 6)."""
+    if shipment.status == S.CREATED:
+        return None
+    since = await _assigned_since(session, shipment)
+    if since is None:
+        return None
     return await session.scalar(
         select(LocationPing)
-        .where(LocationPing.shipment_id == shipment_id)
+        .where(LocationPing.shipment_id == shipment.id, LocationPing.created_at > since)
         .order_by(LocationPing.ts.desc(), LocationPing.id.desc())
         .limit(1)
     )

@@ -12,13 +12,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog
+from app.catalog.models import Product
 from app.conftest import ClientFor, World
 from app.domain.costing import HaversineProvider, Point, transport_eta_hours
 from app.domain.events import EventType
+from app.domain.fulfillment import MULTI_FACILITY
 from app.inventory.models import InventoryBatch
+from app.orgs.models import Facility
 from app.recommendations.tests.conftest import audit_of, outbox
 from app.shipments.models import LocationPing, Shipment, ShipmentLeg
-from app.shipments.tests.conftest import Fleet, assign, step
+from app.shipments.tests.conftest import Fleet, approve_transfer, assign, step
+from app.shortages.models import Shortage
 from app.source_requests.models import Hold
 from app.source_requests.tests.conftest import Orgs
 
@@ -255,6 +259,54 @@ async def test_only_the_carrier_unassigns(
     assert r.status_code == 403
 
 
+async def test_assign_refuses_stock_held_at_more_than_one_facility(
+    session: AsyncSession,
+    world: World,
+    shortage: Shortage,
+    products: dict[str, Product],
+    now: datetime,
+    client_for: ClientFor,
+    swiftmed: Fleet,
+    other_fleet: Fleet,
+    dispatcher: httpx.AsyncClient,
+) -> None:
+    """business-rules §8 limitation (until S16's route planner): one pickup per shipment."""
+    annex = Facility(
+        org_id=world.hospital_b.id, name="Hospital B annex", address="Annex", lat=12.91, lng=77.6
+    )
+    session.add(annex)
+    await session.flush()
+    # 100 expiring sooner at the annex: accept holds it first, then 750 at the main store.
+    session.add(
+        InventoryBatch(
+            org_id=world.hospital_b.id,
+            facility_id=annex.id,
+            product_id=products["SURG-KIT-A"].id,
+            batch_no="B-ANNEX",
+            on_hand=100,
+            expiry_date=now.date() + timedelta(days=120),
+            unit_cost_paise=1500,
+            last_verified_at=now - timedelta(hours=1),
+        )
+    )
+    await session.flush()
+    shipment = await approve_transfer(session, client_for, world, shortage)
+    held = await holds_of(session, shipment)
+    assert sorted(h.qty for h in held) == [100, 750]
+
+    requester = await client_for(world.users["a.REQUESTER"])
+    assert (await assign(requester, shipment, swiftmed)).status_code == 403  # no capability
+    r = await assign(dispatcher, shipment, swiftmed)
+    assert r.status_code == 409
+    assert r.json() == {
+        "code": "conflict",
+        "message": MULTI_FACILITY,
+        "details": {"reason": "multiple_pickup_facilities", "facility_count": 2},
+    }
+    await session.refresh(shipment)
+    assert (shipment.status, shipment.carrier_org_id) == ("CREATED", None)
+
+
 # --- cold chain -------------------------------------------------------------------------------
 
 
@@ -375,19 +427,68 @@ async def test_pickup_draws_down_the_source_stock_and_consumes_the_firm_hold(
     assert released is None
 
 
-async def test_pickup_is_refused_when_the_batch_no_longer_records_the_held_stock(
-    session: AsyncSession, world: World, assigned: Shipment, ravi: httpx.AsyncClient
+async def test_a_short_pickup_draws_down_what_the_batch_records_and_the_receipt_shows_the_gap(
+    session: AsyncSession,
+    world: World,
+    shortage: Shortage,
+    assigned: Shipment,
+    ravi: httpx.AsyncClient,
+    omar: httpx.AsyncClient,
+    client_for: ClientFor,
 ) -> None:
+    """business-rules §8/§9: a batch recording less on hand than its FIRM hold no longer
+    blocks pickup. It draws down what the batch records (never below 0), consumes the hold,
+    and the SYSTEM rows in the source org state the recorded figures."""
     batch = await batch_of_b(session, world)
     batch.on_hand = 800  # recounted below the 850 held, e.g. by a verify
     await session.flush()
+    assert (await step(omar, assigned, "PICKED_UP")).status_code == 403  # another org
     r = await step(ravi, assigned, "PICKED_UP")
-    assert r.status_code == 409
-    assert r.json()["code"] == "conflict"
-    assert r.json()["details"] == {"batch_id": str(batch.id), "on_hand": 800, "held_qty": 850}
-    await session.refresh(assigned)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "PICKED_UP"
+    assert (await step(ravi, assigned, "PICKED_UP")).status_code == 409  # already picked up
+
+    batch = await batch_of_b(session, world)
     (hold,) = await holds_of(session, assigned)
-    assert (assigned.status, hold.status) == ("ASSIGNED", "FIRM")
+    assert (batch.on_hand, hold.status, hold.qty) == (0, "CONSUMED", 850)
+    cause = (
+        "The driver recorded the pickup of this shipment. The batch recorded 800 on hand, "
+        "less than the 850 held, so 800 was drawn down."
+    )
+    (stock_row,) = [
+        a for a in await audit_of(session, batch.id) if a.action == "inventory_batch.picked_up"
+    ]
+    (hold_row,) = [a for a in await audit_of(session, hold.id) if a.after == {"status": "CONSUMED"}]
+    for row in (stock_row, hold_row):
+        assert (row.org_id, row.actor_id, row.reason_source, row.reason) == (
+            world.hospital_b.id,
+            None,
+            "SYSTEM",
+            cause,
+        )
+    assert stock_row.before == {"on_hand": 800}
+    after = stock_row.after or {}
+    assert (after["on_hand"], after["held_qty"], after["drawn_qty"]) == (0, 850, 800)
+
+    # The shortfall surfaces at receipt; reconciliation opens the residual (§9).
+    for status in ("IN_TRANSIT", "DELIVERED"):
+        assert (await step(ravi, assigned, status)).status_code == 200
+    receiver = await client_for(world.users["a.RECEIVER"])
+    r = await receiver.post(
+        f"/shipments/{assigned.id}/receipt",
+        json={
+            "received": 800,
+            "accepted": 800,
+            "rejected": 0,
+            "condition": "GOOD",
+            "expiry_date": "2027-03-31",
+        },
+    )
+    assert r.status_code == 201, r.text
+    reconciliation = r.json()["reconciliation"]
+    assert (reconciliation["discrepancy"], reconciliation["outcome"]) == (50, "PARTIAL")
+    residual = await session.get_one(Shortage, reconciliation["residual_shortage_id"])
+    assert (residual.shortfall, residual.parent_shortage_id) == (50, shortage.id)
 
 
 async def test_a_driver_who_is_not_assigned_or_from_another_org_gets_403(
@@ -526,12 +627,81 @@ async def test_only_the_assigned_driver_pings_and_only_on_the_way(
     assert r.status_code == 409
 
 
+async def test_the_detail_shows_only_pings_since_the_current_assignment(
+    session: AsyncSession,
+    world: World,
+    assigned: Shipment,
+    ravi: httpx.AsyncClient,
+    omar: httpx.AsyncClient,
+    dispatcher: httpx.AsyncClient,
+    other_dispatcher: httpx.AsyncClient,
+    other_fleet: Fleet,
+    client_for: ClientFor,
+) -> None:
+    """An earlier carrier's driver position never reaches the dispatch board or the next
+    carrier, even a ping stamped (by the phone) up to 5 min ahead."""
+    ahead = (datetime.now(UTC) + timedelta(minutes=4)).isoformat()
+    r = await ravi.post(
+        f"/shipments/{assigned.id}/location", json={"lat": 12.95, "lng": 77.61, "ts": ahead}
+    )
+    assert r.status_code == 200
+    requester = await client_for(world.users["a.REQUESTER"])
+    detail = (await requester.get(f"/shipments/{assigned.id}")).json()
+    assert detail["last_location"]["lat"] == 12.95
+
+    assert (await dispatcher.post(f"/shipments/{assigned.id}/unassign")).status_code == 200
+    # CREATED: no position for anyone, the dispatch board included.
+    for client in (other_dispatcher, requester):
+        r = await client.get(f"/shipments/{assigned.id}")
+        assert r.status_code == 200
+        assert r.json()["last_location"] is None
+
+    r = await other_dispatcher.post(
+        f"/shipments/{assigned.id}/assign",
+        json={
+            "driver_id": str(other_fleet.drivers["Omar"].id),
+            "vehicle_id": str(other_fleet.van.id),
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["last_location"] is None  # Ravi's ping stays with SwiftMed's trip
+    assert (await dispatcher.get(f"/shipments/{assigned.id}")).status_code == 403  # left it
+    r = await omar.post(f"/shipments/{assigned.id}/location", json={"lat": 12.94, "lng": 77.6})
+    assert r.status_code == 200
+    detail = (await other_dispatcher.get(f"/shipments/{assigned.id}")).json()
+    assert (detail["last_location"]["lat"], detail["last_location"]["lng"]) == (12.94, 77.6)
+    # Ravi is no longer the driver: 403; and the stored pings are both still there.
+    assert (
+        await ravi.post(f"/shipments/{assigned.id}/location", json={"lat": 1, "lng": 1})
+    ).status_code == 403
+    assert len(list(await session.scalars(select(LocationPing)))) == 2
+
+
 async def test_driver_jobs_lists_only_my_shipments(
     assigned: Shipment, ravi: httpx.AsyncClient, priya: httpx.AsyncClient
 ) -> None:
     r = await ravi.get("/shipments", params={"assigned_to_me": "true"})
     assert [s["id"] for s in r.json()["items"]] == [str(assigned.id)]
     r = await priya.get("/shipments", params={"assigned_to_me": "true"})
+    assert r.json()["items"] == []
+
+
+async def test_driver_jobs_are_empty_for_a_user_who_is_not_a_driver(
+    shipment: Shipment,
+    dispatcher: httpx.AsyncClient,
+    world: World,
+    client_for: ClientFor,
+) -> None:
+    """Never `driver_id IS NULL`: the dispatcher sees the CREATED shipment on the board,
+    but has no driver jobs."""
+    r = await dispatcher.get("/shipments", params={"status": "CREATED"})
+    assert [s["id"] for s in r.json()["items"]] == [str(shipment.id)]
+    r = await dispatcher.get("/shipments", params={"assigned_to_me": "true"})
+    assert r.status_code == 200
+    assert r.json() == {"items": [], "next_cursor": None}
+    # The receiving hospital's user sees the shipment, but has no driver jobs either.
+    requester = await client_for(world.users["a.REQUESTER"])
+    r = await requester.get("/shipments", params={"assigned_to_me": "true"})
     assert r.json()["items"] == []
 
 

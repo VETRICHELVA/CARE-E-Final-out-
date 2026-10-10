@@ -94,3 +94,50 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: make client
       - run: git diff --exit-code packages/api-client
+
+  # The Playwright scenarios against a migrated, seeded hub (S20). Playwright starts the hub
+  # (:8000) and the three apps; the worker runs beside them for timers and live updates.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: care
+          POSTGRES_PASSWORD: care
+          POSTGRES_DB: care
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U care -d care"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: uv sync --locked
+        working-directory: services/hub-api
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter e2e exec playwright install --with-deps chromium
+      - run: make migrate seed
+      - name: Worker (timers, event publisher)
+        run: (cd services/hub-api && nohup uv run arq app.worker.WorkerSettings > ../../worker.log 2>&1 &)
+      - run: make e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces
+          path: |
+            e2e/test-results
+            worker.log
