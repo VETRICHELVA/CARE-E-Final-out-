@@ -2,7 +2,7 @@
 
 A click-by-click script for the three demo scenarios in `docs/specs/demo-scenarios.md`, with what to say at each step, timings and a fallback plan. Screen text in quotes is what the apps show, taken from the app code; numbers are the seed numbers from `demo-scenarios.md`.
 
-The "(check before the demo)" marks of the first draft were resolved on 2026-10-09 against the running apps on a fresh `make demo-reset`: the S20 Playwright specs (`e2e/tests/scenario1.spec.ts`, `scenario2.spec.ts`, `scenario3.spec.ts`) click through these same steps and check the same screen text. Where the running demo differs from a number in `demo-scenarios.md` (Hospital B's ETA, Scenario 3's 297), the step says so; both are open questions in `docs/build/PROGRESS.md`. Still do one full dry run before an audience.
+The "(check before the demo)" marks of the first draft were resolved on 2026-10-09 against the running apps on a fresh `make demo-reset`: the S20 Playwright specs (`e2e/tests/scenario1.spec.ts`, `scenario2.spec.ts`, `scenario3.spec.ts`) click through these same steps and check the same screen text. Where the running demo differs from a number in `demo-scenarios.md` (Hospital B's ETA, Scenario 3's 297 or 298), the step says so; both are open questions in `docs/build/PROGRESS.md`. Still do one full dry run before an audience.
 
 ---
 
@@ -251,7 +251,7 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 
 ### Step 1: B's expiry risk (tab B-store)
 
-1. **Dashboard** → "Forecasts and expiry risk": "Expiry-risk batches" **1** and "Offer **297 each** to the network: IV Cannula 20G, batch SEED-1" with a "Synthetic history" badge. demo-scenarios.md says 300; the forecast uses 503 of the 1,000 before expiry, so the excess is 297 (296–298 depending on the weekday; the hub's test and the e2e spec accept 300 ± 5). Say "about 300". Open question in PROGRESS.md.
+1. **Dashboard** → "Forecasts and expiry risk": "Expiry-risk batches" **1** and "Offer **297 each** to the network: IV Cannula 20G, batch SEED-1" with a "Synthetic history" badge. demo-scenarios.md says 300; the forecast uses about 503 of the 1,000 before expiry, so the excess is 296–298 depending on the weekday (297 on Friday 2026-10-09, 298 on Saturday 2026-10-10; the hub's test and the e2e spec accept 300 ± 5). Say "about 300". Open question in PROGRESS.md.
 2. Click **Forecasts** (or **View all**). "Expiry-risk batches" lists the batch (on hand 1,000, safety stock 200, expiry +55 days). Click **Offer to network** → dialog "Offer 297 each to the network?" ("Other hospitals see the quantity, an expiry band and your location, never the batch or its expiry date. The hub offers no more than the batch's transferable stock.") → **Offer to network** → "Offered to the network." The post appears under "Your surplus posts" as "Matched" (the hub matched it to Hospital E's forecast stock-out at once).
 
 **Say:** "The forecast says B will use about 500 of these 1,000 before they expire, and B keeps 200 as safety stock. That leaves about 300 that will otherwise be thrown away."
@@ -280,7 +280,7 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 Sign in to hospital-web as `admin@care-e.demo` and click **Admin** (`/admin`, "Network metrics"). Five cards, each with its definition underneath: "Median time to a confirmed source", "Transfers vs purchases", "Procurement cost avoided", "Units saved from expiry" and "Cold-chain compliance". The page does not update live (no hub event reaches the platform org): click **Refresh** after the receipt.
 
 After the three scripted scenarios on a fresh `make demo-reset`:
-- **Units saved from expiry: 297**: the smaller of the 300 transferred and the 297 B posted (demo-scenarios.md says 300; see step 1).
+- **Units saved from expiry: 297** (or whatever B posted, 296–298): the smaller of the 300 transferred and the excess B posted (demo-scenarios.md says 300; see step 1).
 - **Procurement cost avoided: ₹70,228.00**: units received from hospital transfers × the cheapest supplier price in the match run that chose the source: Scenario 2's 200 kit × ₹339.50 plus Scenario 3's 300 × ₹7.76 (both Supplier Z's prices), before transport.
 - **Transfers vs purchases**: 66.7% transfers · 33.3% purchases (2 transfers, 1 purchase).
 - **Cold-chain compliance: 0%**, "1 of 1 cold-chain delivery monitored; 1 with an excursion": the excursion counts against it even though it recovered.
