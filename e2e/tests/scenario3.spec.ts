@@ -13,9 +13,11 @@ import { APP, assign, confirm, drive, recordReceipt, reportShortage, signIn } fr
 // in earlier runs emptied, E's open IV Cannula 20G shortages cancelled, B and E re-forecast).
 // Live updates need the hub's event publisher (`make worker`).
 
-// The cheapest supplier price for IV Cannula 20G in the seed: Supplier Z, 97% of ₹8.00
-// (app/seed.py, BASE_PRICE and SUPPLIER_TERMS). Cost avoided = units accepted x this.
-const CHEAPEST_IV_PRICE_PAISE = 776;
+// Cost avoided = units accepted x the cheapest *eligible* supplier price in the match run that
+// chose B (api-and-events.md, Network metrics). For IV Cannula 20G only Supplier Y passes the
+// gates in that run (Z at ₹7.76 and X at ₹8.00 do not): 110% of ₹8.00 (app/seed.py, BASE_PRICE
+// and SUPPLIER_TERMS).
+const CHEAPEST_ELIGIBLE_IV_PRICE_PAISE = 880;
 const SHORTAGE_QTY = 300;
 
 const rupees = (text: string) => Math.round(Number(text.replace(/[₹,]/g, "")) * 100);
@@ -164,7 +166,7 @@ test("Scenario 3: B's expiry surplus meets E's forecast stock-out; /admin shows 
     .poll(async () => (await metrics(admin)).unitsSaved)
     .toBe(before.unitsSaved + Math.min(SHORTAGE_QTY, excess));
   const after = await metrics(admin);
-  expect(after.costPaise - before.costPaise).toBe(SHORTAGE_QTY * CHEAPEST_IV_PRICE_PAISE);
+  expect(after.costPaise - before.costPaise).toBe(SHORTAGE_QTY * CHEAPEST_ELIGIBLE_IV_PRICE_PAISE);
   for (const id of ["time", "mix", "cost", "expiry", "cold-chain"])
     await expect(admin.getByTestId(`metric-${id}`).getByTestId("definition")).not.toBeEmpty();
   testInfo.annotations.push({

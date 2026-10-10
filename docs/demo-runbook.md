@@ -281,7 +281,7 @@ Sign in to hospital-web as `admin@care-e.demo` and click **Admin** (`/admin`, "N
 
 After the three scripted scenarios on a fresh `make demo-reset`:
 - **Units saved from expiry: 297** (or whatever B posted, 296–298): the smaller of the 300 transferred and the excess B posted (demo-scenarios.md says 300; see step 1).
-- **Procurement cost avoided: ₹70,228.00**: units received from hospital transfers × the cheapest eligible supplier price in the match run that chose the source: Scenario 2's 200 kit × ₹339.50 plus Scenario 3's 300 × ₹7.76 (both Supplier Z's prices), before transport.
+- **Procurement cost avoided: ₹79,640.00**: units received from hospital transfers × the cheapest eligible supplier price in the match run that chose the source: Scenario 2's 200 kit × ₹385.00 plus Scenario 3's 300 × ₹8.80 (both Supplier Y's prices: Supplier Y is the only eligible supplier in both runs; Z's and X's cheaper offers do not pass the gates), before transport.
 - **Transfers vs purchases**: 66.7% transfers · 33.3% purchases (2 transfers, 1 purchase).
 - **Cold-chain compliance: 0%**, "1 of 1 cold-chain delivery monitored; 1 with an excursion": the excursion counts against it even though it recovered.
 - The median time to a confirmed source is however long the scripted clicks took (minutes).
