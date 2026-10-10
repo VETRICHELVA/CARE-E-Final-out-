@@ -25,6 +25,16 @@ async def test_seed_catalog_is_idempotent(session: AsyncSession) -> None:
     assert await session.scalar(select(func.count()).select_from(Product)) == 40
 
 
+async def test_the_demo_seed_leaves_existing_products_as_they_are(session: AsyncSession) -> None:
+    """S20: the demo seed is create-only, so a product's shelf-life gate is never reverted."""
+    products = await seed_catalog(session)
+    products["SURG-KIT-A"].default_min_shelf_life_days = 45
+    await session.flush()
+    again = await seed_catalog(session, create_only=True)
+    assert again["SURG-KIT-A"].default_min_shelf_life_days == 45
+    assert len(again) == 40
+
+
 async def test_demo_products(products: dict[str, Product]) -> None:
     def attrs(p: Product) -> tuple[object, ...]:
         cold = (p.requires_cold_chain, p.temp_min_c, p.temp_max_c)

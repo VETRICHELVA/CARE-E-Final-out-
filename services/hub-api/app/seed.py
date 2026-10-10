@@ -276,7 +276,7 @@ async def seed(session: AsyncSession, now: datetime | None = None) -> list[str]:
     # Held until the caller's transaction ends, so the get-or-create below cannot race.
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SEED_LOCK})
     created = await seed_orgs(session)
-    products = await seed_catalog(session)
+    products = await seed_catalog(session, create_only=True)
     orgs = {o.name: o for o in await session.scalars(select(Organization))}
     await seed_authorizations(session, orgs, products)
     await seed_batches(session, orgs, products, now)
@@ -432,7 +432,6 @@ async def seed_fleet(session: AsyncSession) -> None:
             session.add(user)
             await session.flush()
         if await session.scalar(select(Driver).where(Driver.user_id == user.id)) is None:
-            user.full_name = name
             session.add(Driver(org_id=org.id, user_id=user.id, phone=phone))
     existing = set(await session.scalars(select(Vehicle.reg_no).where(Vehicle.org_id == org.id)))
     for reg_no, cold in VEHICLES:

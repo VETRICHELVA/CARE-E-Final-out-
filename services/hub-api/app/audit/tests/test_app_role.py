@@ -83,6 +83,21 @@ async def test_the_owner_is_refused_and_the_app_role_is_not(session: AsyncSessio
     assert await dbrole.audit_role_refusal(await session.connection()) is None
 
 
+@pytest.mark.parametrize(
+    "grant",
+    ["UPDATE ON credit_ledger", "DELETE ON credit_ledger", "UPDATE (reason) ON audit_log"],
+)
+async def test_a_role_that_could_rewrite_any_append_only_table_is_refused(
+    session: AsyncSession, grant: str
+) -> None:
+    """Every append-only table is checked, column-level UPDATE grants included."""
+    await as_owner(session)
+    await session.execute(text(f"GRANT {grant} TO {dbrole.APP_ROLE}"))
+    await as_app_role(session)
+    refusal = await dbrole.audit_role_refusal(await session.connection())
+    assert refusal is not None and grant.rsplit(" ", 1)[-1] in refusal
+
+
 async def test_outside_dev_the_hub_will_not_start_as_the_owner(
     session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -277,7 +277,7 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 
 ### Step 4: the network view (tab Platform)
 
-Sign in to hospital-web as `admin@care-e.demo` and open **/admin**: the network metrics show procurement cost avoided (against the cheapest supplier price) and **300 units saved from expiry**, plus median time from shortage to confirmed source, transfer vs purchase share and cold-chain compliance. **(check before the demo**: the `/admin` page and `GET /metrics/network` are S20 work that was not built when this runbook was written; confirm the page, its labels and the figures.**)**
+Sign in to hospital-web as `admin@care-e.demo` and open **/admin**: the network metrics show procurement cost avoided (against the cheapest eligible supplier price) and **300 units saved from expiry**, plus median time from shortage to confirmed source, transfer vs purchase share and cold-chain compliance. **(check before the demo**: the `/admin` page and `GET /metrics/network` are S20 work that was not built when this runbook was written; confirm the page, its labels and the figures.**)**
 
 **Say:** "Across the network: what we didn't have to buy, and what didn't expire."
 

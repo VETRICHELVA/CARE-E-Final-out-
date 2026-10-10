@@ -1,9 +1,15 @@
 # Every target here is listed under "Commands" in CLAUDE.md; keep them in sync.
 -include .env
 # Every target here is local development: the hub, worker, seed, demo-reset, migrate, ingest,
-# ai, client, tests and e2e run with APP_ENV=dev unless APP_ENV is set (shell or root .env).
-# Without it the services count as production and refuse the committed dev secrets.
-APP_ENV ?= dev
+# ai, client, tests and e2e run with APP_ENV=dev unless APP_ENV is set in the shell, the root
+# .env or any services/*/.env. A service .env that sets it (e.g. APP_ENV=production) wins:
+# exporting dev here would override it and skip the production checks. Without any of these
+# the services count as production and refuse the committed dev secrets.
+ifeq ($(origin APP_ENV),undefined)
+ifeq ($(shell grep -hs '^APP_ENV=' services/*/.env),)
+APP_ENV := dev
+endif
+endif
 export
 
 SERVICES := hub-api ai-service iot-ingest

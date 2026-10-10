@@ -13,6 +13,11 @@ The role is created NOLOGIN, cluster-wide, if it does not exist yet; it works th
 `make up` (Docker, where `care` is the superuser) and any Postgres where the migrating role may
 create roles. Outside dev, give it a login, e.g. `ALTER ROLE care_app LOGIN PASSWORD '...'`,
 and point DATABASE_URL at it (README, Configuration). Migrations keep running as the owner.
+
+Default privileges (ALTER DEFAULT PRIVILEGES without FOR ROLE) cover only tables created by the
+role that ran this migration, so run every later migration, and any downgrade, as that same
+owner role. A later migration that adds an append-only table must revoke UPDATE and DELETE on
+it from care_app itself and add it to app.dbrole.APPEND_ONLY_TABLES.
 """
 
 from collections.abc import Sequence

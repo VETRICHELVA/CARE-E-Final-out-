@@ -1,6 +1,6 @@
 # Demo scenarios and seed data
 
-`make seed` must reproduce these numbers exactly, with all times relative to "now" when the seed runs. Seed scripts live in `scripts/seed/` and are idempotent (running twice gives the same state).
+`make demo-reset` must reproduce these numbers exactly, with all times relative to "now" when the seed runs: it drops the local dev database, migrates and seeds. `make seed` alone is create-only: it adds whatever is missing with these numbers and never changes existing rows (a change outside the hub's services would have no audit row), so on a database that has been used, run `make demo-reset` to get these numbers back. The seed is `services/hub-api/app/seed.py`; the product catalog is `scripts/seed/catalog.py`.
 
 ## Organizations and users
 | Org | Type | Notes |
@@ -56,7 +56,7 @@ Steps:
 1. The forecast job flags B's batch; B's dashboard suggests "Offer 300 to the network", and B posts the surplus.
 2. E's dashboard shows the predicted stock-out and the matching surplus from Hospital B (`surplus.matched`).
 3. E creates a ROUTINE shortage for 300; matching ranks B first (near-expiry tiebreak, lowest landed cost); the transfer completes.
-4. The admin metrics dashboard shows procurement cost avoided (vs the cheapest supplier price) and 300 units saved from expiry.
+4. The admin metrics dashboard shows procurement cost avoided (vs the cheapest eligible supplier price) and 300 units saved from expiry.
 
 ## Synthetic consumption history
 - 12 months of daily records per hospital × product for the 15 most-used products.

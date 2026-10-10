@@ -21,26 +21,29 @@ _PRIVILEGES = text(
     """
     SELECT current_user,
            r.rolsuper,
+           c.relname,
            pg_has_role(current_user, c.relowner, 'MEMBER') AS owner,
            has_table_privilege(current_user, c.oid, 'UPDATE')
              OR has_table_privilege(current_user, c.oid, 'DELETE')
-             OR has_table_privilege(current_user, c.oid, 'TRUNCATE') AS rewrite
+             OR has_table_privilege(current_user, c.oid, 'TRUNCATE')
+             OR has_any_column_privilege(current_user, c.oid, 'UPDATE') AS rewrite
     FROM pg_roles r CROSS JOIN pg_class c
-    WHERE r.rolname = current_user AND c.oid = 'audit_log'::regclass
+    WHERE r.rolname = current_user AND c.oid = ANY(CAST(:tables AS regclass[]))
+    ORDER BY c.relname
     """
 )
 
 
 async def audit_role_refusal(conn: AsyncConnection) -> str | None:
-    """Why the role `conn` acts as could rewrite or unprotect audit_log, or None."""
-    row = (await conn.execute(_PRIVILEGES)).one()
-    user, superuser, owner, rewrite = row
-    if superuser:
-        return f"{user} is a superuser"
-    if owner:
-        return f"{user} owns audit_log (or is a member of its owner) and could disable its trigger"
-    if rewrite:
-        return f"{user} may UPDATE, DELETE or TRUNCATE audit_log"
+    """Why the role `conn` acts as could rewrite or unprotect an append-only table, or None."""
+    rows = (await conn.execute(_PRIVILEGES, {"tables": list(APPEND_ONLY_TABLES)})).all()
+    for user, superuser, table, owner, rewrite in rows:
+        if superuser:
+            return f"{user} is a superuser"
+        if owner:
+            return f"{user} owns {table} (or is a member of its owner) and could disable a trigger"
+        if rewrite:
+            return f"{user} may UPDATE, DELETE or TRUNCATE {table}"
     return None
 
 
