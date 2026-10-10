@@ -1,4 +1,4 @@
-export { CareApp, type AppConfig, type ExtraRoute, type NavItem } from "./app";
+export { CareApp, type AppConfig, type ExtraRoute, type NavItem, showNavItem } from "./app";
 export {
   COLDCHAIN_LABEL,
   type ColdChain,

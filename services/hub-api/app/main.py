@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,6 +12,8 @@ from app.auth.router import router as auth_router
 from app.catalog.router import router as catalog_router
 from app.coldchain.router import router as coldchain_router
 from app.config import settings
+from app.db import engine
+from app.dbrole import require_least_privilege
 from app.events.router import router as events_router
 from app.forecasting.router import router as forecasting_router
 from app.inventory.router import router as inventory_router
@@ -30,6 +35,13 @@ from app.trust.router import router as trust_router
 API = "/api/v1"
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # S20: outside dev, refuse a database role that could rewrite the audit log.
+    await require_least_privilege(engine)
+    yield
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="CARE-E hub API",
@@ -37,6 +49,7 @@ def create_app() -> FastAPI:
         openapi_url=f"{API}/openapi.json",
         docs_url=f"{API}/docs",
         redoc_url=None,
+        lifespan=lifespan,
     )
     errors.install(app)
     log.install(app)

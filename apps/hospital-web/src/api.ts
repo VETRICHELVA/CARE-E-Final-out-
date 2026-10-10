@@ -40,6 +40,7 @@ export type ExpiryRisk = Schemas["ExpiryRiskOut"];
 export type SurplusPost = Schemas["SurplusOut"];
 export type SurplusOffer = Schemas["SurplusOfferOut"];
 export type Reliability = Schemas["ReliabilityOut"];
+export type NetworkMetrics = Schemas["NetworkMetricsOut"];
 type SourceRequestQuery = {
   direction: Schemas["Direction"];
   status?: Schemas["RequestStatus"];
@@ -79,6 +80,7 @@ export const keys = {
   surplus: ["/api/v1/surplus"] as const,
   incomingSurplus: ["/api/v1/surplus/incoming"] as const,
   reliability: (orgId: string) => ["/api/v1/orgs/{org_id}/reliability", { org_id: orgId }] as const,
+  networkMetrics: ["/api/v1/metrics/network"] as const,
 };
 
 type Cursor = string | undefined;
@@ -667,5 +669,16 @@ export function useWithdrawSurplus() {
         }),
       ),
     onSettled: refresh,
+  });
+}
+
+/** The network-wide figures for the platform team (`GET /metrics/network`, S20), computed by
+ *  the hub at request time. No hub event reaches a PLATFORM org, so the screen refreshes on
+ *  request rather than live; fetched only while `enabled`. */
+export function useNetworkMetrics(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.networkMetrics,
+    queryFn: () => unwrap(client.GET("/api/v1/metrics/network")),
+    enabled,
   });
 }

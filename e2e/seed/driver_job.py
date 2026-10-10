@@ -10,7 +10,8 @@ Run from services/hub-api, against the database the hub under test uses (the spe
 Each run:
 - loads the dev seed (with SwiftMed's drivers Ravi and Priya and its two vans) and adds
   Supplier Y with a supplier desk user if missing;
-- gives Supplier Y a fresh Face Shield offer and authorization;
+- gives Supplier Y a Face Shield offer and authorization if it has none (an existing offer
+  is left as it is: `make demo-reset` starts again from scratch);
 - cancels Hospital A's open Face Shield shortages from earlier runs (hub service, with audit
   rows);
 - reports a new Face Shield shortage as Hospital A's store manager: matching recommends a BUY
@@ -82,11 +83,18 @@ async def main() -> None:
                 SupplierOffer.org_id == y.id, SupplierOffer.product_id == product.id
             )
         )
-        if offer is None:
-            offer = SupplierOffer(org_id=y.id, product_id=product.id)
-            session.add(offer)
-        offer.unit_price_paise, offer.lead_time_hours, offer.available_qty = Y_OFFER
-        offer.updated_at = now
+        if offer is None:  # create-only: an existing offer changes only through the hub
+            price, lead, qty = Y_OFFER
+            session.add(
+                SupplierOffer(
+                    org_id=y.id,
+                    product_id=product.id,
+                    unit_price_paise=price,
+                    lead_time_hours=lead,
+                    available_qty=qty,
+                    updated_at=now,
+                )
+            )
         authorized = await session.scalar(
             select(ProductAuthorization).where(
                 ProductAuthorization.org_id == y.id, ProductAuthorization.product_id == product.id

@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.coldchain import service as coldchain
 from app.config import settings
-from app.db import SessionLocal
+from app.db import SessionLocal, engine
+from app.dbrole import require_least_privilege
 from app.domain import config
 from app.events import service as events
 from app.events import webhooks
@@ -34,6 +35,9 @@ WEBHOOK_INTERVAL_SECONDS = 5
 
 
 async def startup(ctx: dict[str, Any]) -> None:
+    if "sessionmaker" not in ctx:
+        # S20: outside dev, refuse a database role that could rewrite the audit log.
+        await require_least_privilege(engine)
     ctx.setdefault("sessionmaker", SessionLocal)
     # Never follow redirects: a webhook URL is called exactly as the org admin entered it.
     ctx.setdefault("http", httpx.AsyncClient(follow_redirects=False))

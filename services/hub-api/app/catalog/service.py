@@ -43,12 +43,15 @@ async def search_entries(session: AsyncSession) -> list[Entry]:
     return [Entry(p, p.code, p.name, synonyms.get(p.code, ())) for p in products]
 
 
-async def seed_catalog(session: AsyncSession) -> dict[str, Product]:
-    """Insert or update every product in scripts/seed/catalog.py by code; idempotent."""
+async def seed_catalog(session: AsyncSession, *, create_only: bool = False) -> dict[str, Product]:
+    """Insert or update every product in scripts/seed/catalog.py by code; idempotent. With
+    `create_only` (the demo seed, S20) existing products are left as they are."""
     data = runpy.run_path(str(CATALOG_FILE))
     t_min, t_max = data["COLD_CHAIN_C"]
     existing = {p.code: p for p in await session.scalars(select(Product))}
     for code, name, category, unit, cold, shelf_life in data["PRODUCTS"]:
+        if create_only and code in existing:
+            continue
         product = existing.get(code) or Product(code=code)
         product.name, product.category, product.unit = name, category, unit
         product.requires_cold_chain = cold

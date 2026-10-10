@@ -2,12 +2,14 @@
 device and the synthetic consumption history in docs/specs/demo-scenarios.md, with every time
 relative to `now`. Run with `make seed` (or `make demo-reset` for an empty database first).
 
-Idempotent: a second run gives the same state. Orgs, users, facilities, drivers, vehicles and
-devices are added if missing (by name, email, reg_no, device_id) and put back to the spec's
-values; the seeded batches (by facility, product and batch_no), offers and authorizations are
-reset to the scenario numbers and re-timed to `now`; the consumption history is replaced.
-What a demo added since (shortages, requests, holds, shipments, receipts and their batches,
-audit rows) is left alone: `make demo-reset` wipes it.
+Create-only: a run adds what is missing and never changes what exists (CLAUDE.md rule 5: a
+change to stock, an offer, an org or an authorization outside the hub's own services would have
+no audit row). Orgs, facilities, users, authorizations, batches (by facility, product and
+batch_no), offers, drivers, vehicles and devices are added if missing, with the scenario
+numbers and times relative to `now`; existing rows keep their quantities, prices, statuses and
+`last_verified_at`. Only the synthetic consumption history (not stock; reported rows win) is
+regenerated. To put every figure back to demo-scenarios.md, run `make demo-reset`, which drops
+the database first.
 
 Scenario numbers (demo-scenarios.md):
 - Scenario 1, Surgical Kit A: B 1,000 transferable (verified 2 h ago), C 100 (3 h), D 900
@@ -37,7 +39,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import routing
@@ -274,7 +276,7 @@ async def seed(session: AsyncSession, now: datetime | None = None) -> list[str]:
     # Held until the caller's transaction ends, so the get-or-create below cannot race.
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SEED_LOCK})
     created = await seed_orgs(session)
-    products = await seed_catalog(session)
+    products = await seed_catalog(session, create_only=True)
     orgs = {o.name: o for o in await session.scalars(select(Organization))}
     await seed_authorizations(session, orgs, products)
     await seed_batches(session, orgs, products, now)
@@ -294,20 +296,25 @@ async def seed_orgs(session: AsyncSession) -> list[str]:
     for name, org_type, domain, lat, lng, role_names in ORGS:
         org = existing.get(name)
         if org is None:
-            org = Organization(name=name, type=org_type, lat=lat, lng=lng)
+            org = Organization(name=name, type=org_type, lat=lat, lng=lng, status=OrgStatus.ACTIVE)
             session.add(org)
             await session.flush()
             created.append(name)
-        org.type, org.lat, org.lng, org.status = org_type, lat, lng, OrgStatus.ACTIVE
         if org_type == OrgType.HOSPITAL:
             facility = await session.scalar(
                 select(Facility).where(Facility.org_id == org.id).order_by(Facility.created_at)
             )
             if facility is None:
-                facility = Facility(org_id=org.id, name=f"{name} central store")
-                session.add(facility)
-            facility.address, facility.lat, facility.lng = f"{name}, Bengaluru", lat, lng
-            facility.has_cold_storage = name in COLD_STORAGE
+                session.add(
+                    Facility(
+                        org_id=org.id,
+                        name=f"{name} central store",
+                        address=f"{name}, Bengaluru",
+                        lat=lat,
+                        lng=lng,
+                        has_cold_storage=name in COLD_STORAGE,
+                    )
+                )
         for role in role_names:
             email = f"{role.lower().replace('_', '.')}@{domain}"
             if email in emails:
@@ -329,25 +336,20 @@ async def seed_orgs(session: AsyncSession) -> list[str]:
 async def seed_authorizations(
     session: AsyncSession, orgs: dict[str, Organization], products: dict[str, Product]
 ) -> None:
-    """Every hospital and supplier for every product, except Hospital E for Surgical Kit A."""
+    """Every hospital and supplier for every product, except Hospital E for Surgical Kit A;
+    only the missing ones are added (an existing grant or its absence is left as it is)."""
     wanted = {
         (org.id, product.id)
         for org in orgs.values()
         if org.name in {o[0] for o in ORGS} and org.type in (OrgType.HOSPITAL, OrgType.SUPPLIER)
         for product in products.values()
     }
-    refused = (orgs["Hospital E"].id, products["SURG-KIT-A"].id)
-    wanted.discard(refused)
+    wanted.discard((orgs["Hospital E"].id, products["SURG-KIT-A"].id))
     have = set(
         await session.execute(select(ProductAuthorization.org_id, ProductAuthorization.product_id))
     )
     session.add_all(
         ProductAuthorization(org_id=o, product_id=p) for o, p in sorted(wanted - set(have))
-    )
-    await session.execute(
-        delete(ProductAuthorization).where(
-            ProductAuthorization.org_id == refused[0], ProductAuthorization.product_id == refused[1]
-        )
     )
     await session.flush()
 
@@ -358,6 +360,8 @@ async def seed_batches(
     products: dict[str, Product],
     now: datetime,
 ) -> None:
+    """Each seeded batch that is missing (by facility, product and batch_no); an existing
+    batch is never touched, whatever its quantities or `last_verified_at`."""
     facilities = {
         f.org_id: f
         for f in await session.scalars(select(Facility).order_by(Facility.created_at.desc()))
@@ -372,16 +376,17 @@ async def seed_batches(
                 InventoryBatch.batch_no == spec.batch_no,
             )
         )
-        if batch is None:
-            batch = InventoryBatch(
+        if batch is not None:
+            continue  # stock changes only through the hub's services, with audit rows
+        session.add(
+            InventoryBatch(
                 org_id=org.id, facility_id=facility.id, product_id=product.id,
-                batch_no=spec.batch_no,
-            )  # fmt: skip
-            session.add(batch)
-        batch.on_hand, batch.reserved, batch.allocated = spec.on_hand, spec.reserved, spec.allocated
-        batch.safety_stock, batch.quarantined = spec.safety_stock, 0
-        batch.expiry_date, batch.unit_cost_paise = spec.expiry, spec.unit_cost_paise
-        batch.last_verified_at = now - spec.verified_ago
+                batch_no=spec.batch_no, on_hand=spec.on_hand, reserved=spec.reserved,
+                allocated=spec.allocated, safety_stock=spec.safety_stock, quarantined=0,
+                expiry_date=spec.expiry, unit_cost_paise=spec.unit_cost_paise,
+                last_verified_at=now - spec.verified_ago,
+            )
+        )  # fmt: skip
     await session.flush()
 
 
@@ -391,22 +396,19 @@ async def seed_offers(
     products: dict[str, Product],
     now: datetime,
 ) -> None:
-    """The offers in `offer_specs`, updated now; Z's Surgical Kit A offer is removed."""
-    existing = {(o.org_id, o.product_id): o for o in await session.scalars(select(SupplierOffer))}
+    """The offers in `offer_specs` that are missing, updated `now` (Z offers no Surgical Kit
+    A); an existing offer keeps its price, lead time, quantity and time."""
+    existing = set(await session.execute(select(SupplierOffer.org_id, SupplierOffer.product_id)))
     for (supplier, code), (price, lead, qty) in offer_specs().items():
         key = (orgs[supplier].id, products[code].id)
-        offer = existing.get(key)
-        if offer is None:
-            offer = SupplierOffer(org_id=key[0], product_id=key[1])
-            session.add(offer)
-        offer.unit_price_paise, offer.lead_time_hours, offer.available_qty = price, lead, qty
-        offer.updated_at = now
-    await session.execute(
-        delete(SupplierOffer).where(
-            SupplierOffer.org_id == orgs["Supplier Z"].id,
-            SupplierOffer.product_id == products["SURG-KIT-A"].id,
-        )
-    )
+        if key in existing:
+            continue
+        session.add(
+            SupplierOffer(
+                org_id=key[0], product_id=key[1], unit_price_paise=price, lead_time_hours=lead,
+                available_qty=qty, updated_at=now,
+            )
+        )  # fmt: skip
     await session.flush()
 
 
@@ -430,6 +432,7 @@ async def seed_fleet(session: AsyncSession) -> None:
             session.add(user)
             await session.flush()
         if await session.scalar(select(Driver).where(Driver.user_id == user.id)) is None:
+            # Creating the driver: the role user seed_orgs just made becomes Ravi (Priya is new).
             user.full_name = name
             session.add(Driver(org_id=org.id, user_id=user.id, phone=phone))
     existing = set(await session.scalars(select(Vehicle.reg_no).where(Vehicle.org_id == org.id)))

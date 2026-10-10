@@ -10,10 +10,11 @@ hub's own services (as e2e/seed/*.py do), and prints one JSON line for the eval 
     cd services/hub-api && uv run python ../ai-service/evals/scenario1_steps.py --to 4 \
         --state /tmp/s1.json
 
-`--to 2` resets Scenario 1 first (e2e/seed/scenario1.py: batches, offers, authorizations;
-cancels Hospital A's open Surgical Kit A shortages). `--to 4` and `--to 7` continue the
-shortage in `--state` (the previous step's output). Access tokens are issued directly, so the
-hub's login rate limit is not spent.
+`--to 2` prepares Scenario 1 first (e2e/seed/scenario1.py: adds missing batches, offers and
+authorizations, never changes existing stock; cancels Hospital A's open Surgical Kit A
+shortages), so start from `make demo-reset` for the spec's numbers. `--to 4` and `--to 7`
+continue the shortage in `--state` (the previous step's output). Access tokens are issued
+directly, so the hub's login rate limit is not spent.
 """
 
 import argparse

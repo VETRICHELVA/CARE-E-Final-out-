@@ -126,14 +126,15 @@ async def issue_tokens(
 
 async def check_login_rate(redis: Redis, ip: str) -> None:
     """Fixed window: every login attempt from an IP counts, success or not
-    (`LOGIN_RATE_LIMIT` attempts per `LOGIN_RATE_WINDOW_SECONDS`, default 5 per minute)."""
+    (`LOGIN_RATE_LIMIT` attempts per `LOGIN_RATE_WINDOW_SECONDS`, default 5 per minute; only
+    a dev hub may loosen it, `Settings.login_attempts_allowed`)."""
     key = f"rl:login:{ip}"
     async with redis.pipeline(transaction=True) as pipe:
         pipe.incr(key)
-        pipe.expire(key, settings.login_rate_window_seconds, nx=True)
+        pipe.expire(key, settings.login_window_seconds, nx=True)
         pipe.ttl(key)
         count, _, ttl = await pipe.execute()
-    if count > settings.login_rate_limit:
+    if count > settings.login_attempts_allowed:
         raise AppError(
             429,
             "rate_limited",

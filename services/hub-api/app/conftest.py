@@ -29,6 +29,7 @@ from app.auth.models import Role, User
 from app.catalog.models import Product
 from app.catalog.service import seed_catalog
 from app.db import get_session
+from app.dbrole import APP_ROLE
 from app.domain.costing import HaversineProvider
 from app.domain.state_machine import transition
 from app.main import create_app
@@ -84,10 +85,12 @@ def migrated_db() -> None:
 @pytest.fixture
 async def session(migrated_db: None) -> AsyncIterator[AsyncSession]:
     """Each test runs in one outer transaction that is rolled back; app commits become
-    savepoint releases."""
+    savepoint releases. It runs as the hub's least-privilege role `care_app` (0017_s20fix),
+    as the hub does outside dev; `as_owner` switches back for a test of the tables' owner."""
     engine = create_async_engine(TEST_DB_URL, poolclass=NullPool)
     async with engine.connect() as conn:
         outer = await conn.begin()
+        await conn.exec_driver_sql(f"SET LOCAL ROLE {APP_ROLE}")
         s = AsyncSession(
             bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False
         )
@@ -97,6 +100,12 @@ async def session(migrated_db: None) -> AsyncIterator[AsyncSession]:
             await s.close()
             await outer.rollback()
     await engine.dispose()
+
+
+async def as_owner(session: AsyncSession) -> None:
+    """The rest of the test's transaction runs as the tables' owner (the test login, `care`),
+    e.g. to show that a trigger stops even the owner."""
+    await session.execute(text("RESET ROLE"))
 
 
 @pytest.fixture

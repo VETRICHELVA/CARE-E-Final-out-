@@ -32,8 +32,9 @@ Before matching, lowercase the text and remove commas between digits (`1,000` â†
 - Refs: `$s1.shortage` (Hospital A's `SURG-KIT-A` shortage), `$s1.recommendation` (the BUY
   recommendation after step 4), `$s1.shipment` (the Supplier Y shipment).
 - `scenario1_steps.py` drives the hub there through its own services (run in the hub's
-  environment against the hub's database): `--to 2` resets Scenario 1 (`e2e/seed/scenario1.py`)
-  and reports the shortage; `--to 4` declines B's request **without** a reason (so B's decline
+  environment against the hub's database): `--to 2` prepares Scenario 1 (`e2e/seed/scenario1.py`,
+  which adds missing seed rows but never resets stock: start from `make demo-reset`) and reports
+  the shortage; `--to 4` declines B's request **without** a reason (so B's decline
   has `reason_source=SYSTEM` and c08 sees "No reason was entered.") and waits for the BUY;
   `--to 7` approves it, Supplier Y acknowledges and dispatches, SwiftMed delivers, and Hospital A
   receives and accepts 790 (residual 60). Each prints `{step, refs, tokens}`, the tokens being
@@ -41,7 +42,7 @@ Before matching, lowercase the text and remove commas between digits (`1,000` â†
 - Runner: `make eval-ai` (or `cd services/ai-service && uv run python -m app.evals [--only c01]`).
   With no `AI_API_KEY`/`ANTHROPIC_API_KEY` it prints why it is skipping and exits 0. Otherwise it
   needs the hub running at `HUB_API_URL` with the same `AI_SERVICE_TOKEN` (after
-  `make migrate seed`); the steps run in `services/hub-api` with the hub's own settings. It prints PASS/FAIL per case and the
+  `make demo-reset`, or `make migrate seed` on a fresh database); the steps run in `services/hub-api` with the hub's own settings. It prints PASS/FAIL per case and the
   score, and exits 1 unless every case passes.
 - Expected facts use only exact figures from the spec, never the "about" ETAs or costs.
 - Separately, every answer fails if it contains a number not present in its tool results (S13).
@@ -79,7 +80,7 @@ Thursday 20:00 UTC but already Friday 01:30 in Asia/Kolkata (o12/o13 test that "
 - Runner (S17): `make eval-ai` runs it after the copilot set (or
   `cd services/ai-service && uv run python -m app.chat_evals [--only o01,o14]`). With no
   `AI_API_KEY`/`ANTHROPIC_API_KEY` it prints why it is skipping and exits 0. Otherwise it needs
-  the hub at `HUB_API_URL` (same `AI_SERVICE_TOKEN`, after `make migrate seed`): it signs in as
+  the hub at `HUB_API_URL` (same `AI_SERVICE_TOKEN`, after `make demo-reset`): it signs in as
   `CHAT_EVAL_USER` (default `requester@hospital-a.demo`, password `SEED_PASSWORD`, default the
   seed's), maps codes with `GET /products`, drafts each message through `app.chat` exactly as
   `POST /chat/draft` does, prints PASS/FAIL per case and the score, and exits 1 under 18 of 20

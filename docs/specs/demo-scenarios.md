@@ -1,6 +1,6 @@
 # Demo scenarios and seed data
 
-`make seed` must reproduce these numbers exactly, with all times relative to "now" when the seed runs. Seed scripts live in `scripts/seed/` and are idempotent (running twice gives the same state).
+`make demo-reset` must reproduce these numbers exactly, with all times relative to "now" when the seed runs: it drops the local dev database, migrates and seeds. `make seed` alone is create-only: it adds whatever is missing with these numbers and never changes existing rows (a change outside the hub's services would have no audit row), so on a database that has been used, run `make demo-reset` to get these numbers back. The seed is `services/hub-api/app/seed.py`; the product catalog is `scripts/seed/catalog.py`.
 
 ## Organizations and users
 | Org | Type | Notes |
@@ -21,7 +21,7 @@ Seed state for Surgical Kit A:
 
 | Source | Stock | Expiry | Last verified | Expected result |
 |---|---|---|---|---|
-| Hospital B | on hand 2,500, reserved 800, allocated 200, safety 500 → **1,000 transferable** | +180 days | 2 h ago | Eligible, ranked first (ETA about 6 h) |
+| Hospital B | on hand 2,500, reserved 800, allocated 200, safety 500 → **1,000 transferable** | +180 days | 2 h ago | Eligible, ranked first (ETA about 1.3 h: 10.9 km by the §4 estimate from Hospital A, ÷ 40 km/h + 1 h handover) |
 | Hospital C | on hand 1,400, reserved 800, safety 500 → **100 transferable** | +200 days | 3 h ago | Fails quantity: "Only 100 transferable; 850 needed" |
 | Hospital D | 900 transferable | **+12 days** | 1 h ago | Fails shelf life: "Expires in 12 days; 30 required" |
 | Hospital E | 1,200 transferable | +150 days | 1 h ago | Fails authorization |
@@ -56,7 +56,7 @@ Steps:
 1. The forecast job flags B's batch; B's dashboard suggests "Offer 300 to the network", and B posts the surplus.
 2. E's dashboard shows the predicted stock-out and the matching surplus from Hospital B (`surplus.matched`).
 3. E creates a ROUTINE shortage for 300; matching ranks B first (near-expiry tiebreak, lowest landed cost); the transfer completes.
-4. The admin metrics dashboard shows procurement cost avoided (vs the cheapest supplier price) and 300 units saved from expiry.
+4. The admin metrics dashboard shows procurement cost avoided (vs the cheapest eligible supplier price) and 300 units saved from expiry.
 
 ## Synthetic consumption history
 - 12 months of daily records per hospital × product for the 15 most-used products.

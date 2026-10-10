@@ -2,7 +2,7 @@
 
 A click-by-click script for the three demo scenarios in `docs/specs/demo-scenarios.md`, with what to say at each step, timings and a fallback plan. Screen text in quotes is what the apps show, taken from the app code; numbers are the seed numbers from `demo-scenarios.md`.
 
-Anything marked **(check before the demo)** could not be confirmed from the code at the time of writing (mostly because the full S20 seed and the admin metrics page were still being built). Do one full dry run with this script and strike those marks out.
+The "(check before the demo)" marks of the first draft were resolved on 2026-10-09 against the running apps on a fresh `make demo-reset`: the S20 Playwright specs (`e2e/tests/scenario1.spec.ts`, `scenario2.spec.ts`, `scenario3.spec.ts`) click through these same steps and check the same screen text. Where the running demo differs from a number in `demo-scenarios.md` (Hospital B's ETA, Scenario 3's 297 or 298), the step says so; both are open questions in `docs/build/PROGRESS.md`. Still do one full dry run before an audience.
 
 ---
 
@@ -24,11 +24,11 @@ One terminal each, from the repository root:
 | 8 | `make ingest` | Scenario 2 only: MQTT telemetry to the hub every 2 s |
 | 9 | `AI_API_KEY=… make ai` | Optional: copilot and chat ordering on :8100 |
 
-`make demo-reset` is the reset command between runs (see §5). Check that the seed reproduced the scenario data **(check before the demo)**: Hospital A's Shortages list has no open Surgical Kit A shortage, Hospital B's Inventory shows Surgical Kit A with **1,000 kit** transferable, and Hospital B's Forecasts page lists an expiry-risk IV Cannula 20G batch. If the Forecasts page says "No forecasts yet", sign in as Hospital B's store manager and click **Run forecast now** on `/forecasts` (it should toast "Forecast N products.").
+`make demo-reset` is the reset command between runs (see §5). Check that the seed reproduced the scenario data: Hospital A's Shortages list has no open Surgical Kit A shortage, Hospital B's Inventory shows Surgical Kit A batch SEED-1 with on hand 2,500 kit, reserved 800, allocated 200, safety 500 and **Transferable 1,000 kit**, and Hospital B's Forecasts page lists an expiry-risk IV Cannula 20G batch. If the Forecasts page says "No forecasts yet", sign in as Hospital B's store manager and click **Run forecast now** on `/forecasts` (it should toast "Forecast N products.").
 
 ### Browser layout
 
-Each app keeps its session per browser tab, so use one tab per person, named in the tables below. The hub allows **5 sign-ins per minute per IP address** (a sixth gets "429"), and the scenarios need about 15 people, so sign everyone in ahead of time in batches of five, a minute apart, and leave the tabs open. Sign in on each app's login page with Email, Password (`demo1234`) and **Sign in**.
+Each app keeps its session per browser tab, so use one tab per person, named in the tables below. The hub allows **5 sign-ins per minute per IP address** (a sixth gets "429"), and the scenarios need about 15 people, so sign everyone in ahead of time in batches of five, a minute apart, and leave the tabs open. (For a rehearsal, `LOGIN_RATE_LIMIT=100 make hub` lifts the limit, as `make e2e` does.) Sign in on each app's login page with Email, Password (`demo1234`) and **Sign in**.
 
 | Tab | App | Email | Used in |
 |---|---|---|---|
@@ -37,17 +37,17 @@ Each app keeps its session per browser tab, so use one tab per person, named in 
 | A-receiver | hospital-web | `receiver@hospital-a.demo` | S1 |
 | B-store | hospital-web | `store.manager@hospital-b.demo` | S1, S3 |
 | B-receiver | hospital-web | `receiver@hospital-b.demo` | — (spare) |
-| C-store | hospital-web | `store.manager@hospital-c.demo` **(check before the demo)** | S2 |
-| C-approver | hospital-web | `approver@hospital-c.demo` **(check before the demo)** | S2 |
-| C-receiver | hospital-web | `receiver@hospital-c.demo` **(check before the demo)** | S2 |
-| E-store | hospital-web | `store.manager@hospital-e.demo` **(check before the demo)** | S3 |
-| E-approver | hospital-web | `approver@hospital-e.demo` **(check before the demo)** | S3 |
-| E-receiver | hospital-web | `receiver@hospital-e.demo` **(check before the demo)** | S3 |
-| F-store | hospital-web | `store.manager@hospital-f.demo` **(check before the demo)** | S2 |
-| Y-desk | supplier-web :5174 | `supplier.desk@supplier-y.demo` **(check before the demo)** | S1 |
+| C-store | hospital-web | `store.manager@hospital-c.demo` | S2 |
+| C-approver | hospital-web | `approver@hospital-c.demo` | S2 |
+| C-receiver | hospital-web | `receiver@hospital-c.demo` | S2 |
+| E-store | hospital-web | `store.manager@hospital-e.demo` | S3 |
+| E-approver | hospital-web | `approver@hospital-e.demo` | S3 |
+| E-receiver | hospital-web | `receiver@hospital-e.demo` | S3 |
+| F-store | hospital-web | `store.manager@hospital-f.demo` | S2 |
+| Y-desk | supplier-web :5174 | `supplier.desk@supplier-y.demo` | S1 |
 | Dispatcher | delivery-web :5175 | `dispatcher@swiftmed.demo` | S1, S2, S3 |
 | Driver | delivery-web | `driver@swiftmed.demo` (Ravi) | S1, S2, S3 |
-| Platform | hospital-web | `admin@care-e.demo` | S3 step 4 |
+| Platform | hospital-web | `admin@care-e.demo` (the **Admin** nav entry shows only for platform users) | S3 step 4 |
 
 The Hospital C–F and Supplier Y users come from the full S20 seed; the minimal seed before it had users only for Hospital A, Hospital B, Supplier X, SwiftMed and the platform. Every org also has `admin@<org>.demo` with all of its org's capabilities, which is a quick substitute if a role tab is missing (but the story is better told with separate roles).
 
@@ -105,10 +105,10 @@ The scripted demo does not wait for any timer: every step is a click. Shorten th
 
 **Expect** on the Overview tab:
 - "Latest match run #1" and "Planned: Transfer — 850 kit from Hospital B".
-- Eligible table: Hospital B ranked first with **1,000 kit transferable**; Supplier Y and Supplier X follow with their offered quantities. Hospital B's ETA in the seed is about 6 h according to demo-scenarios.md, but the hub computes distance ÷ 40 km/h + 1 h, which gives a shorter figure for hospitals in one city **(check before the demo)**. Supplier Y about 24 h, Supplier X about 68 h. Hospital landed cost shows "—" (rule 6: hospital costs are never shown to the requester).
+- Eligible table: Hospital B ranked first with **1,000 kit transferable**; Supplier Y and Supplier X follow with their offered quantities. The ETA column shows Hospital B **1.3 h** (10.9 km ÷ 40 km/h + 1 h handover, demo-scenarios.md; with OSRM set it follows the road distance), Supplier Y **23.4 h** and Supplier X **67.4 h**. Hospital landed cost shows "—" (rule 6: hospital costs are never shown to the requester).
 - "Not eligible (3)":
   - Hospital C — Quantity: "Only 100 transferable; 850 needed"
-  - Hospital D — Shelf life: "Expires in 12 days; 30 required" (reads "11 days" if the delivery estimate crosses midnight UTC, i.e. after about 05:30 IST minus the ETA; run the demo in the Indian daytime)
+  - Hospital D — Shelf life: "Expires in 12 days; 30 required" (the seed pins D's expiry to the delivery day matching computes when the seed runs, so it reads 12 days on the day you ran `make demo-reset` or `make seed`, up to about 05:30 IST the next morning; after that it reads 11 days until you re-seed)
   - Hospital E — Authorization: "Not authorized to supply this product"
 - Source requests: Hospital B, "Requested", with a countdown from **15:00 left**. There is no "Re-run match" button while the request is open.
 
@@ -134,7 +134,7 @@ Optional timer beat: if instead nobody answers, the request expires after `SLA_C
 
 **Expect:**
 - "Latest match run #2", "A source declined · …", "Planned: Buy — 850 kit from Supplier Y". Hospital B is no longer eligible; C, D and E keep their reasons. In Source requests, B shows "Declined" with "No reason was entered."
-- The decision panel: "Recommendation", badge **Buy**, "Pending", "Valid for" a 30-minute countdown, the hub's explanation, Recommended: **Supplier Y** (₹28.00 unit price, about ₹24,000 landed), Alternatives: **Supplier X** (₹14.00, about ₹12,000, ETA about 68 h).
+- The decision panel: "Recommendation", badge **Buy**, "Pending", "Valid for" a 30-minute countdown, the hub's explanation, Recommended: **Supplier Y** (₹28.00 unit price, ₹24,216.04 landed, ETA 23.4 h), Alternatives: **Supplier X** (₹14.00, ₹12,349.02 landed, ETA 67.4 h).
 
 **Say:** "This is critical, so the hub ranks by earliest arrival first. Supplier X is half the price but arrives in about 68 hours; Supplier Y in about 24, comfortably inside our 72. The cheaper option is still shown as the alternative, so the approver sees the trade-off."
 
@@ -161,7 +161,7 @@ Optional timer beat: if instead nobody answers, the request expires after `SLA_C
 
 **Expect:** toast "Receipt recorded." and the "Receipt recorded" card: "Reconciled: the shortage is partially resolved. This delivery was 60 kit short of the 850 kit expected." A receiver cannot read shortages, so the card says "A residual shortage was opened for the rest; your organization's shortage managers can see it."
 
-3. Switch to **A-approver**: the shortage now shows "Partially resolved". Go to **Shortages** and open the new Surgical Kit A shortage: "Shortfall (computed by the hub)" **60 kit**, "Residual of" linking to "An earlier shortage", and its own "Latest match run #1" already run. Hospital B stays excluded because it declined; which source the residual picks (Hospital C's 100 transferable now covers 60) is the hub's call **(check before the demo)**.
+3. Switch to **A-approver**: the shortage now shows "Partially resolved". Go to **Shortages** and open the new Surgical Kit A shortage: "Shortfall (computed by the hub)" **60 kit**, "Residual of" linking to "An earlier shortage", and its own "Latest match run #1" already run. Hospital B stays excluded because it declined. The residual's plan is "Planned: Transfer — 60 kit from Hospital C": C's 100 transferable now covers the 60, so the hub sends Hospital C a request.
 
 **Say:** "Nobody has to notice the missing 60. The hub reconciles what arrived against what was expected and opens a residual shortage that starts matching on its own."
 
@@ -185,7 +185,7 @@ Before you start: `make ingest` is running, and the simulator is ready in a term
 
 **Shortages** → **New shortage**: Product **Rapid Diagnostic Kit (DIAG-RDK)**, Quantity required **200**, Usable stock on hand **0**, Required by now + 48 hours, Priority **Routine**, Minimum shelf life **60** (the product's default; leaving it blank gives the same) → **Report shortage**. Shortfall **200 kit** → **View shortage**.
 
-**Expect:** "Planned: Transfer — 200 kit from Hospital F"; Hospital F eligible with **500 kit transferable** **(check before the demo** that F ranks first, and that the cold-chain gate passes; it needs a cold-chain vehicle on record, which the seed provides). Source requests: Hospital F, "Requested", with a 4-hour countdown.
+**Expect:** "Planned: Transfer — 200 kit from Hospital F"; Hospital F ranked first with **500 kit transferable** (the cold-chain gate passes because the seed has a cold-chain vehicle on record; the suppliers follow). Source requests: Hospital F, "Requested", with a 4-hour countdown.
 
 **Say:** "This kit must stay between 2 and 8 °C. The hub only considers it because a cold-chain vehicle exists in the network; otherwise it would be rejected on the cold-chain gate."
 
@@ -251,8 +251,8 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 
 ### Step 1: B's expiry risk (tab B-store)
 
-1. **Dashboard** → "Forecasts and expiry risk": "Expiry-risk batches" **1** and "Offer **300 each** to the network: IV Cannula 20G, batch …" with a "Synthetic history" badge. The seed history is built for an excess of about 300; the hub's test accepts 300 ± 5, and the S18 build saw 296–298 depending on the weekday **(check before the demo)**.
-2. Click **Forecasts** (or **View all**). "Expiry-risk batches" lists the batch (on hand 1,000, safety stock 200, expiry +55 days). Click **Offer to network** → dialog "Offer 300 each to the network?" ("Other hospitals see the quantity, an expiry band and your location, never the batch or its expiry date. The hub offers no more than the batch's transferable stock.") → **Offer to network** → "Offered to the network." The post appears under "Your surplus posts".
+1. **Dashboard** → "Forecasts and expiry risk": "Expiry-risk batches" **1** and "Offer **297 each** to the network: IV Cannula 20G, batch SEED-1" with a "Synthetic history" badge. demo-scenarios.md says 300; the forecast uses about 503 of the 1,000 before expiry, so the excess is 296–298 depending on the weekday (297 on Friday 2026-10-09, 298 on Saturday 2026-10-10; the hub's test and the e2e spec accept 300 ± 5). Say "about 300". Open question in PROGRESS.md.
+2. Click **Forecasts** (or **View all**). "Expiry-risk batches" lists the batch (on hand 1,000, safety stock 200, expiry +55 days). Click **Offer to network** → dialog "Offer 297 each to the network?" ("Other hospitals see the quantity, an expiry band and your location, never the batch or its expiry date. The hub offers no more than the batch's transferable stock.") → **Offer to network** → "Offered to the network." The post appears under "Your surplus posts" as "Matched" (the hub matched it to Hospital E's forecast stock-out at once).
 
 **Say:** "The forecast says B will use about 500 of these 1,000 before they expire, and B keeps 200 as safety stock. That leaves about 300 that will otherwise be thrown away."
 
@@ -260,7 +260,7 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 
 **Dashboard**:
 - "Forecasts and expiry risk" → "Predicted stock-outs": **IV Cannula 20G**, date "(in 4 days)".
-- "Surplus offered to you": "Hospital B offers 300 each IV Cannula 20G", "Expires in 30–59 days · Matches your predicted stock-out on …".
+- "Surplus offered to you": "Hospital B offers 297 each IV Cannula 20G", "Expires in 30–59 days · Matches your predicted stock-out on …". If E's dashboard was open when B posted, it appears by itself (`surplus.matched`, with `make worker` running).
 
 **Say:** "E uses about 30 a day and has 120 left: four days. E sees B's offer, but only the quantity, an expiry band and the location, never B's batch details. That's rule 6."
 
@@ -277,7 +277,14 @@ Then on the **Driver** tab click **Delivered**, and stop the simulator with Ctrl
 
 ### Step 4: the network view (tab Platform)
 
-Sign in to hospital-web as `admin@care-e.demo` and open **/admin**: the network metrics show procurement cost avoided (against the cheapest supplier price) and **300 units saved from expiry**, plus median time from shortage to confirmed source, transfer vs purchase share and cold-chain compliance. **(check before the demo**: the `/admin` page and `GET /metrics/network` are S20 work that was not built when this runbook was written; confirm the page, its labels and the figures.**)**
+Sign in to hospital-web as `admin@care-e.demo` and click **Admin** (`/admin`, "Network metrics"). Five cards, each with its definition underneath: "Median time to a confirmed source", "Transfers vs purchases", "Procurement cost avoided", "Units saved from expiry" and "Cold-chain compliance". The page does not update live (no hub event reaches the platform org): click **Refresh** after the receipt.
+
+After the three scripted scenarios on a fresh `make demo-reset`:
+- **Units saved from expiry: 297** (or whatever B posted, 296–298): the smaller of the 300 transferred and the excess B posted (demo-scenarios.md says 300; see step 1).
+- **Procurement cost avoided: ₹79,640.00**: units received from hospital transfers × the cheapest eligible supplier price in the match run that chose the source: Scenario 2's 200 kit × ₹385.00 plus Scenario 3's 300 × ₹8.80 (both Supplier Y's prices: Supplier Y is the only eligible supplier in both runs; Z's and X's cheaper offers do not pass the gates), before transport.
+- **Transfers vs purchases**: 66.7% transfers · 33.3% purchases (2 transfers, 1 purchase).
+- **Cold-chain compliance: 0%**, "1 of 1 cold-chain delivery monitored; 1 with an excursion": the excursion counts against it even though it recovered.
+- The median time to a confirmed source is however long the scripted clicks took (minutes).
 
 **Say:** "Across the network: what we didn't have to buy, and what didn't expire."
 
@@ -295,13 +302,13 @@ Sign in to hospital-web as `admin@care-e.demo` and open **/admin**: the network 
 | **No AI key, or the AI service is down** | Skip the copilot beats. The panel says "AI is not configured." (no key) or that the copilot is not available; everything else works. Say: "The AI is an assistant, so the system works without it." |
 | **"429" on sign-in** | The 5-per-minute sign-in limit. Wait a minute. Sign everyone in before the demo. |
 | **A recommendation expired while talking** | "Its validity has passed, so it can no longer be decided." The worker expires it and re-runs matching, which makes a new recommendation; open the shortage again. Avoid it by not shortening `SLA_*_RECOMMENDATION_MINUTES`. |
-| **"11 days" instead of "12 days" for Hospital D** | The delivery estimate fell on the next UTC day. Harmless; explain, or run the demo in daytime IST. |
-| **Data from an earlier run in the way** | `make demo-reset` (wipes and re-seeds, times relative to now). Takes under a minute **(check before the demo)**. Re-sign-in afterwards: old sessions belong to users that no longer exist. |
+| **"11 days" instead of "12 days" for Hospital D** | The seed was run on an earlier UTC day than the match (after about 05:30 IST). Run `make seed` (keeps the data) or `make demo-reset` again, then report the shortage again. |
+| **Data from an earlier run in the way** | `make demo-reset` (wipes and re-seeds, times relative to now). Takes about 40 s (forecasts included). Re-sign-in afterwards: old sessions belong to users that no longer exist. |
 | **Something else breaks mid-demo** | Switch to the recorded video (below), then reset with `make demo-reset` before taking questions on the live system. |
 
 ### Recorded video
 
-Record a full dry run of all three scenarios (screen plus voice-over from this script) the day before, after the "check before the demo" items are confirmed, and keep it on the presenting laptop, not only online. Cut it into one clip per scenario so you can jump to the one that failed.
+Record a full dry run of all three scenarios (screen plus voice-over from this script) the day before, after a full dry run, and keep it on the presenting laptop, not only online. Cut it into one clip per scenario so you can jump to the one that failed.
 
 ### Between runs
 
@@ -312,4 +319,10 @@ Record a full dry run of all three scenarios (screen plus voice-over from this s
 
 ### Automated check
 
-`make e2e` drives the Playwright tests in `e2e/` against the seeded system (it starts the hub and the apps unless they are running; it does not start `make worker`, which live updates need). Run it the day before to catch regressions. It changes the data and counts against the sign-in limit, so run `make demo-reset` afterwards.
+`make e2e` plays all three scenarios (`e2e/tests/scenario1.spec.ts`, `scenario2.spec.ts`, `scenario3.spec.ts`), each person in their own browser context signed in through the app's sign-in page, plus the smoke, supplier, driver and receipt tests: about 4 minutes, one spec at a time. Run it the day before to catch regressions.
+
+- It first resets the three scenarios on top of the seed (`e2e/seed/scenarios.py`, dev database only: the seeded batches and offers back to the spec's numbers, open scenario shortages cancelled, B's surplus posts withdrawn, stock received in earlier runs emptied, `cb-01` taken off, B and E re-forecast), so it can run again on the same database.
+- It starts the hub (with 100 sign-ins a minute) and the apps unless they are running. A hub you started yourself keeps its own limit: start it with `LOGIN_RATE_LIMIT=100 make hub`.
+- It does not start `make worker`, which every live update and cold-chain alert needs.
+- Scenario 2 runs `scripts/simulate_telemetry.py --profile excursion` when an MQTT broker answers on 127.0.0.1:1883 (then `make ingest` must be running), and otherwise posts the same readings to the hub's ingest endpoint (`E2E_TELEMETRY=mqtt|hub` forces one). With the simulator it waits about 60 s for the excursion.
+- It leaves its shortages, shipments and receipts behind, so run `make demo-reset` before the audience arrives.

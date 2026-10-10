@@ -1,6 +1,7 @@
 import { type AppConfig, CareApp } from "@care-e/ui";
 import { CopilotPanel } from "./copilot/copilot-panel";
 import { SHORTAGE_READERS } from "./display";
+import { ADMIN_GATE, AdminPage } from "./pages/admin";
 import { DashboardPage } from "./pages/dashboard";
 import { DeliveriesPage } from "./pages/deliveries";
 import { DeliveryDetailPage } from "./pages/delivery-detail";
@@ -35,6 +36,8 @@ export const config: AppConfig = {
     },
     { to: "/deliveries", label: "Deliveries", element: <DeliveriesPage /> },
     { to: "/forecasts", label: "Forecasts", element: <ForecastsPage /> },
+    // Network metrics (S20): PLATFORM users with audit.read only.
+    { to: "/admin", label: "Admin", ...ADMIN_GATE, element: <AdminPage /> },
   ],
   routes: [
     { path: "/shortages/:id", element: <ShortageDetailPage /> },
