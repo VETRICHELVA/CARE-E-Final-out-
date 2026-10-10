@@ -167,7 +167,8 @@ describe("Admin: network metrics", () => {
 
 describe("formatMinutes", () => {
   it.each([
-    [0.4, "0 min"],
+    [0.4, "under 1 min"],
+    [0.6, "1 min"],
     [42, "42 min"],
     [60, "1 h"],
     [185.4, "3 h 5 min"],

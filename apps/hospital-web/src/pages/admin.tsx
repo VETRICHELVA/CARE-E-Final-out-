@@ -40,9 +40,10 @@ const n = (value: number) => count.format(value);
 const plural = (value: number, one: string, many = `${one}s`) =>
   `${n(value)} ${value === 1 ? one : many}`;
 
-/** 42 → "42 min", 185 → "3 h 5 min", 3000 → "2 d 2 h". */
+/** 0.2 → "under 1 min", 42 → "42 min", 185 → "3 h 5 min", 3000 → "2 d 2 h". */
 export function formatMinutes(minutes: number): string {
   const total = Math.round(minutes);
+  if (total < 1) return "under 1 min";
   if (total < 60) return `${total} min`;
   const days = Math.floor(total / 1440);
   const hours = Math.floor((total % 1440) / 60);
