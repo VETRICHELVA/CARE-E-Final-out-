@@ -14,6 +14,11 @@ process.env.APP_ENV = "dev";
 
 export default defineConfig({
   testDir: "tests",
+  // One spec at a time: the demo scenario specs share the demo seed's orgs and users (Hospital
+  // B answers Scenarios 1 and 3, SwiftMed carries every shipment, Scenario 3 reads the
+  // network-wide metrics before and after its receipt), and the self-seeding specs re-run the
+  // seed, which re-times the scenario batches.
+  workers: 1,
   use: {
     trace: "retain-on-failure",
     ...(chromium ? { launchOptions: { executablePath: chromium } } : {}),

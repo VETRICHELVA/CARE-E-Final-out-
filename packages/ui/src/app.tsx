@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { BrowserRouter, NavLink, Outlet, Route, Routes } from "react-router";
-import { createQueryClient, logout, useAuth, useEventStream } from "@care-e/api-client";
+import { createQueryClient, logout, type Me, useAuth, useEventStream } from "@care-e/api-client";
 import { can, LoginPage, ProtectedRoute, useMe } from "./auth";
 import { ColdChainAlerts, type ColdChainAlertConfig } from "./coldchain";
 import { Badge } from "./components/ui/badge";
@@ -16,6 +16,9 @@ export type NavItem = {
   /** Hide the entry from users without this capability, or without any one of a list of them
    *  (display only; the hub still checks). */
   capability?: string | readonly string[];
+  /** Hide the entry from users of any other org type (`/auth/me` → org.type), e.g. hospital-web's
+   *  `/admin` for PLATFORM users only (display only; the hub still checks). */
+  orgTypes?: readonly string[];
   /** The screen; a placeholder until its section lands. */
   element?: ReactNode;
 };
@@ -42,6 +45,12 @@ export type AppConfig = {
   coldChainAlerts?: ColdChainAlertConfig;
 };
 
+/** Whether `me` sees `item` in the nav: it has the capability (if any) and is of one of the
+ *  org types (if given). Display only: the hub still checks every call. */
+export const showNavItem = (me: Me | undefined, item: Pick<NavItem, "capability" | "orgTypes">) =>
+  (!item.capability || can(me, item.capability)) &&
+  (!item.orgTypes || (me !== undefined && item.orgTypes.includes(me.org.type)));
+
 /** The header shows the user, their organization and its type (apps-ai-iot.md, Shared rules). */
 function AppShell({
   name,
@@ -53,7 +62,7 @@ function AppShell({
 }: Pick<AppConfig, "name" | "nav" | "liveUpdates" | "headerExtra" | "aside" | "coldChainAlerts">) {
   useEventStream(liveUpdates);
   const me = useMe().data;
-  const visible = nav.filter((item) => !item.capability || can(me, item.capability));
+  const visible = nav.filter((item) => showNavItem(me, item));
   return (
     <div className="min-h-svh">
       {liveUpdates && coldChainAlerts && <ColdChainAlerts {...coldChainAlerts} />}

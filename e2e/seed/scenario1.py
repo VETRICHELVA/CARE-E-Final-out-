@@ -1,5 +1,6 @@
-"""Scenario 1 reset for the Playwright test (docs/specs/demo-scenarios.md) and the copilot eval
-runner (services/ai-service/evals/scenario1_steps.py).
+"""Scenario 1 reset for the copilot eval runner (services/ai-service/evals/scenario1_steps.py,
+docs/specs/demo-scenarios.md). `make e2e` resets all three scenarios with e2e/seed/scenarios.py
+instead.
 
 Run from services/hub-api, against the database the hub under test uses:
 
