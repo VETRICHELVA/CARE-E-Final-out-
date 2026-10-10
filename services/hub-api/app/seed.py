@@ -432,6 +432,8 @@ async def seed_fleet(session: AsyncSession) -> None:
             session.add(user)
             await session.flush()
         if await session.scalar(select(Driver).where(Driver.user_id == user.id)) is None:
+            # Creating the driver: the role user seed_orgs just made becomes Ravi (Priya is new).
+            user.full_name = name
             session.add(Driver(org_id=org.id, user_id=user.id, phone=phone))
     existing = set(await session.scalars(select(Vehicle.reg_no).where(Vehicle.org_id == org.id)))
     for reg_no, cold in VEHICLES:
