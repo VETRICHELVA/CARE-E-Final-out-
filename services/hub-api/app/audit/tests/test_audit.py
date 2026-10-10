@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import service as audit
 from app.audit.models import AuditLog
-from app.conftest import ClientFor, World
+from app.conftest import ClientFor, World, as_owner
 
 pytestmark = pytest.mark.anyio
 
@@ -78,6 +78,9 @@ async def test_raw_sql_cannot_change_audit_rows(
     await audit.record(
         session, world.users["a.APPROVER"], "x", uuid.uuid4(), "x.done", None, None, "r"
     )
+    # The trigger stops even the owner (the hub's own role has no such privilege at all,
+    # test_app_role.py).
+    await as_owner(session)
     with pytest.raises(DBAPIError, match="audit_log is append-only"):
         async with session.begin_nested():
             await session.execute(text(sql))

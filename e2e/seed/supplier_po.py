@@ -10,7 +10,8 @@ Run from services/hub-api, against the database the hub under test uses (the spe
 
 Each run:
 - loads the dev seed and adds Supplier Y with a supplier desk user if missing;
-- gives Supplier Y a fresh Nebulizer Mask offer and authorization;
+- gives Supplier Y a Nebulizer Mask offer and authorization if it has none (an existing
+  offer is left as it is: `make demo-reset` starts again from scratch);
 - cancels Hospital A's open Nebulizer Mask shortages from earlier runs (hub service, with
   audit rows);
 - reports a new Nebulizer Mask shortage as Hospital A's store manager: matching recommends a
@@ -94,11 +95,18 @@ async def main() -> None:
                 SupplierOffer.org_id == y.id, SupplierOffer.product_id == product.id
             )
         )
-        if offer is None:
-            offer = SupplierOffer(org_id=y.id, product_id=product.id)
-            session.add(offer)
-        offer.unit_price_paise, offer.lead_time_hours, offer.available_qty = Y_OFFER
-        offer.updated_at = now
+        if offer is None:  # create-only: an existing offer changes only through the hub
+            price, lead, qty = Y_OFFER
+            session.add(
+                SupplierOffer(
+                    org_id=y.id,
+                    product_id=product.id,
+                    unit_price_paise=price,
+                    lead_time_hours=lead,
+                    available_qty=qty,
+                    updated_at=now,
+                )
+            )
         authorized = await session.scalar(
             select(ProductAuthorization).where(
                 ProductAuthorization.org_id == y.id, ProductAuthorization.product_id == product.id

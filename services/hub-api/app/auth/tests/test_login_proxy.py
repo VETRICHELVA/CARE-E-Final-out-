@@ -48,3 +48,33 @@ async def test_the_limit_is_configurable(
     for _ in range(8):
         assert (await client.post("/auth/login", json=BAD)).status_code == 401
     assert (await client.post("/auth/login", json=GOOD)).status_code == 429
+
+
+@pytest.mark.parametrize(("limit", "window"), [(100, 60), (5, 1)])
+async def test_outside_dev_the_limit_cannot_be_loosened(
+    client_for: ClientFor, world: World, monkeypatch: pytest.MonkeyPatch, limit: int, window: int
+) -> None:
+    """A LOGIN_RATE_LIMIT above 5 (or a window under 60 s) is a dev-only setting."""
+    monkeypatch.setattr(settings, "login_rate_limit", limit)
+    monkeypatch.setattr(settings, "login_rate_window_seconds", window)
+    monkeypatch.setattr(settings, "app_env", "production")
+    client = await client_for(ip="10.0.0.43")
+    for _ in range(5):
+        assert (await client.post("/auth/login", json=BAD)).status_code == 401
+    r = await client.post("/auth/login", json=GOOD)
+    assert r.status_code == 429
+    assert r.json()["details"]["retry_after"] > 1
+
+
+async def test_a_client_line_of_x_forwarded_for_does_not_reset_its_budget(
+    client_for: ClientFor, world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The client sends its own X-Forwarded-For line; the proxy appends the address it saw
+    in a second line. Every line counts, so the client stays the proxy's 203.0.113.5."""
+    monkeypatch.setattr(settings, "trusted_proxies", "10.9.0.0/16")
+    proxy = await client_for(ip="10.9.0.1")
+    for n in range(5):
+        headers = [("X-Forwarded-For", f"198.51.100.{n}"), ("X-Forwarded-For", "203.0.113.5")]
+        assert (await proxy.post("/auth/login", json=BAD, headers=headers)).status_code == 401
+    headers = [("X-Forwarded-For", "198.51.100.99"), ("X-Forwarded-For", "203.0.113.5")]
+    assert (await proxy.post("/auth/login", json=GOOD, headers=headers)).status_code == 429

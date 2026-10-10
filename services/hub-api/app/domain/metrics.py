@@ -21,8 +21,9 @@ def share(part: int, total: int) -> float | None:
 
 
 def cost_avoided_paise(accepted: int, cheapest_supplier_unit_paise: int | None) -> int | None:
-    """What buying the units a transfer delivered would have cost at the cheapest supplier
-    price its match run recorded; None when that run recorded no supplier price."""
+    """What buying the units a transfer delivered would have cost at the cheapest eligible
+    supplier's price in its match run; None when no supplier in that run was eligible (or it
+    recorded no price)."""
     if cheapest_supplier_unit_paise is None:
         return None
     return accepted * cheapest_supplier_unit_paise
